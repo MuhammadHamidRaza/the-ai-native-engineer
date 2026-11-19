@@ -12,7 +12,7 @@ export const BOOK_META = {
   totalParts: 10,
   totalChapters: 42,
   totalHours: 638,
-  githubRepoPlaceholder: 'https://github.com/YOUR_GITHUB_USERNAME/the-ai-native-engineer',
+  githubRepo: 'https://github.com/MuhammadHamidRaza/the-ai-native-engineer',
 };
 
 export const LEARNING_PRINCIPLES: string[] = [

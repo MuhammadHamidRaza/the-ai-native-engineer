@@ -19,7 +19,94 @@ export default function Home(): React.ReactElement {
     >
       <main>
         <HeroSection />
-        <BookStats />
+
+      {/* Manifesto / About */}
+      <section className="py-16 sm:py-20 border-b border-[var(--border-hairline)]">
+        <div className="max-w-[880px] mx-auto px-4 sm:px-6 lg:px-8">
+          <AnimatedSection>
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[var(--ink-primary)] m-0 mb-6">
+              The Future of Engineering Is More Than Writing Code.
+            </h2>
+          </AnimatedSection>
+          <AnimatedSection delay={0.05}>
+            <div className="space-y-5 text-base text-[var(--ink-secondary)] leading-relaxed">
+              <p className="m-0">
+                Software engineering is entering a new era. AI is changing how software is
+                designed, developed, tested, deployed and operated. But the engineers who
+                stand out will be those who understand more than tools and prompts. They
+                will understand problems, think in systems, work with AI, make engineering
+                decisions and deliver solutions that create real value.
+              </p>
+              <p className="m-0">
+                <strong className="text-[var(--ink-primary)] font-semibold">
+                  The AI-Native Engineer
+                </strong>{' '}
+                is a practical, structured learning journey designed to help you develop
+                those capabilities.
+              </p>
+              <p className="m-0">
+                Start with computer science and software engineering fundamentals. Progress
+                through JavaScript, Python, databases, backend systems, cloud infrastructure
+                and system design. Then move into AI-native development, coding agents,
+                agentic systems, MCP, automation, client delivery and product development.
+              </p>
+              <p className="m-0 font-medium text-[var(--ink-primary)]">
+                Learn to go beyond building applications:
+              </p>
+              <ul className="m-0 space-y-2 pl-5 list-disc text-[var(--ink-secondary)]">
+                <li>
+                  <strong className="text-[var(--ink-primary)] font-medium">Think like an engineer:</strong>{' '}
+                  Understand problems, reason through trade-offs and design reliable systems.
+                </li>
+                <li>
+                  <strong className="text-[var(--ink-primary)] font-medium">Build with AI:</strong>{' '}
+                  Use AI coding tools and agentic workflows effectively while maintaining
+                  engineering control.
+                </li>
+                <li>
+                  <strong className="text-[var(--ink-primary)] font-medium">Create intelligent systems:</strong>{' '}
+                  Develop AI applications, agents, MCP integrations and business automations.
+                </li>
+                <li>
+                  <strong className="text-[var(--ink-primary)] font-medium">Operate in production:</strong>{' '}
+                  Test, secure, deploy, monitor and improve real-world software.
+                </li>
+                <li>
+                  <strong className="text-[var(--ink-primary)] font-medium">Solve business problems:</strong>{' '}
+                  Discover requirements, work with clients and deliver measurable outcomes.
+                </li>
+                <li>
+                  <strong className="text-[var(--ink-primary)] font-medium">Build products:</strong>{' '}
+                  Validate ideas, develop MVPs, understand unit economics and launch
+                  solutions.
+                </li>
+              </ul>
+              <p className="m-0 text-[var(--ink-primary)] font-medium">
+                Prepare for the next generation of engineering roles.
+              </p>
+              <p className="m-0">
+                Develop capabilities relevant to AI Engineer, Agentic AI Developer, Forward
+                Deployed Engineer, Full-Stack Engineer, AI Solutions Engineer and independent
+                product builder.
+              </p>
+              <p className="m-0">
+                This is not simply a collection of programming tutorials. It is an
+                engineering-to-AI curriculum focused on learning how to think, build, solve
+                and ship.
+              </p>
+              <p className="m-0 font-mono text-sm text-[var(--ink-muted)]">
+                10 Parts · 42 Chapters · 638 Focused Learning Hours
+              </p>
+              <p className="m-0 text-[var(--ink-secondary)]">Written by Hamid Raza.</p>
+              <p className="m-0 font-display text-xl text-[var(--accent)] font-medium">
+                Think. Build. Solve. Ship.
+              </p>
+            </div>
+          </AnimatedSection>
+        </div>
+      </section>
+
+      <BookStats />
         <LearningPathway />
 
         {/* Featured Chapters */}

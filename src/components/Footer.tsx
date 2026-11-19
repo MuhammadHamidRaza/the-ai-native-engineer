@@ -99,7 +99,7 @@ export function Footer(): React.ReactElement {
                 </li>
                 <li>
                   <a
-                    href={BOOK_META.githubRepoPlaceholder}
+                    href={BOOK_META.githubRepo}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] no-underline"
