@@ -1,0 +1,17 @@
+{
+  "name": "shopcore-helpbot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline-runnable reference for ShopCore HelpBot (Part 08, Chapter 28). Deterministic embeddings, real chunking/retrieval/eval logic, zero API keys required.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "ingest": "node scripts/ingest.mjs",
+    "ingest:evil": "node scripts/ingest.mjs --include-evil",
+    "eval:helpbot": "node scripts/eval-helpbot.mjs",
+    "ask": "node scripts/ask.mjs",
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,77 @@
+---
+id: "05-1-2-interfaces-type-aliases-and-unions"
+title: "05.1.2 Interfaces, Type Aliases and Unions"
+sidebar_label: "05.1.2 Interfaces, Type Aliases and Unions"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-1-static-typing-foundations/05-1-2-interfaces-type-aliases-and-unions"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s1-t2">
+
+Real business domains are not just strings and numbers—they are users with roles, tasks with bounded statuses, and API responses that either hold data or an error. **Interfaces**, **type aliases**, and **union types** let you encode those domain rules directly into the type system so illegal states fail to compile.
+
+## 1. Structural Typing ("Duck Typing" at Compile Time)
+
+TypeScript compares types by their **shape**, not by their class or interface name. If a function requires `{ email: string }`, any object containing at least an `email: string` property satisfies it—even if it also has other properties or was never explicitly labeled with that interface name.
+
+## 2. `interface` vs. `type`
+
+```typescript
+// interface: great for object shapes and class contracts
+export interface UserProfile {
+  readonly id: string;
+  email: string;
+  displayName?: string; // string | undefined
+}
+
+// type alias: can name primitives, unions, tuples, or object shapes
+export type UserRole = "viewer" | "editor" | "admin";
+
+export interface TeamMember extends UserProfile {
+  role: UserRole;
+}
+
+// Intersection (&) combines existing types
+export type TimestampedMember = TeamMember & {
+  joinedAtIso: string;
+};
+```
+
+**Rule of Thumb:** Use `interface` for extendable object contracts (`UserProfile`, `ApiConfig`), and `type` for unions (`"viewer" | "editor" | "admin"`), tuples, function signatures, and mapped/utility compositions (`05.2.2`). Pick one convention consistently per file.
+
+## 3. Union Types Make Illegal Strings Impossible
+
+Compare `role: string` against `role: "viewer" | "editor" | "admin"`:
+- With `string`, typing `"admn"` compiles fine and fails authorization in production.
+- With the union literal type, `"admn"` fails immediately inside VS Code and `tsc --noEmit`!
+
+```typescript
+type SortDirection = "asc" | "desc";
+
+function sortNumbers(values: readonly number[], dir: SortDirection): number[] {
+  return values.toSorted((a, b) => (dir === "asc" ? a - b : b - a));
+}
+
+console.log(sortNumbers([30, 5, 12], "asc")); // [5, 12, 30]
+```
+
+Notice `readonly number[]` in the parameter signature: it guarantees `sortNumbers` cannot mutate the caller's array (`values.push(1)` won't compile!).
+
+## 4. Common Pitfalls
+
+- **Excess property checking on object literals:** Passing `{ id: "1", email: "a@b.com", extra: true }` directly into a function expecting `UserProfile` triggers a compile error to catch typos—even though structural typing allows extra properties when stored in an intermediate variable first.
+- **Intersection impossible types (`string & number`):** Intersecting two incompatible primitives produces `never`, because no value can be both a string and a number simultaneously.
+
+## 5. Practice Exercises
+
+1. Model an `Order` interface with `readonly id: string`, `status: "draft" | "paid" | "refunded"`, `totalCents: number`, and optional `note?: string`.
+2. Write a function `markPaid(order: Order): Order` that returns a *new* updated object without mutating the input.
+
+## Mastery Checklist
+
+- [ ] Understands structural typing vs. nominal class typing.
+- [ ] Uses string literal unions instead of bare `string` for bounded states and roles.
+- [ ] Marks input arrays/fields `readonly` when functions must not mutate caller data.
+
+</BookNodePage>

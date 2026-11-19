@@ -1,0 +1,63 @@
+---
+id: "index"
+title: "Part 05: Deployment, Cloud & DevOps"
+sidebar_label: "Part 05 — Deployment, Cloud & DevOps"
+slug: "/part-05-deployment-cloud-and-devops"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-05">
+
+Part 04 ended with something real: **ShopCore** — a React + Vite SPA, an Express 5 API, PostgreSQL, cookie auth, tests and CI — working on `localhost`. That is exactly where most tutorials stop. Part 05 is where you close the remaining distance: getting ShopCore onto the public internet, keeping it alive there, and operating it like a professional.
+
+## The Build → Ship Arc — Parts 04 → 05
+
+| Stage | Part | What you did / will do |
+| :-- | :-- | :-- |
+| **Build** | Part 04 | Designed the schema, built the API and SPA, enforced auth, tested everything — ShopCore runs on your machine. |
+| **Ship** | Part 05, Ch 16 | Pick a hosting model, point DNS at it, get HTTPS — ShopCore gets a public URL. |
+| **Run** | Part 05, Ch 17–18 | Learn the server itself (Linux, SSH, systemd, ufw), then package the stack in Docker images and Compose. |
+| **Repeat** | Part 05, Ch 19 | Replace hand-made snowflake servers: CI/CD pipelines, OIDC credentials, Terraform and Ansible. |
+| **Operate at scale** | Part 05, Ch 20 | Orchestrate with Kubernetes, scale horizontally, release safely, monitor with Prometheus/Grafana, back up, respond to incidents, and evaluate multi-cloud. |
+
+Notice the arc: each chapter removes one more piece of "it works on my machine" and replaces it with something verifiable — a public URL, a hardened server, an immutable image, a pipeline, a declared desired state, a graph with a line on it.
+
+## What You Will Deploy, Run and Operate
+
+- **Deploy** ShopCore to a static/hosting platform, to your own VPS, and to a Kubernetes cluster — the same app, three operational models, and the trade-offs between them.
+- **Run** it on infrastructure you administer: packages, users, firewalls, reverse proxies, systemd units, container engines.
+- **Operate** it: certificates renewing, disks filling, deploys going out without downtime, 3 a.m. pages, restores you have actually rehearsed.
+- **Judge** multi-cloud claims with real numbers — egress pricing, lock-in scorecards, and the boring truth about when multi-cloud pays and when it is cargo-cult architecture.
+
+## Chapters in Part 05
+
+- [16. Deployment Foundations, Domains, DNS & Hosting](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting) (`12 Focused Hours`) — what a production build is, hosting models, picking a platform, domains/registrars/DNS/propagation, HTTPS end-to-end.
+- [17. Linux, VPS & Server Administration](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration) (`12 Focused Hours`) — WSL2/Linux shell, SSH keys, filesystem and permissions, systemd and `journalctl`, ufw and sshd hardening, nginx/Caddy reverse proxies, backups and a real deployment to a VPS.
+- [18. Docker & Containerized Application Deployment](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment) (`6 Focused Hours`) — engine, images vs containers, Dockerfiles and layer caching, volumes, networks, Compose, registries, image scanning and hardening, deploy to a production VPS.
+- [19. Cloud Engineering, DevOps, CI/CD & IaC](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac) (`8 Focused Hours`) — cloud fundamentals and IAM, billing safety first, a real AWS lab with mandatory teardown, GitHub Actions CI/CD with OIDC and rollback, Terraform and Ansible.
+- [20. Kubernetes, Production Scaling & Multi-Cloud](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud) (`12 Focused Hours`) — Kubernetes architecture and hands-on labs (kind), probes, autoscaling, Helm, horizontal scaling, zero-downtime releases and safe migrations, Prometheus/Grafana monitoring, backups and incident response, and multi-cloud strategy with a two-environment lab.
+
+## How Part 05 Is Structured
+
+The chapters are ordered by dependency, not by glamour. DNS (16) teaches you the control plane of the internet before servers (17) or containers (18) exist in the story. Docker (18) assumes Linux (17). Cloud and CI/CD (19) assume the app already runs somewhere and is packaged (18). Kubernetes (20) assumes all of it — and ends the part with operations: monitoring, backups, incidents and multi-cloud judgment.
+
+## What You Will Be Able to Do After Part 05
+
+- Explain DNS, TLS and hosting models well enough to debug an outage under pressure.
+- Administer a Linux server you did not build — users, keys, firewall, services, logs.
+- Package any app into an image and deploy it reproducibly.
+- Design a pipeline that ships on merge and rolls back on failure, with OIDC instead of long-lived secrets.
+- Stand up a Kubernetes cluster, deploy to it, scale it, monitor it, and survive failure — locally with kind for practice, conceptually for production.
+- Write a blameless postmortem and a working restore runbook.
+
+## Hours Honesty and Self-Verification
+
+The hour figures above are **estimates for a learner working carefully with no prior ops background**, not promises. Your mileage will vary — that is fine, but calibrate honestly: the goal is competence, not speed. Two rules for the whole part:
+
+1. **Verify, don't assume.** The book cannot see your machine. Every chapter has verification steps (`nginx -t`, `docker run` smoke checks, `kubectl get nodes`, pipeline green badges). If a verification fails, stop and fix it — the next chapter builds on it.
+2. **Billing safety first.** Several labs use cloud accounts or VMs. Always: set a budget alert before creating anything, prefer free tiers and throwaway instances, and complete every teardown checklist. A forgotten t3.micro or an idle managed cluster bills hourly while you sleep.
+
+Prerequisites: Part 04 complete (ShopCore works locally, you have its schema, API and tests), and a machine that can run Docker Desktop (Windows/macOS) or Docker Engine (Linux). WSL2 is used throughout on Windows. No Kubernetes experience is assumed — Chapter 20 starts from zero.
+
+</BookNodePage>

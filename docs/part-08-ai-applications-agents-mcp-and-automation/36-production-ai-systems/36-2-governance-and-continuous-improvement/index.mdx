@@ -1,0 +1,25 @@
+---
+id: "index"
+title: "36.2 Governance & Continuous Improvement"
+sidebar_label: "36.2 Governance & Continuous Improvement"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-2-governance-and-continuous-improvement"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-36-s2">
+
+Evals and latency (36.1) keep HelpBot *correct and fast*. This section keeps it *legal, safe and improving* — the part that decides whether the agent survives its first audit, its first jailbreak attempt and its first silent model upgrade.
+
+## What This Section Covers
+
+- **36.2.1 Safety, Compliance, Privacy and PII Redaction** — PII detection and redaction before the model call (Microsoft Presidio, verified current November 2026), the never-log policy, raw vs hashed retention; GDPR/CCPA posture for LLM apps (DPAs, data residency, right to erasure) and the SOC 2 Type II pointer; retention and deletion SLAs for logs; customer contract clauses (no-training-on-my-data) and enterprise policy flags across OpenAI, Anthropic and Google — all marked verify-with-counsel; abuse prevention against jailbreak, tool misuse and cost-DoS mapped to the OWASP LLM Top 10 2025 (verified); content policy tiers; audit trails via `worker_runs` (Ch 34.2.2); an incident postmortem template for a prompt-injection breach; and the EU AI Act risk landscape as of November 2026.
+- **36.2.2 Feedback Loops and Model Upgrades** — provider changelog monitoring; staged rollout (canary → 10% → 100%) with the regression suite as gate and a pinned-model rollback; silent behavior-change detection via golden-set drift checks; A/B measurement across upgrades; the continuous-improvement loop (signals → weekly review → change → eval → deploy → monitor); the "feedback debt" anti-pattern; how to retire an agent honestly; the organizational maturity ladder (demo → pilot → production → fleet); and the only metric that ultimately matters: time-to-resolution for customer problems.
+
+## How to Work This Section
+
+Read 36.2.1 before any production launch — redaction and contract flags are launch blockers, not paperwork. Read 36.2.2 before your first model upgrade — providers change model behavior without asking, and the golden set from 36.1.1 is the only tripwire you will trust at 2am.
+
+Regulatory and provider-policy details are current as of November 2026 and change by design; nothing here is legal advice. Verify every contractual and jurisdictional point with counsel.
+
+</BookNodePage>

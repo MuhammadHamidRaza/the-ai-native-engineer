@@ -1,0 +1,125 @@
+---
+id: "04-2-1-first-class-functions-and-higher-order-patterns"
+title: "04.2.1 First-Class Functions and Higher-Order Patterns"
+sidebar_label: "04.2.1 First-Class Functions and Higher-Order Patterns"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-2-functions-objects-and-data-structures/04-2-1-first-class-functions-and-higher-order-patterns"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s2-t1">
+
+In JavaScript, **functions are objects**—values you can store in variables, put inside arrays, pass as arguments to other functions, and return as results. That property (**first-class functions**) is why event listeners (`button.addEventListener("click", handler)`), array pipelines (`.map(transform)`), and Express/Fastify route middleware work cleanly with minimal syntax.
+
+## 1. Three Ways to Write a Function (and When to Use Each)
+
+```javascript
+// 1. Function declaration (hoisted, great for named top-level helpers)
+function addTax(cents, rate) {
+  return Math.round(cents * (1 + rate));
+}
+
+// 2. Function expression (not hoisted until initialization)
+const formatTag = function (label) {
+  return `[${label.toUpperCase()}]`;
+};
+
+// 3. Arrow function (concise callbacks; lexical `this` from enclosing scope)
+const double = (n) => n * 2;
+```
+
+**Critical Difference with Arrow Functions:**
+- Arrow functions **do not create their own `this` binding**—they inherit `this` from where they were defined. That makes them ideal for callbacks inside methods or React components, and wrong for object methods that rely on dynamic `this`.
+- Arrow functions cannot be called with `new` and have no `arguments` object (use rest parameters `(...args) => ...`).
+
+## 2. Higher-Order Functions (HOFs)
+
+A **higher-order function** either accepts one or more functions as arguments, returns a function, or both.
+
+```javascript
+// retrySync: HOF adding diagnostic timing around ANY function
+export function withTiming(label, fn) {
+  return function timedWrapper(...args) {
+    const start = performance.now();
+    try {
+      return fn(...args);
+    } finally {
+      const elapsed = (performance.now() - start).toFixed(2);
+      console.log(`[timing] ${label} finished in ${elapsed}ms`);
+    }
+  };
+}
+
+const sumRange = withTiming("sumRange", (limit) => {
+  let total = 0;
+  for (let i = 1; i <= limit; i += 1) total += i;
+  return total;
+});
+
+console.log("Result:", sumRange(100_000));
+```
+
+**Expected Output:**
+
+```text
+[timing] sumRange finished in 1.42ms
+Result: 5000050000
+```
+
+## 3. Building Practical Patterns: Currying, Partial Application, and `pipe`
+
+Rather than nesting five function calls (`format(round(applyTax(subtotal)))`), engineers compose small pure functions left-to-right using `pipe`:
+
+```javascript
+const pipe = (...fns) => (initialValue) =>
+  fns.reduce((acc, fn) => fn(acc), initialValue);
+
+const trimText = (s) => s.trim();
+const toSlugLower = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const stripEdgeHyphens = (s) => s.replace(/^-+|-+$/g, "");
+
+export const slugify = pipe(trimText, toSlugLower, stripEdgeHyphens);
+
+console.log(slugify("  JavaScript & React 19!  ")); // "javascript-react-19"
+```
+
+## 4. Real-World Example: Sort Comparators and Reusable Predicates
+
+Instead of duplicating `.filter()` logic across a dashboard, build small predicate factories:
+
+```javascript
+const orders = [
+  { id: 1, customer: "Ada", totalCents: 4200, status: "paid" },
+  { id: 2, customer: "Linus", totalCents: 1200, status: "pending" },
+  { id: 3, customer: "Grace", totalCents: 8900, status: "paid" },
+];
+
+const hasStatus = (target) => (order) => order.status === target;
+const minTotal = (cents) => (order) => order.totalCents >= cents;
+const byTotalDesc = (a, b) => b.totalCents - a.totalCents;
+
+const priorityPaid = orders
+  .filter(hasStatus("paid"))
+  .filter(minTotal(3000))
+  .toSorted(byTotalDesc);
+
+console.log(priorityPaid);
+```
+
+## 5. Common Mistakes
+
+- **Invoking instead of passing the callback:** Writing `setTimeout(logReady(), 1000)` executes `logReady()` *immediately* and passes its `undefined` return value to `setTimeout`. Pass the function reference without `()`: `setTimeout(logReady, 1000)`.
+- **Over-nesting unreadable one-liners:** If a composition or curried chain takes more than five seconds to read, name the intermediate steps cleanly.
+
+## 6. Practice Exercises
+
+1. Write a higher-order function `once(fn)` that runs `fn` only on the first call, caches its return value, and returns that same value on subsequent calls without re-executing `fn`.
+2. Write `not(predicate)` that inverts any boolean predicate function (e.g., `orders.filter(not(hasStatus("paid")))`).
+
+## Mastery Checklist
+
+- [ ] Can explain the difference between passing `fn` and calling `fn()`.
+- [ ] Knows when arrow functions help (`callbacks`, lexical `this`) and when function declarations are clearer.
+- [ ] Can write a reusable higher-order wrapper using `...args`.
+
+</BookNodePage>

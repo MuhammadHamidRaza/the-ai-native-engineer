@@ -1,0 +1,108 @@
+---
+id: "07-2-1-usestate-usereducer-and-derived-state"
+title: "07.2.1 useState, useReducer and Derived State"
+sidebar_label: "07.2.1 useState, useReducer and Derived State"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects/07-2-1-usestate-usereducer-and-derived-state"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s2-t1">
+
+The secret to clean React state is storing **the minimal source of truth** and computing everything else straight during render. Every duplicate state variable (`items` + `filteredItems` + `totalCount`) creates synchronization bugs where one updates and the other goes stale.
+
+## 1. Immutable Updates & Functional Updaters in `useState`
+
+React compares state using `Object.is`. If you mutate an existing array (`tasks.push(x); setTasks(tasks);`), React sees the **exact same array reference** and skips re-rendering! Always pass a **new** array or object, and use `prev => ...` whenever the new value depends on the old value:
+
+```tsx
+import { useState } from "react";
+
+interface Task {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export function TaskWorkspace() {
+  const [tasks, setTasks] = useState<Task[]>([
+    { id: "1", title: "Install Node LTS", done: true },
+    { id: "2", title: "Build React app", done: false },
+  ]);
+  const [filter, setFilter] = useState<"all" | "open" | "done">("all");
+
+  // DERIVED STATE: computed directly during render — zero extra useState or useEffect!
+  const visibleTasks = tasks.filter((t) => {
+    if (filter === "open") return !t.done;
+    if (filter === "done") return t.done;
+    return true;
+  });
+  const remainingCount = tasks.filter((t) => !t.done).length;
+
+  function toggleTask(id: string) {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+    );
+  }
+
+  return (
+    <div>
+      <p>{remainingCount} remaining</p>
+      <div className="flex gap-2">
+        {(["all", "open", "done"] as const).map((tab) => (
+          <button key={tab} type="button" onClick={() => setFilter(tab)}>
+            {tab}
+          </button>
+        ))}
+      </div>
+      <ul>
+        {visibleTasks.map((t) => (
+          <li key={t.id}>
+            <label>
+              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} />
+              {t.title}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+## 2. When to Upgrade from `useState` to `useReducer`
+
+When multiple actions mutate related fields together (`add`, `toggle`, `delete`, `clearCompleted`), `useReducer` moves transition logic into a **pure, testable reducer function** outside the JSX component:
+
+```typescript
+type Action =
+  | { type: "added"; id: string; title: string }
+  | { type: "toggled"; id: string }
+  | { type: "deleted"; id: string };
+
+export function tasksReducer(state: Task[], action: Action): Task[] {
+  switch (action.type) {
+    case "added":
+      return [{ id: action.id, title: action.title, done: false }, ...state];
+    case "toggled":
+      return state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t));
+    case "deleted":
+      return state.filter((t) => t.id !== action.id);
+  }
+}
+```
+
+Notice how you can unit-test `tasksReducer` directly with Vitest without even mounting React!
+
+## 3. Practice Exercises
+
+1. Refactor `TaskWorkspace` above to use `useReducer(tasksReducer, initialTasks)` and add a `"clearCompleted"` action.
+2. Add a text search input (`searchQuery`) and compute `visibleTasks` by combining both `filter` and `searchQuery` during render without adding extra `useState`.
+
+## Mastery Checklist
+
+- [ ] Updates arrays/objects immutably (`map`, `filter`, `{ ...obj }`) so React detects changes.
+- [ ] Computes derived values (`filtered`, `counts`, `totals`) inline during render instead of syncing duplicate state in `useEffect`.
+- [ ] Uses `useReducer` when several state transitions act on the same state model.
+
+</BookNodePage>

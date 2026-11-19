@@ -1,0 +1,49 @@
+---
+id: "index"
+title: "Part 02: JavaScript & Frontend Development"
+sidebar_label: "Part 02 — JavaScript & Frontend"
+slug: "/part-02-javascript-and-frontend-development"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-02">
+
+Part 01 gave you the machine, operating system, network, Git, and debugging foundations. **Part 02 — JavaScript & Frontend Development (`92 Focused Learning Hours`)** turns those foundations into interactive, accessible, type-safe web software.
+
+Across five tightly sequenced chapters, you move from **how JavaScript actually executes in V8 and browsers**, to **static types with TypeScript**, to **semantic HTML, modern CSS, and DOM APIs**, to **component state and rendering in React**, and finally to **full-stack web routing and Server Components in Next.js**.
+
+## Why This Sequence Matters
+
+Most learners jump straight into React or Next.js before understanding JavaScript references, closures, the event loop, CSS Grid, or browser `fetch()`. When something breaks—stale state inside a hook, a layout collapsing at 375px width, a hydration mismatch, or an API payload failing at runtime—they have no mental model to diagnose it.
+
+Part 02 eliminates that guesswork by layering skills cleanly:
+
+1. **Chapter 04 (`28h`) — JavaScript Fundamentals (Deep):** Install Node.js LTS, run scripts in Node and Browser DevTools, master coercion, call stacks, closures, prototypes, immutability, the microtask queue, `async/await`, ES modules, and `node --test`.
+2. **Chapter 05 (`12h`) — TypeScript for Professional Development:** Install `typescript`, configure strict `tsconfig.json`, model domains with unions and generics, and bridge the gap between compile-time erasure and runtime `Zod` validation.
+3. **Chapter 06 (`16h`) — HTML, CSS & Browser Development:** Write semantic, keyboard-accessible HTML, style with Flexbox, Grid, and CSS custom properties, inspect layouts in DevTools, and manipulate the DOM cleanly.
+4. **Chapter 07 (`22h`) — React Development:** Bootstrap a Vite + React + TypeScript app from scratch, master JSX, reconciliation, hooks, custom hooks, data fetching with loading/error/empty states, testing, and accessible component libraries.
+5. **Chapter 08 (`14h`) — Next.js & Modern Web Applications:** Bootstrap a Next.js App Router app, separate Server Components from Client Components, use caching, Route Handlers, Server Actions, SEO metadata, and build/preview locally.
+
+## Workstation Pre-Flight Check
+
+Before starting Chapter 04, make sure your workstation has a current **Node.js LTS** release (`v22`, `v24`, or `v26` Active LTS) and VS Code installed. If you have not installed Node.js yet, the step-by-step Windows, macOS, and Linux setup walkthrough sits right at the start of **[Chapter 04](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep)**.
+
+| Tool | Minimum Version | Purpose Across Part 02 | Quick Check |
+| :--- | :--- | :--- | :--- |
+| **Node.js** | `v20.19+` or `v22+` LTS | JavaScript runtime, Vite, Next.js, test runner | `node -v` |
+| **npm** | `10+` (bundled with Node) | Package installation and script execution | `npm -v` |
+| **Git** | `2.40+` | Version control for every lab and project | `git --version` |
+| **Browser** | Chrome / Edge / Firefox | DevTools, DOM, Network, Accessibility inspection | Press `F12` |
+
+## Part 02 Exit Gate
+
+By Hour 92, before entering **Part 03 (`Python Development`)**, verify you can build from an empty folder without copying opaque boilerplate:
+
+- **JavaScript & TypeScript:** Write an ES module utility with `async/await` error handling, strict TypeScript discriminated unions, runtime schema validation, and passing `node --test` unit tests.
+- **Semantic Web UI:** Build a responsive, keyboard-navigable multi-section web page with dark/light theme tokens, zero layout overflow on mobile (`375px`), and semantic landmarks.
+- **React & Next.js:** Scaffold and run both a Vite React app and a Next.js App Router app locally, handle loading/error/empty UI states, avoid `useEffect` race conditions, and run clean production builds (`npm run build`).
+
+**Start Chapter 04:** [04. JavaScript Fundamentals (Deep)](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep)
+
+</BookNodePage>

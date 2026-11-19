@@ -1,0 +1,123 @@
+---
+id: "40-1-2-defining-the-minimum-viable-product"
+title: "40.1.2 Defining the Minimum Viable Product"
+sidebar_label: "40.1.2 Defining the MVP"
+slug: "/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-1-problem-validation-and-product-scope/40-1-2-defining-the-minimum-viable-product"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-40-s1-t2">
+
+An MVP is not a small product — it is the **smallest thing that tests your riskiest assumption**. This lesson scopes CareQueue (validated in 40.1.1) into a two-week MVP, and gives you the scoping tools to do the same for your own idea.
+
+## 1. The MVP Formula
+
+**MVP = Core value loop + Minimum surface to deliver it − Everything else.** A to-do list for your MVP is a to-do list for version 1, which means you are not building an MVP yet.
+
+The core value loop for CareQueue, in one sentence:
+
+> The front desk opens the inbox and sees today's messages pre-sorted into **Billing / Scheduling / Admin / Needs Human**, with a one-click draft reply for the billing ones.
+
+Everything that is not that loop — patient records, insurance eligibility verification, multi-location management, billing analytics — is v2. If you cannot write your loop in one sentence with "and sees … with one …", you don't understand it yet.
+
+## 2. The One-Job Rule
+
+If your MVP does more than one job for one persona, it is not an MVP.
+
+| Persona | Job | In MVP? |
+| :-- | :-- | :-- |
+| Office manager (Dana) | Triage the `frontdesk@` inbox + one-click billing drafts | **Yes — the whole MVP** |
+| Billing specialist | Read full thread history + attach EOB | v2 |
+| Practice owner | Weekly savings report | v2 |
+| Patients | Self-service booking | Never (not your product) |
+
+## 3. Prioritization: RICE for the MVP Backlog
+
+Score each candidate feature 0–10 on **Reach** (patients/messages affected), **Impact** (pain removed), **Confidence** (how sure you are), and divide by **Effort** (engineer-weeks). Keep the top 3; cut the rest.
+
+| Feature (CareQueue) | Reach | Impact | Confidence | Effort | RICE |
+| :-- | --: | --: | --: | --: | --: |
+| Inbox triage + labels | 10 | 10 | 9 | 1.5 | 60 |
+| One-click billing draft | 6 | 9 | 8 | 1.5 | 29 |
+| Morning digest email ("these 3 need you today") | 10 | 6 | 9 | 0.5 | 108 |
+| Insurance claim auto-attach | 4 | 8 | 4 | 3 | 4 |
+| Multi-location rollup | 2 | 5 | 3 | 2 | 2 |
+| Patient self-service booking | 7 | 3 | 5 | 3 | 4 |
+
+**MVP scope:** morning digest (RICE 108) + triage labels (60) + billing drafts (29). **Cut:** insurance auto-attach (unverified assumption — ask first), multi-location, self-service.
+
+Exercise discipline: after RICE, run the "**cut until it hurts**" pass — remove the smallest RICE item; if you can survive without it, it wasn't in the MVP either.
+
+## 4. The Slice vs the Whole
+
+| Approach | Time | Learning |
+| :-- | --: | :-- |
+| Full dashboard rebuild (all 3 features polished) | 6 weeks | late and expensive |
+| Thin slice: digest email only (no app) | 3 days | **highest per dollar** |
+| Concierge MVP: you triage their inbox by hand for 2 weeks | 0 days build | the highest possible — real pain, real workflow |
+
+**The concierge option deserves emphasis.** For CareQueue, the fastest possible validation is: Dana forwards you the inbox for two weeks (with patient identifiers stripped), and **you** sort it by hand plus draft replies in a shared doc. You learn the exact label taxonomy, the false-positive patterns, and the edge cases no spec will ever surface — for zero code written. Only when Dana says "this saved me an hour a day, when can I have it in Gmail?" do you automate the sorting.
+
+## 5. The MVP Spec (One Page)
+
+Every MVP gets a one-page spec before the first commit. Structure:
+
+```text
+PROBLEM: Office manager opens 60–80 messages/day; ~1 hour/day lost sorting billing questions.
+RISKIEST ASSUMPTION: Sorting + drafting can be automated accurately enough that Dana trusts the output.
+PERSONA: Dana, office manager, 3-chair dental practice, Gmail/Workspace.
+CORE LOOP: Morning email digest → triage labels → one-click billing drafts → Dana approves/edits.
+IN SCOPE: digest (07:30 daily), 4 labels, draft generation for billing, Dana's feedback loop ("wrong/right" one-click).
+OUT OF SCOPE: insurance attach, multi-location, analytics, self-service booking — all v2.
+SUCCESS: Dana reports "saves me ≥30 min/day" after 2 weeks, and ≥70% of drafts approved with edits <20%.
+BUILD TIME: 2 weeks (digest 0.5w, triage 1w, drafts 0.5w).
+```
+
+## 6. Requirements Without Boiling the Ocean
+
+Functional requirements for the MVP, written as testable statements:
+
+- The system reads the last 7 days of messages in `frontdesk@` (Gmail API, read-only scope).
+- Each message gets exactly one label: `Billing`, `Scheduling`, `Admin`, `Needs Human`.
+- A billing-labeled message gets a draft reply in Dana's tone, ≤120 words, citing the billing knowledge base.
+- The digest email lists today's `Needs Human` items first, then billing drafts, then the rest.
+- Dana can mark a label wrong; wrong labels are logged and retrain nothing yet (v2).
+
+Non-functional:
+
+- Drafting latency < 10s per message; digest delivery by 07:30 ±5 min.
+- No message bodies leave the practice's Workspace tenant (data residency per 36.2.1).
+- Weekly cost ≤ $25/practice at current model pricing (36.1.2).
+
+## 7. Common Failure Modes
+
+- **MVP = miniature v1** — if it has dashboards, roles, and settings, it isn't minimum.
+- **No riskiest assumption** — building breadth instead of testing the one thing that decides everything ("can AI triage dental billing accurately?").
+- **Skipping the concierge step** — two weeks of manual sorting teaches more than any spec.
+- **Success = "users like it"** — without a measurable target (≥30 min/day saved, ≥70% draft approval), you'll build forever.
+
+## 8. Exercise
+
+Write the one-page MVP spec for your own product (from 40.1.1's verdict):
+
+1. One-sentence core loop.
+2. RICE-score 6 candidate features; keep 3; justify the cuts.
+3. Fill in the spec skeleton above completely — especially **riskiest assumption** and **success metric**.
+4. Run the "cut until it hurts" pass once and record what you removed.
+5. Write the concierge variant: how could you deliver this by hand for 2 weeks?
+
+**Acceptance criteria.**
+- [ ] Core loop fits one sentence and names one persona
+- [ ] RICE table with 6 features, top 3 kept, cuts justified in one line each
+- [ ] Spec names one riskiest assumption and one falsifiable success metric with a date
+- [ ] Concierge variant described in ≤3 sentences
+- [ ] Out-of-scope list contains at least 3 tempting-but-cut items
+
+## 9. Where This Leads
+
+Take this spec into **40.2.1**, where you instrument onboarding and activation so you can tell whether users actually reach the core loop. If the concierge step delights real users before you write code, the code will be aimed at a known-solvable problem — which is the whole point of validating first.
+
+**Next:** [40.2.1 Onboarding, Analytics and Activation Loops](/book/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-2-shipping-and-iterating-with-users/40-2-1-onboarding-analytics-and-activation-loops)
+
+</BookNodePage>

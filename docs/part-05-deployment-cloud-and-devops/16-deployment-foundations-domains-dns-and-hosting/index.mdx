@@ -1,0 +1,43 @@
+---
+id: "index"
+title: "16. Deployment Foundations, Domains, DNS & Hosting"
+sidebar_label: "16. Deployment Foundations, Domains, DNS & Hosting"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16">
+
+ShopCore works on your machine. It passed tests, it passed the security review, and CI is green. That is precisely the moment most projects stall — because "runs locally" and "runs for a stranger in another country" are different engineering problems, and this chapter is where you close that gap without paying for anything you do not need.
+
+**Chapter 16 (`12 Focused Hours`)** takes ShopCore — the React + Vite SPA and the Express API you built in Part 04 — from `localhost` to a public HTTPS URL on a custom domain, and teaches you the mental models underneath: what a production build actually is, how hosting models differ, how domains and DNS really work, and how to pick a platform without being marketed at.
+
+## Chapter 16 Structure
+
+- **16.1 Deployment Fundamentals & Hosting Models:** What changes between `npm run dev` and `npm run build`, ports, environment variables, CORS at the browser level — then the decision matrix for static hosts, PaaS, containers, VPS and serverless, with an honest free-vs-paid comparison (as of Nov 2026, with links to each provider's limits page).
+- **16.2 Domains, Registrars, DNS & HTTPS:** Owning a domain safely (registrar vs DNS host, 2FA, WHOIS privacy, transfers, renewal traps), DNS records and propagation — the lesson that makes every other lesson checkable — and TLS/HTTPS with automatic certificate issuance, mixed content and CDNs.
+- **16.3 Managed Platform & Full-Stack Deployment:** Ship the ShopCore SPA to Vercel, Netlify and Cloudflare Pages (exact dashboard steps, preview URLs, rollback), then deploy the ShopCore Express API to Render and connect it to a hosted PostgreSQL database on Neon with SSL — verifying everything with `psql` and `curl` from your machine.
+
+## What You Will Have After This Chapter
+
+- A production build of the ShopCore SPA served from a CDN with a valid TLS certificate.
+- A public API URL backed by a hosted Postgres database, with connection strings stored as platform secrets — never in git.
+- A custom domain (optional but recommended) with DNS you configured yourself and verified from two networks.
+- A rollback you performed on purpose, so "redeploy the previous version" is muscle memory, not panic.
+- The ability to look at any hosting provider's pricing page and reason about what you are actually buying.
+
+## How to Work Through This Chapter
+
+1. Do not skip 16.1.1. The CORS and environment-variable material explains 80% of "it worked on my machine" incidents you will ever see.
+2. Work 16.2 in order: registrar → DNS → TLS. A record pointing nowhere makes TLS fail in confusing ways; fix DNS first.
+3. Deploy the frontend (16.3.1) before the API (16.3.2). A public demo URL for a backend you have not connected to a database yet just teaches you to debug two layers at once.
+4. Budget safety before any account creation: set a spending limit or budget alert on every provider that accepts a credit card *before* the first deploy (see each lesson — they repeat this because people skip it).
+
+Prerequisites: Part 04, especially [15.4 Verification & Shipping](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping) — you need a tested, buildable ShopCore. HTTP and `curl` fluency from Part 03/04 will be assumed from here on.
+
+Docker is deliberately **not** required in this chapter — it is introduced in [Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment). On a VPS you would use Docker; on managed platforms you do not need it.
+
+**Hours honesty.** 12 focused hours assumes you have never deployed anything. If you have already shipped a site to Vercel, compress 16.3.1 and spend the difference on the 16.2 DNS lab until propagation genuinely stops surprising you.
+
+</BookNodePage>

@@ -1,0 +1,150 @@
+---
+id: "33-2-2-error-workflows-retries-and-self-hosting"
+title: "33.2.2 Error Workflows, Retries and Self-Hosting"
+sidebar_label: "33.2.2 Error Workflows, Retries and Self-Hosting"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations/33-2-2-error-workflows-retries-and-self-hosting"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33-s2-t2">
+
+The dispute workflow works on your laptop. This lesson makes it survivable: per-node retries, a global error workflow, and a self-hosted production instance with HTTPS, Postgres, version pinning and backups. Everything below is verified against n8n's docs/releases, **November 2026** — treat exact flags as version-sensitive and re-check your release's docs.
+
+## 1. Failure Taxonomy in n8n
+
+| Failure | Example | First response |
+| :-- | :-- | :-- |
+| Transient network/5xx | Slack API hiccup, LLM 429/529 | **Retry On Fail** |
+| Data shape drift | Upstream field renamed | Code-node guards + fail-safe branch + alert |
+| Auth decay | Expired OAuth token | Credential health check; re-auth runbook |
+| Logic error | Loop misconfig, wrong expression | Fix, redeploy, replay execution |
+| Permanent outage | Provider down > retries | **Error Trigger workflow** → page humans |
+
+## 2. Per-Node Retries — Cheap Insurance
+
+Every node has **Settings → Retry On Fail**: enable it, set **Max Tries** (2–3), **Wait Between Tries** (5s for APIs, add jitter where offered). Nodes that support it also show **Continue On Fail** — use it only when the next node has a real fallback (e.g. Log → Slack notify), never to swallow errors into `undefined`.
+
+Retry scope is per node, not per workflow — a retried HTTP Request can succeed while a downstream Postgres write still fails. Design side effects to be idempotent (upsert on `orderId`, unique constraint on `delivery_id`) so retries are safe.
+
+## 3. The Error Trigger Workflow
+
+Create one small workflow, once, and point every other workflow at it:
+
+```text
+Error Trigger --> Code (format) --> Slack (#ops-alerts) --> (optional) PagerDuty / Linear incident
+```
+
+Error Trigger exposes `{{ $json.workflow.name }}`, `{{ $json.execution.id }}`, `{{ $json.error.message }}`. Per workflow: **Settings → Error Workflow → "Ops Alerter"**. Now any unhandled failure — including retry-exhausted nodes — pages humans with a link to the failed execution. This is table stakes; a workflow without an error workflow is not in production.
+
+## 4. Self-Hosting: Docker Compose + Postgres + HTTPS
+
+Single-binary `docker run` is a trial. For a team instance:
+
+```yaml
+# compose.yml (excerpt — see n8n docs "Install with Docker Compose")
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.47.7     # pin, never :latest
+    restart: unless-stopped
+    ports: ["127.0.0.1:5678:5678"]
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}   # back this up! lose it = lose all credentials
+      - N8N_HOST=n8n.shopcore.dev
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://n8n.shopcore.dev/
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - GENERIC_TIMEZONE=Europe/Berlin
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on: [postgres]
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=n8n
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+```
+
+Reverse-proxy HTTPS with Caddy or Traefik (either solves Let's Encrypt automatically — both covered in Part 05 Ch 16/18). Caddyfile: `n8n.shopcore.dev { reverse_proxy n8n:5678 }`.
+
+Auth: current n8n uses the **built-in owner account** (email + password, created on first visit) — the old `N8N_BASIC_AUTH_*` env-var basic auth is deprecated and absent from current releases; do not rely on it. For SSO/SAML/LDAP or multi-environment, you need the paid **Business** edition (€667/mo annual, 40,000 executions, self-hosted) or Enterprise; Community Edition gives you the full feature set for a single team with role-less access control.
+
+## 5. Version Pinning, Upgrades, Backups
+
+- **Pin the image tag** (`2.47.7`). `latest` is how a Tuesday patch breaks your webhook signature check.
+- Upgrade cadence: monthly minor, same-day security patches. Read the 3.0 breaking-change notes before crossing a major.
+- Backups, all three: `n8n_data` volume (encryption key, SQLite if used), Postgres dump (`pg_dump n8n`), and exported workflows (**Workflow → Export** or the n8n CLI/REST API into git). Test a restore quarterly — an untested backup is a rumor.
+
+Backup drill, concrete:
+
+```bash
+# Postgres (run from the compose host)
+docker compose exec postgres pg_dump -U n8n n8n > n8n-backup-$(date +%F).sql
+# n8n_data volume (contains encryption key!) — run on Linux/WSL2
+docker run --rm -v "${PWD##*/}_n8n_data":/data -v "$PWD":/backup alpine \
+  sh -c "cd /data && tar czf \"/backup/n8n-data-$(date +%F).tar.gz\" ."
+# Workflows into git
+n8n export:workflow --all --output=./workflows   # self-hosted CLI
+```
+
+Restore order matters: Postgres dump → `n8n_data` (same encryption key!) → start → verify Executions render → re-activate webhooks. If the key mismatch bites you, no re-encryption path exists — credentials are unrecoverable; re-create them from source systems.
+- Queue mode (multi-main, Redis) is a Business/Enterprise feature; single-instance Community is fine to ~tens of concurrent executions.
+
+## 6. Upgrade Runbook (Do It Once, On Purpose)
+
+1. Read the changelog for the target tag; note migrations (especially majors like 3.0).
+2. Snapshot: `pg_dump` + `n8n_data` tarball + `git status` of exported workflows — restore point confirmed **before** touching anything.
+3. Pin new tag in compose; `docker compose pull n8n && docker compose up -d n8n`.
+4. Watch `docker logs -f n8n` for migration lines; open the editor; verify one test execution (Gmail Trigger → Slack) end-to-end.
+5. Failure? Re-pin previous tag, restore volumes from snapshot, page nobody else — you rehearsed this.
+
+Queue mode (multi-main, Redis-backed workers) is available from the Business edition up; Community single-instance is correct for ShopCore's volume and one team. Do not enable queue mode "for reliability" without owning the Redis SLO — it trades one failure domain for another.
+
+## 7. Webhooks, Rate Limits and Pruning
+
+Webhooks need the public HTTPS URL (`WEBHOOK_URL`) — local n8n is unreachable from Stripe/Slack. Verify signatures in a Code node (see 33.1.2). Prune execution history (`EXECUTIONS_DATA_PRUNE=true`, max age/count) or the DB grows unbounded; keep audit truth in your own `worker_runs` table instead. Rate-limit inbound webhooks at the reverse proxy (Caddy `rate_limit` or Traefik middleware) — n8n itself will happily execute 10,000 concurrent junk requests into your LLM bill.
+
+## 8. Pre-Flight Checklist (Do This Before "Production")
+
+- [ ] Image pinned; upgrade path documented; rollback = previous tag
+- [ ] `N8N_ENCRYPTION_KEY` stored in your password manager + server backup
+- [ ] Postgres (not SQLite) + tested restore
+- [ ] HTTPS via Caddy/Traefik; HTTP redirects to HTTPS; webhook signature check
+- [ ] Error Trigger workflow → `#ops-alerts`; every workflow points to it
+- [ ] Credentials reviewed for least privilege; dev/prod separated
+- [ ] Executions pruning on; audit table separate
+
+## 9. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| "Credentials not found" after restore | Encryption key differs | Restore the original `N8N_ENCRYPTION_KEY` — without it, backups are decorative |
+| OAuth redirect fails | `N8N_HOST`/protocol/`WEBHOOK_URL` mismatch | Set all three consistently to the public HTTPS origin; re-register redirect URI |
+| Sudden 502s behind proxy | n8n down or proxy timeout | `docker logs n8n`; bump proxy read timeout for long LLM nodes; check memory (LLM nodes are RAM-hungry) |
+| DB migration error on upgrade | Major version jumped | Stop, snapshot both volumes, follow the migration guide for that major (e.g. 3.0 tool) |
+| Duplicate tickets after retry | Non-idempotent side effect | Unique constraint + upsert; see 33.1.2 idempotency pattern |
+
+## 10. Practice
+
+**Guided.** Stand up the compose stack locally with Caddy's `:80` variant; open `https://localhost:5678` behind your local CA (or use `tls internal`); create the owner account.
+
+**Independent.** Simulate a provider outage: point the OpenAI Chat Model at `http://localhost:9/` (closed port). Confirm retries exhaust, and the Error Trigger workflow posts to `#ops-alerts` with the execution link.
+
+**Challenge.** Restore drill: nuke `n8n_data` and Postgres, restore from your backups, and prove the dispute workflow classifies a test email again.
+
+**Checklist**
+
+- [ ] I can explain every env var in the compose file
+- [ ] I know what `N8N_ENCRYPTION_KEY` protects and where my backup of it lives
+- [ ] Retry + Error Trigger + idempotent side effects are all in place
+- [ ] I have performed one actual restore, not just written the runbook
+
+</BookNodePage>

@@ -1,0 +1,151 @@
+---
+id: "03-2-1-repositories-commits-and-history"
+title: "03.2.1 Repositories, Commits and History"
+sidebar_label: "03.2.1 Repositories, Commits and History"
+slug: "/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git/03-2-1-repositories-commits-and-history"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-03-s2-t1">
+
+Watch a developer who learned only `git add . && git commit -m "stuff"` try fixing a mistake: they accidentally edited three unrelated config files while building one bugfix, saved temporary debug logs inside `src/`, staged everything blindly with `git add .`, and committed `.env` secrets straight into Git history! When someone asks *"Can you undo only that bad line in `server.ts` while keeping your database fix?"*, they freeze completely.
+
+Understanding Git's **Three Trees Architecture** (`Working Directory → Staging Index → Commit History`), **immutable commit snapshots**, **`git diff` inspection**, and **safe undo tools (`git restore`)** transforms Git from a blunt backup button into surgical time travel.
+
+## 1. Plain-English Intuition: Packing a Shipping Box Deliberately
+
+Imagine packing inventory before sealing a courier shipment:
+1. **The Workbench (`Working Directory`):** Your active desk where new prototypes, modified files, scratch notes, and `.env` secrets currently sit loose. Git lets you edit freely here without affecting saved history.
+2. **The Open Packing Box (`Staging Index` — `git add`):** You intentionally lift **only the finished, verified items** (`git add src/auth.ts tests/auth.test.ts`) off the messy desk into the open box—leaving half-done scratch work and secret `.env` files behind! You can inspect the box (`git diff --staged`) or pull an item back out (`git restore --staged <file>`) cleanly before sealing.
+3. **The Sealed Archive Vault (`Repository / .git` — `git commit`):** Running `git commit` seals that exact box with a tamper-proof **cryptographic content hash (`SHA-1`/`SHA-256`)**, author metadata, timestamp, parent link, and clear message—creating a permanent snapshot inside `.git/`!
+
+```text
++-----------------------+    git add <file>    +-----------------------+   git commit   +-----------------------+
+|   WORKING DIRECTORY   | -------------------> |  STAGING INDEX (Area) | -------------> |  .git COMMIT HISTORY  |
+|  (Modified & Scratch) | <------------------- |  (Next Commit Draft)  |                |  (Immutable Snapshots)|
++-----------------------+  git restore --staged+-----------------------+                +-----------------------+
+             ^                                                                                      |
+             +--------------------------- git restore <file> (Discards local edit!) ----------------+
+```
+
+## 2. Inside `.git`: Why Commits Are Fast, Local & Content-Addressed
+
+Running `git init` creates a single hidden folder **`.git/`** right at your project root. Inside `.git/objects/`, Git stores **four crisp object types**:
+- **Blobs (`blob`):** Exact compressed snapshots of file contents (stored by content hash—if 50 commits never change `README.md`, Git stores `README.md`'s blob **once**!).
+- **Trees (`tree`):** Directory snapshots mapping filenames (`src/index.ts`) to blob hashes and nested subtrees.
+- **Commits (`commit`):** Tiny metadata records pointing to: (1) one root `tree` hash, (2) parent commit hash(es), (3) author/committer + timestamp, and (4) your commit message. Changing even 1 byte inside any historical file changes its hash completely—making Git history **cryptographically tamper-evident**!
+- **Refs (`HEAD`, `refs/heads/main`):** Lightweight pointer files storing the 40-character hash of a commit. **`HEAD`** simply tells Git *"which branch or commit you currently have checked out."*
+
+## 3. Daily Commands for Inspecting & Building Clean Atomic History
+
+| Command | Exact Question Answered / Action Performed | Professional Discipline |
+| :--- | :--- | :--- |
+| **`git status -sb`** | Which branch am I on, what is staged (`A`/`M` green), unstaged (`M` red), or untracked (`??`)? | Run reflexively *before* and *after* every Git action! |
+| **`git diff`** | What exact line-by-line changes sit in my **Working Directory** not yet staged? | Read every diff line *before* staging to catch stray debug logs or unintentional edits (`02.3.3`) |
+| **`git diff --staged`** | What exact lines are inside the **Staging Index** about to enter the next commit? | Always audit staged diff right before `git commit` |
+| **`git add <file>` / `git add -p`** | Stage specific files (`<file>`) or **interactive individual hunks (`-p`)**! | `git add -p` splits two unrelated edits inside one file into two crisp atomic commits cleanly! |
+| **`git commit -m "type: summary"`** | Seal staged snapshot permanently into local history | Write *why* and *what changed* clearly (`fix(auth): reject expired JWTs before workspace lookup`) |
+| **`git log --oneline -n 10 --graph`** | Inspect recent commit history concisely | Check cleanly before pushing or bisecting (`03.3.2`) |
+
+### Reading `git diff` Markers fluently (`@@ -a,b +c,d @@`)
+When inspecting `git diff`, ignore visual noise by reading three markers cleanly:
+- **`--- a/file` / `+++ b/file`:** Old snapshot (`a`) vs. new working file (`b`).
+- **`@@ -14,4 +14,6 @@`:** Context header meaning *"starting at line 14 (4 old lines -> 6 new lines)."*
+- **`-` (Red) / `+` (Green):** Exact deleted lines (`-`) and inserted lines (`+`); a modified single word shows as one `-` old line paired cleanly with one `+` new line!
+
+## 4. Safe Undo Matrix: Choosing the Right Rewind Without Losing Work
+
+Never panic and run dangerous commands when a file breaks locally. Match your exact intent to the safe modern command (`git-scm.com/docs/git-restore`):
+
+| Situation | Exact Safe Command | Warning / Safety Check |
+| :--- | :--- | :--- |
+| Accidentally staged `.env` or wrong file (`not yet committed!`) | **`git restore --staged .env`** | Moves `.env` cleanly back out of Staging Index into Working Directory **without deleting file bytes!** |
+| Discarding messy local edits to `app.py` back to last commit (`HEAD`) | **`git restore app.py`** | **Permanent for unstaged edits!** Run `git diff app.py` first to be 100% certain you don't need those changes |
+| Forgot to include one tiny file or fix typo in *most recent local* commit | **`git add forgotten.ts && git commit --amend --no-edit`** | Safe **ONLY BEFORE pushing** to shared remote branches (`replaces local commit hash`)! |
+| Need to safely undo a commit *already pushed* to teammates on `main` | **`git revert <commit-sha>`** | Creates a brand-new forward commit inverting those changes cleanly—**never rewrites shared history!** |
+
+## 5. Writing Atomic Commits, Historical Forensics & `.gitignore` Discipline
+
+Notice the difference between amateur history and senior engineering history in `git log --oneline`:
+- **Messy commit log:** `wip`, `fixes`, `trying again`, `asdf`, `final fix pls work` (impossible to debug via `git bisect` or review in Pull Requests!).
+- **Atomic commit log (`Conventional Commit` style used across modern teams):**
+  - `feat(orders): enforce positive integer cent validation in schema` — adds new user-facing capability
+  - `fix(auth): reject expired JWTs before workspace lookup` — patches an observable defect
+  - `test(orders): verify 422 returned on negative quantity or decimal cents` — adds or updates verification tests
+  - `refactor(pdf): extract text chunker out of HTTP route handler` — restructures internals with zero behavior change
+  - `docs(readme): document local PostgreSQL setup and .env.example keys` — updates documentation/comments
+  - `chore(deps): upgrade vite and eslint lockfile patches` — maintenance, config, or build housekeeping
+
+### Three Historical Forensics Commands Every Engineer Relies On
+Once you maintain crisp atomic commits, inspecting past context takes three seconds:
+- **`git show <commit-sha>`:** Prints the exact commit message, author, timestamp, and line-by-line diff of that single historical snapshot.
+- **`git log -p -n 3 src/auth.ts`:** Shows the last 3 exact code diffs that touched `src/auth.ts`—essential when asking *"when and why did someone add this subtle check?"*
+- **`git log --grep="timeout"`:** Searches commit messages across years of project history in milliseconds.
+
+**Golden `.gitignore` Timing Rule (`00.11.2`):** Create `.gitignore` **immediately after `git init`**—before ever running `git add`! Once a secret `.env` or `500 MB node_modules/` folder enters a committed tree, simply deleting it in Commit #2 **leaves the secret permanently inside Commit #1's `.git/objects/` history!**
+
+## 6. Runnable Lab: Practice Three Trees, `git diff`, `git restore` & Atomic Commits
+
+Run this completely local, safe sandbox lab inside `/tmp/git-lab-0321` to observe the Staging Index, diffs, `git restore --staged`, and commit hashes live:
+
+```bash
+mkdir -p /tmp/git-lab-0321 && cd /tmp/git-lab-0321
+git init -b main
+
+# 1. Establish .gitignore BEFORE staging anything!
+printf ".env\n.venv/\nnode_modules/\n__pycache__/\n" > .gitignore
+printf "API_KEY=replace_me\n" > .env.example
+printf "API_KEY=super_secret_local_token\n" > .env
+printf "def add(a, b):\n    return a + b\n" > calc.py
+
+# Confirm `.env` is invisibly protected by .gitignore!
+git status -sb
+git add .gitignore .env.example calc.py
+git commit -m "chore: initialize calc module with .gitignore and .env.example"
+
+# 2. Edit calc.py AND practice Staging vs Working Directory separation
+printf "\ndef subtract(a, b):\n    return a - b\n" >> calc.py
+git status -sb
+git diff                   # Unstaged edit visible
+git add calc.py
+git diff                   # Empty! Because edit moved cleanly into Staging Index
+git diff --staged          # Visible inside Staging Index!
+
+# 3. Unstage cleanly without losing file edits, then discard intentionally via restore
+git restore --staged calc.py
+git status -sb
+git restore calc.py        # Reverts calc.py back to Commit #1 cleanly!
+git log --oneline --stat
+
+cd ~ && rm -rf /tmp/git-lab-0321
+```
+
+Look closely at Step #1 and #2: `.env` never even appeared in `git status` once `.gitignore` blocked it—and `git restore --staged calc.py` pulled your edits back out of Staging safely while keeping every line intact until you intentionally called `git restore calc.py`!
+
+## 7. Failure Modes & Common Pitfalls
+
+- **Running `git add -A` or `git add .` blindly without checking `git status` first:** Stages stray debug logs, temporary dumps, and forgotten `.env` credentials straight into commits. Always check **`git status -sb`** and **`git diff`** before staging!
+- **Using `git commit --amend` or `git reset --hard` on commits already pushed to `main`:** Rewrites commit hashes underneath teammates (`force push conflicts`) and destroys work silently. Use **`git revert`** safely on shared branches!
+- **Detached `HEAD` panic (`HEAD detached at a1b2c3d`):** Happens if you switch directly to an old commit hash (`git switch --detach a1b2c3d`). Nothing is broken! Simply run **`git switch main`** to return to your branch pointer—or **`git switch -c recovery-branch`** if you made new commits while detached so no work gets orphaned!
+
+## 8. Hands-On Practice Exercises
+
+1. **Practice Hunk Splitting (`git add -p`):** Inside a scratch Git repo (`/tmp/hunk-lab`), create a small 10-line Python file and commit it. Next, add **two unrelated changes** to that same file (e.g., fix a typo on line 2 AND add a brand-new `multiply()` function at line 10). Run **`git add -p`** and stage *only* the typo fix (`y` / `n` / `s` to split), commit `"docs: fix docstring typo"`, then stage and commit the `multiply()` function separately! Clean up `/tmp/hunk-lab` afterward.
+2. **Audit `.gitignore` Behavior on Already-Tracked Files:** Notice one subtle Git trap—if someone accidentally committed `config.env` *before* adding `config.env` to `.gitignore`, future edits to `config.env` **still get tracked by Git!** Explain what **`git rm --cached config.env`** accomplishes (removes from Git tracking index *without deleting the local file on disk*!).
+
+## Key Takeaways
+
+- Git manages three distinct layers: **Working Directory** (editable files), **Staging Index** (`git add` next-commit draft), and **`.git` Commit History** (content-addressed immutable snapshots).
+- Always run **`git status -sb`** and **`git diff --staged`** before committing—and put **`.gitignore`** in place *before* your very first `git add` so secrets never enter history.
+- Use **`git restore --staged`** to unstage safely, **`git restore`** to discard unwanted local edits, and **`git revert`** to invert already-pushed shared commits cleanly.
+
+## Official Primary References
+
+- [Pro Git Book — Chapter 2: Git Basics (`git-scm.com/book`)](https://git-scm.com/book/en/v2/Git-Basics-Recording-Changes-to-the-Repository)
+- [Git Official Documentation — `git-restore` (`git-scm.com/docs/git-restore`)](https://git-scm.com/docs/git-restore)
+- [Git Official Documentation — `gitignore` Pattern Format](https://git-scm.com/docs/gitignore)
+
+**Next Topic:** [03.2.2 Branching and Merging](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git/03-2-2-branching-and-merging)
+
+</BookNodePage>

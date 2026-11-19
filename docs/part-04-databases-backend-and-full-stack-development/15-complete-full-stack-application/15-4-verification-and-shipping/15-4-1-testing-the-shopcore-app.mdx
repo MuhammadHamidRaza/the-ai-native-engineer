@@ -1,0 +1,186 @@
+---
+id: "15-4-1-testing-the-shopcore-app"
+title: "15.4.1 Testing the ShopCore App"
+sidebar_label: "15.4.1 Testing ShopCore"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping/15-4-1-testing-the-shopcore-app"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s4-t1">
+
+Milestone 8: proof, automated. Unit tests for pure logic, integration tests for the API against a **disposable test database**, and a Playwright smoke journey through the real UI. This is Chapter 14 reassembled inside your project.
+
+> **Executable verification (November 2026):** the complete reference backend for this chapter exists in this repository at **`examples/shopcore/`** and its offline integration suite passes — **9/9 tests** (`npm test`): health, catalog search/filter, register (400/201/409), login + `/me` + logout, role guard (401/403/200), the cart → checkout transaction (stock decrement, payment, cart clearing), checkout idempotency via `Idempotency-Key`, `OUT_OF_STOCK` (409) and ownership enforcement. The suite boots an in-process PostgreSQL 18 (`@electric-sql/pglite`) and applies the real migrations — no external services needed. The Playwright journey (§4) and GitHub Actions CI (§5) still require a live environment to execute; they are documented for you to run, not executed here.
+
+## 1. Setup — One Disposable Test Database
+
+Never run tests against `shopcore`. Create `shopcore_test`:
+
+```bash
+dropdb -U postgres -h localhost --if-exists shopcore_test
+createdb -U postgres -h localhost shopcore_test
+psql -U postgres -h localhost -v ON_ERROR_STOP=1 -d shopcore_test -f src/db/migrations/001_init.sql
+psql -U postgres -h localhost -v ON_ERROR_STOP=1 -d shopcore_test -f src/db/migrations/002_seed.sql
+psql -U postgres -h localhost -v ON_ERROR_STOP=1 -d shopcore_test -f src/db/migrations/003_sessions.sql
+```
+
+Point the test app at it with a second `.env.test`:
+
+```text
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/shopcore_test
+SESSION_TTL_DAYS=7
+```
+
+Package scripts:
+
+```bash
+npm pkg set scripts.test:db="dropdb -U postgres --if-exists shopcore_test && createdb -U postgres shopcore_test" \
+           scripts.test="node --test tests/"
+```
+
+## 2. Unit Tests — Pure Logic
+
+`tests/price.test.js`:
+
+```javascript
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+const lineTotalCents = (qty, unitPriceCents) => qty * unitPriceCents;
+
+test('line totals use integer cents — no float drift', () => {
+  assert.equal(lineTotalCents(3, 5900), 17700);
+  assert.equal(lineTotalCents(0, 12900), 0);
+});
+```
+
+Any pure function you wrote (discount calc, formatting, pagination math) gets the same treatment. Fast, no I/O.
+
+## 3. Integration Tests — supertest + Real Postgres
+
+`tests/api.test.js`:
+
+```javascript
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import request from 'supertest';
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
+  ?? 'postgresql://postgres:YOUR_PASSWORD@localhost:5432/shopcore_test';
+const { app } = await import('../src/app.js');   // app.js must not call app.listen on import!
+
+test('GET /health returns ok', async () => {
+  const res = await request(app).get('/health');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, 'ok');
+});
+
+test('catalog exposes the seeded products', async () => {
+  const res = await request(app).get('/api/v1/products');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.products.length, 3);
+  assert.equal(res.body.products[0].sku, 'KB-01');
+});
+
+test('register → login → me round-trips a session', async () => {
+  const agent = request.agent(app);   // keeps cookies across requests
+  const email = `test-${Date.now()}@example.com`;
+
+  const reg = await agent.post('/api/v1/auth/register')
+    .send({ email, full_name: 'Test User', password: 'test-password-123' });
+  assert.equal(reg.status, 201);
+
+  const me = await agent.get('/api/v1/auth/me');
+  assert.equal(me.status, 200);
+  assert.equal(me.body.user.email, email);
+});
+
+test('admin route rejects anonymous callers', async () => {
+  const res = await request(app).post('/api/v1/products').send({});
+  assert.equal(res.status, 401);
+});
+```
+
+Install: `npm install --save-dev supertest`. Note `tests/` import `../src/app.js` — keep `listen()` only in `server.js` (exactly why 13.2.1 split them).
+
+Run: `npm test` → expect all four green. Each run uses the seeded catalog but fresh users (`Date.now()` suffix) — no inter-test coupling.
+
+## 4. Playwright E2E — The Revenue Journey
+
+```bash
+npm install --save-dev @playwright/test
+npx playwright install chromium
+```
+
+`e2e/shop.spec.ts` (sketch):
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test('visitor browses, logs in, buys KB-01', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Mechanical Keyboard')).toBeVisible();
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('ada@example.com');
+  await page.getByLabel('Password').fill(process.env.E2E_ADA_PASSWORD ?? 'correct horse battery staple');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Add to cart' }).first().click();
+  await page.goto('/cart');
+  await page.getByRole('button', { name: 'Checkout' }).click();
+  await expect(page.getByText(/order/i)).toBeVisible();
+});
+```
+
+Run against both servers up: `npx playwright test`. One smoke journey is enough for CI — every extra E2E adds minutes and flake surface.
+
+## 5. CI Gate (GitHub Actions)
+
+```yaml
+# .github/workflows/verify.yml
+name: verify
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 26 }
+      - run: npm ci
+        working-directory: apps/api
+      - run: dropdb -U postgres -h localhost --if-exists shopcore_test && createdb -U postgres -h localhost shopcore_test
+        env: { PGPASSWORD: postgres }
+      - run: psql -v ON_ERROR_STOP=1 -U postgres -h localhost -f apps/api/src/db/migrations/001_init.sql -d shopcore_test && psql -v ON_ERROR_STOP=1 -U postgres -h localhost -f apps/api/src/db/migrations/002_seed.sql -d shopcore_test && psql -v ON_ERROR_STOP=1 -U postgres -h localhost -f apps/api/src/db/migrations/003_sessions.sql -d shopcore_test
+        env: { PGPASSWORD: postgres }
+      - run: npm test
+        working-directory: apps/api
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shopcore_test
+```
+
+Every PR now proves: clean install, fresh schema, seeded data, passing API tests.
+
+## 6. Practice
+
+**Guided exercise.** Create `shopcore_test`, apply migrations, write and run `price.test.js` and `api.test.js`. All green.
+
+**Independent exercise.** Add one new integration test: checkout with an empty cart returns `400 CART_EMPTY` (seed cart empty for a fresh user). Watch it fail for the right reason if you break the handler.
+
+**Challenge.** Wire the GitHub Actions workflow from section 5 on a fork or your own repo; prove the badge goes green on a PR.
+
+**Assessment checklist**
+
+- [ ] Tests run against `shopcore_test`, never `shopcore`.
+- [ ] `npm test` passes: unit + API integration, from a clean DB.
+- [ ] `app.js` doesn't `listen()` on import — tests stay fast and parallel.
+- [ ] Playwright smoke covers catalog → login → cart → checkout.
+- [ ] CI enforces install, migrate, test on every push/PR.
+
+</BookNodePage>

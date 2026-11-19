@@ -1,0 +1,62 @@
+---
+id: "e-1-glossary"
+title: "E.1 Glossary"
+sidebar_label: "E.1 Glossary"
+slug: "/appendix/appendix-e-developer-reference-materials/e-1-glossary"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-e-1">
+
+**Purpose:** Define the 30 terms that show up most often in the book — and in real engineering conversations (plus the one acronym to remember, and how to grow this page).
+
+## Core Terms (A–M)
+
+| Term | Meaning |
+| :-- | :-- |
+| **API** | Application Programming Interface — a contract between software systems |
+| **ADR** | Architecture Decision Record — a short document capturing why a decision was made |
+| **AuthN / AuthZ** | Authentication (who you are) vs Authorization (what you may do) |
+| **CI/CD** | Continuous Integration / Continuous Delivery — automated build, test, deploy |
+| **Cache invalidation** | Removing stale data from a cache — "one of the two hard problems" |
+| **Compliance** | Meeting regulatory requirements (GDPR, HIPAA, SOC 2) |
+| **Context window** | Maximum tokens an LLM can consider at once |
+| **DDL** | Data Definition Language — SQL statements that define schema (CREATE TABLE…) |
+| **DoD** | Definition of Done — explicit checklist for "complete" |
+| **Embedding** | Vector representation of text for semantic similarity |
+| **FastAPI** | Python async web framework used throughout this book |
+| **FTS** | Full-text search |
+| **Hot path** | Code executed most frequently; performance target |
+| **Idempotency** | Repeating an operation produces the same result — critical for retries |
+| **JWT** | JSON Web Token — compact signed token for stateless auth |
+| **Latency (p50/p95/p99)** | Percentiles of request duration — p95/p99 expose the long-tail experience |
+| **Schema migration** | Versioned, repeatable change to database structure (Alembic, Flyway, Liquibase) |
+
+## Core Terms (N–Z)
+
+| Term | Meaning |
+| :-- | :-- |
+| **Normalization** | Structuring data to eliminate redundancy (1NF–3NF) |
+| **N+1 query** | Fetching N rows, then N queries for related data — performance killer |
+| **OAuth 2.0 / OIDC** | Delegated authorization / identity layer on top |
+| **Observability** | Logs, metrics, traces — ability to ask questions of a running system |
+| **PR / PR review** | Pull request / code review process |
+| **RAG** | Retrieval-Augmented Generation — LLM grounded in retrieved documents |
+| **Rate limit** | Maximum requests per time window — protects upstream services |
+| **SLO / SLI** | Service Level Objective / Indicator — reliability targets |
+| **Taxonomy** | Structured classification scheme |
+| **Trade-off** | Every engineering choice has costs — document them |
+| **Two generals problem** | Two parties cannot guarantee common *knowledge* of an event over an unreliable channel — design protocols that tolerate uncertainty (retries, idempotency) |
+| **Unit economics** | Revenue vs cost per unit — LTV/CAC, margin |
+| **Zero-downtime deploy** | Deploy without dropping traffic — rolling, blue/green, canary |
+
+## The One Acronym to Remember
+
+**YAGNI** — You Aren't Gonna Need It. Build the simplest thing that works, not the most flexible thing you can imagine.
+
+## How to Keep This Updated
+
+When you read a term you don't recognize anywhere else in this book, add it here with a one-line definition from the official documentation. Your glossary grows with your career.
+
+</BookNodePage>

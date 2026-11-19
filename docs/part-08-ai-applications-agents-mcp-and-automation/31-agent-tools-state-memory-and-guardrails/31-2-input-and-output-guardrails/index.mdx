@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "31.2 Input & Output Guardrails"
+sidebar_label: "31.2 Input & Output Guardrails"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-2-input-and-output-guardrails"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-31-s2">
+
+**Subchapter 31.2** is the safety perimeter around the Postmaster: what gets blocked before the LLM ever sees it, what is checked after the LLM but before the tool runs, what is filtered after the tool but before the user reads it — and who is allowed to approve what.
+
+## Lessons in Subchapter 31.2
+
+1. **[31.2.1 Policy Checks and Prompt Injection Defense](/book/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-2-input-and-output-guardrails/31-2-1-policy-checks-and-prompt-injection-defense):** the guardrail taxonomy (deterministic checks at three points in the loop), injection defense-in-depth for tool output treated as data-not-instructions (the Postmaster email case), a `@guardrail` decorator sketch, and alerting on trips.
+2. **[31.2.2 Permission Scopes and Action Confirmation](/book/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-2-input-and-output-guardrails/31-2-2-permission-scopes-and-action-confirmation):** tool-level / resource-level / time-level scopes, approval tiers, OAuth scope mapping to MCP tools, out-of-band confirmation UX, per-action audit logs, the org-wide kill switch, and the confused-deputy worked example.
+
+Read both with 26.2.3 (injection fundamentals) open — this subchapter is where that theory becomes a perimeter.
+
+</BookNodePage>

@@ -1,0 +1,141 @@
+---
+id: "26-2-1-context-budgeting-and-signal-to-noise"
+title: "26.2.1 Context Budgeting and Signal-to-Noise"
+sidebar_label: "26.2.1 Context Budgeting and Signal-to-Noise"
+slug: "/part-07-ai-native-software-development/26-prompt-and-context-engineering/26-2-context-assembly-and-verification/26-2-1-context-budgeting-and-signal-to-noise"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-26-s2-t1">
+
+The context window is not a hard drive you fill; it is a **budget you allocate**. Every token you admit competes with every other token for the model's attention — and the middle of the context is a known attention dead zone. This lesson teaches you to spend the budget deliberately: what gets in, what gets trimmed, what gets summarized, and how to re-ask the question so the last thing the model reads is the thing it must answer.
+
+## 1. The Real Budget — Where Your Tokens Go
+
+Worked example: a ShopCore support summarizer on a model with a 128K-token window. Typical healthy allocation:
+
+```text
+Component                 Tokens    Share
+-----------------------   ------    -----
+System prompt (contract)     400     0.3%
+Retrieved policy docs      6,000     4.7%
+The ticket thread          2,100     1.6%
+Conversation history         800     0.6%
+Output reserve             1,000     0.8%
+Headroom / safety margin 117,700    91.8%   <- most of the window is
+                                               headroom, not a target
+```
+
+Two facts carry the whole lesson:
+
+1. **Filling the window is not the goal.** Extra context is extra attention the model must spend — and extra money on every call. A 128K window with 10K of well-chosen tokens beats the same window stuffed with 90K of dumps.
+2. **Output tokens count too.** Cap them deliberately (`max_output_tokens`), or the answer eats the budget you thought you had for headroom.
+
+## 2. Lost in the Middle — The Finding to Internalize
+
+Liu et al., **"Lost in the Middle: How Language Models Use Long Contexts"** (arXiv:2307.03172, published TACL 2023 — verified Nov 2026), measured multi-document QA and key-value retrieval and found performance is often **highest when relevant information sits at the very start or very end of the context, and degrades significantly in the middle** — even for models marketed as long-context.
+
+Honest caveats: the study tested specific tasks and model families of its era (GPT-3.5/4-class, Claude 1-class); newer models mitigate but do not abolish position effects; treat it as a **planning heuristic, not a law of physics**. The paper also found that **key-value retrieval** degraded when the key/value pair moved into the middle — the failure is about *where the answer lives*, not about context length per se. The practical rules stand:
+
+- Put the most load-bearing instructions at the **top** (system) *and* re-state the actual question at the **bottom** (user message end).
+- Put retrieved evidence **before** the question, not after it and not in the middle of boilerplate.
+- If you must include 40 retrieved chunks, rank them and drop the bottom half instead of concatenating all 40.
+
+## 3. Retrieval vs Stuffing — The Fork in the Road
+
+| | Stuffing | Retrieval (RAG) |
+| :-- | :-- | :-- |
+| Doc count | A few, small, stable (1 policy, 5 examples) | Many, large, changing (all past tickets, the whole wiki) |
+| Freshness | Fresh enough at prompt time | Fresh at query time |
+| Accuracy risk | Noise dilution in long contexts | Retrieval misses (answer withheld because the wrong chunk ranked top) |
+| Default choice | Under ~20K tokens of truly-relevant material | Over that, or when the corpus changes weekly |
+
+Stuffing is not laziness - it is correct below the threshold, and it is the wrong tool above it. RAG earns its complexity only when the corpus is big or live (Part 08 territory - see Chapter 28, RAG).
+
+## 4. Context Hygiene — Trim, Summarize, Re-Ask
+
+Three habits, applied in order:
+
+1. **Trim.** Strip quoted reply chains ("On Tuesday, X wrote: ..." × 14), signatures, legal footers, ticket metadata the task does not need. In ShopCore threads this routinely cuts 60–80% of tokens.
+2. **Summarize.** Compress prior turns into a running summary instead of replaying them verbatim (Section 6).
+3. **Re-ask.** End the user message with the actual question: "Using only the thread above, summarize the customer's issue and the agent's last action in ≤ 80 words." The model's last read should be your question, not a footer.
+
+## 5. Signal-to-Noise — The Math That Decides What Stays
+
+Define **signal tokens** = tokens the answer can actually use. Then:
+
+```text
+S/N (raw)     = 900 / 12,400  ≈ 7%    (full thread with 14 nested quotes)
+S/N (trimmed) = 900 / 2,100   ≈ 43%   (after reply-chain + footer strip)
+S/N (summary) = 900 /   700   ≈ 129%  (structured notes; the thread is retired)
+```
+
+(Signal density above 100% is the point — the notes are *denser* than the source.) Why it matters twice over:
+
+- **Cost:** 12,400 input tokens × your input rate vs 2,100 — a 6× saving on every call.
+- **Accuracy:** every irrelevant token is a candidate for the model to latch onto — wrong order ID, outdated policy quoted, a competitor's name inside a pasted email.
+
+Token counts: measure with your provider's counter (tiktoken or the provider's own), never by eye — see 25.2.1.
+
+## 6. Multi-Turn Memory — Three Strategies That Work
+
+1. **Rolling summary.** After every N turns (say 10), ask the model to compress everything older than the last 4 turns into a `STATE` block; replace the old turns with the block. Simple, lossy, good for support chats.
+2. **Structured notes.** The model maintains a fixed-schema note (`{"customer_goal": ..., "order_id": ..., "promises_made": [...], "open_questions": [...]}`) and only the notes + last turns go forward. Lossy but *inspectable* — you can diff or validate the notes. Best default for agents.
+3. **Compaction.** Provider-side or manual eviction of older content into a summary artifact that is re-injected when relevant. Operationally heaviest; use for long-horizon agent sessions (Ch 27), not for ticket triage.
+
+Sketch of the compaction loop:
+
+```text
+if (tokens(history) > 6_000) {
+  const summary = await llm("Compress this support history into a STATE " +
+                            "block: facts, promises, open questions. <= 300 words." + history);
+  history = [system, { role: "user", content: "STATE so far:\n" + summary }, ...lastTurns];
+}
+```
+
+## 7. Task-Driven Demo — Assembling "Summarize This Support Ticket Thread"
+
+Goal: one call, ShopCore ticket #4471, thread currently 12,400 tokens. Step by step:
+
+1. **System (400 tokens):** role fence ("ShopCore support analyst"), contract (≤80 words, plain text, sections `Issue:` / `Last action:` / `Next step:`), grounding rule ("use only the thread; missing facts → say so"). No untrusted content here.
+2. **Evidence block (2,100 tokens, trimmed):** system-side retrieval of the refund policy *only if relevant* (it is — customer claims defective blender); the trimmed thread with reply-chains collapsed to `… (earlier message omitted)`.
+3. **Task + re-ask (60 tokens):** "Summarize the thread per the contract. The customer's most recent message is the last one before this line."
+4. **Output reserve:** 200 tokens — enough for the contract, no more.
+
+```text
+[SYSTEM]  role + contract + grounding rules
+[DOCS]    refund policy excerpt (relevant slice only)
+[THREAD]  trimmed #4471 thread — newest message LAST
+[TASK]    "Summarize per contract. Latest customer message is the last line above."
+```
+
+Call it, check the summary against the two load-bearing facts (defective claim; agent's last promise), log `usage`. If trimming removed the wrong sentence and the summary drifts, restore it — hygiene is a judgment loop, not a regex.
+
+## 7.5 Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Summary invents a promise agent never made | Old quoted messages kept as "current" | Trim reply-chains; mark the newest message explicitly |
+| Model re-answers an old question | Re-ask missing/buried mid-context | Put the question last, always |
+| Answers degrade as thread grows | Attention dilution; S/N falling | Trim/summarize at a token threshold, not by vibes |
+| Token bill doubled week over week | Nobody counts; history replay | Log `usage`; set a history ceiling (e.g. 6K tokens) |
+| "Lost-in-middle" behavior you can't reproduce | Model era differs from Liu et al. setup | Still order evidence-critical-top/question-bottom; it costs nothing |
+
+## 8. Practice
+
+**Guided exercise.** Take any 5,000+ token thread (fabricate one if needed). Trim it to under 1,000 tokens keeping all decisions and promises. Summarize the trim. Compare the two summaries on the checklist: issue correct? promise captured? next step right?
+
+**Independent exercise.** Add a `STATE` block after 6 turns in a mock support chat. Confirm the model recalls a promise made in turn 2.
+
+**Challenge.** Deliberately insert the key fact in the middle of a 30K-token paste and observe the degradation vs the same fact at the top. (Do this once; you will not need to again.)
+
+**Assessment checklist**
+
+- [ ] I allocate a token budget across system/docs/history/output before writing prompts.
+- [ ] I can explain lost-in-the-middle with its citation and its limits.
+- [ ] I can choose retrieval vs stuffing for a given corpus.
+- [ ] I apply trim → summarize → re-ask in that order.
+- [ ] I can compute S/N for a real prompt and defend what I deleted.
+
+</BookNodePage>

@@ -1,0 +1,88 @@
+---
+id: "a-7-cold-email-and-calling"
+title: "A.7 Cold Email and Calling"
+sidebar_label: "A.7 Cold Email and Calling"
+slug: "/appendix/appendix-a-complete-client-acquisition-playbook/a-7-cold-email-and-calling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-a-7">
+
+**What this solves:** You need appointments with people who don't know you. Cold outreach is a numbers game that most people play badly — too much volume, too little personalization, too fast to the ask.
+
+> **Compliance box (US/EU — read first):** Before you email anyone, know that US **CAN-SPAM** requires a valid physical postal address in every commercial email, a working opt-out ("Reply STOP") that is honored within 10 business days, and no misleading subject/headers. The EU/UK **GDPR/ePrivacy** regime is stricter: B2B email is lawful under "legitimate interests" in many member states, but includes transparency, an easy opt-out from the first touch, and deletion on request; violations carry real fines. **Never buy scraped lists, never hide who you are, honor every opt-out immediately, and log consent.** This page is engineering guidance, not legal advice — if you do real outreach, spend 30 minutes with the FTC's CAN-SPAM guide and your local DPA guidance before the first send.
+
+## Cold Email — The 3-Part Formula That Works
+
+```text
+Subject: [Company] — one observation about [specific thing]
+
+Hi [First],
+
+[Specific observation — 1 sentence, with a number or artifact].
+[Question — 1 sentence].
+No pitch, no calendar link, no "just checking in".
+
+[Your name] · [one-line credential]
+```
+
+**Example:**
+
+```text
+Subject: BrightCo — your checkout 401s
+
+Hi Alice,
+
+Your Shopify webhook logs show a 12% 401 rate on cart_created since the
+v3 migration — that's revenue leaking silently.
+
+Question: are you alerting on webhook failures today?
+
+[Your name] — I help Shopify stores fix webhook + idempotency issues
+```
+
+## Deliverability Before Copy
+
+- Domain warmup 2–4 weeks (use Instantly/Smartlead or Google Workspace with low volume)
+- SPF, DKIM, DMARC configured — check `mail-tester.com` score > 9/10
+- Send from a subdomain, not your primary
+- 20–30 personalized sends/day per mailbox (after a 2–4 week warm-up)
+- Never buy lists — build them with Apollo/LinkedIn Sales Navigator
+
+## Cold Calling — The 60-Second Script
+
+```text
+"Hi [Name], this is [Your name] — I work with Shopify merchants on checkout
+reliability. Do you have 30 seconds?
+
+[If yes] I noticed your checkout abandonment is 18% — I'd bet half of that
+is a technical trigger. Is that a metric you watch today?
+
+[If no] Fair enough. What's the best way to reach you? Email, or should I
+try again tomorrow at 2pm?"
+```
+
+**Rules:** know their stack before calling; never read a script; if they say no twice, thank them and move on; leave a voicemail ≤20s.
+
+## Follow-Up Cadence
+
+| Touch | Channel | Content |
+| :-- | :-- | :-- |
+| Day 1 | Email | Observation + question |
+| Day 3 | Email | One case study, 100 words |
+| Day 7 | Email | Last attempt, one sentence + "don't let me bother you" |
+| Day 14 | LinkedIn | Connection + brief note |
+
+**Stop rules:** no reply after 3 emails + 1 call = move on. Do not chase.
+
+## Metrics
+
+- Contacted → replied: 10–15% (warm-up first: 25–35%)
+- Replied → discovery call: 40–50%
+- Call → proposal: 30–40%
+- Proposal → close: 30–40%
+
+If your numbers are &lt;5% reply rate, your targeting or personalization is broken — not the medium.
+
+</BookNodePage>

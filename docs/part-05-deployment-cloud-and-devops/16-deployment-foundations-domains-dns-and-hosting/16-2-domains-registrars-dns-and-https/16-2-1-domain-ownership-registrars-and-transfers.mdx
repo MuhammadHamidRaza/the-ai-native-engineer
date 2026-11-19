@@ -1,0 +1,138 @@
+---
+id: "16-2-1-domain-ownership-registrars-and-transfers"
+title: "16.2.1 Domain Ownership, Registrars and Transfers"
+sidebar_label: "16.2.1 Domain Ownership, Registrars and Transfers"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-1-domain-ownership-registrars-and-transfers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s2-t1">
+
+A **registrar is not your host, and your host is not your registrar.** Every domain problem you will ever debug traces back to that sentence, so this lesson teaches the three jobs three different companies do for one name — and how to buy, hold and move a domain without losing it.
+
+## 1. The Three Roles
+
+| Role | What it does | Examples |
+| :-- | :-- | :-- |
+| **Registrar** | Sells you the right to use the name; talks to the registry (Verisign for `.com`, Identity Digital for many others) on your behalf; holds the registrar lock | Namecheap, Cloudflare Registrar, GoDaddy, Porkbun, Google Domains → Squarespace Domains |
+| **DNS host** | Answers "what is `shopcore.dev`'s A record?" — serves the zone | The registrar's basic DNS (Namecheap BasicDNS), Cloudflare (free), Route 53, your cloud |
+| **Web/app host** | Actually serves the bytes | Vercel, Netlify, Render, your VPS |
+
+You can mix all three from one company, but the classic safer split is: **registrar** (locked account) + **Cloudflare for DNS** (free, fast, API-able) + **wherever the app lives**. Cloudflare as a DNS host also means you *change nameservers*, which is a bigger operation than editing records — see [16.2.2](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-2-dns-records-nameservers-and-propagation).
+
+> **Domain prices change.** All dollar figures on this page are approximate, as of **November 2026** — verify the current promo/renewal price on your registrar's own pricing page before purchasing; that page is the only source that stays true.
+
+**Buying checklist:**
+
+1. Check the *renewal* price, not the promo. A `.dev` at $12 year-1 that renews at $35 is a subscription, not a purchase. Some TLDs are notorious for this — read the TLD-specific fine print (`.io`, some `.xyz` promos).
+2. Enable **registrar 2FA** *at the registrar*, not just on GitHub. Domain hijacking is account takeover at the registrar layer.
+3. Turn on **WHOIS privacy** (usually free). Otherwise your home address, phone and email are public in the registry and get scraped for spam and scams.
+4. Turn on **auto-renew + a valid payment card**, and lock the domain (registrar/transfer lock). Expiry loses domains to squatters.
+5. Use a role-based email you control (`admin@yourdomain.com` forwarding, or a login you keep), not a disposable temp-mail box that will die.
+
+Official registries and policies: there is no universal registrar API you memorize — learn the shape. ICANN accredits registrars; transfers follow its policy. Useful starting points: [icann.org](https://www.icann.org) (policies, WHOIS), [namecheap.com](https://www.namecheap.com), [cloudflare.com/products/registrar](https://www.cloudflare.com/products/registrar/) (at-cost pricing), [porkbun.com](https://porkbun.com).
+
+## 2. Registry vs Registrar — and a Real WHOIS Walkthrough
+
+The **registry** runs the TLD database (Verisign for `.com`, Identity Digital for many new gTLDs, the individual country registries for ccTLDs). The **registrar** is your elected shopfront with the registry. When you "buy a domain," the registry creates or assigns the record; the registrar holds the keys (EPP auth, lock) and bills you yearly.
+
+```powershell
+# whois output for a domain you own (abbreviated)
+whois shopcore.dev          # or: lookup.icann.org in a browser
+```
+
+```text
+   Domain Name: SHOPCORE.DEV
+   Registry Domain ID: ...
+   Registrar WHOIS Server: whois.cloudflare.com
+   Updated Date: 2026-08-01T09:14:02Z
+   Creation Date: 2025-11-03T16:20:11Z
+   Registry Expiry Date: 2027-11-03T16:20:11Z
+   Registrant Organization: Whois Privacy, Inc.
+   Name Server: LANA.NS.CLOUDFLARE.COM
+   Name Server: NICK.NS.CLOUDFLARE.COM
+   DNSSEC: signedDelegation
+```
+
+The fact pattern to internalize: **ownership = registrant contact + registrar account access**; everything else (DNS, TLS, hosting) is downstream. If you lose the registrar account, you lose the name — which is why 2FA at the registrar is the single highest-value security setting in this chapter.
+
+## 3. Verifying What You Own
+
+```powershell
+# Windows PowerShell / or WSL2: whois shopcore.dev
+nslookup -type=NS shopcore.dev
+```
+
+```text
+Non-authoritative answer:
+shopcore.dev   nameserver = lana.ns.cloudflare.com
+shopcore.dev   nameserver = nick.ns.cloudflare.com
+```
+
+Cross-check ownership at a WHOIS lookup — officially via [lookup.icann.org](https://lookup.icann.org/) or your registrar's "domain info" panel. In the panel you should see: your name on the registrant, 2FA enabled, **auto-renew on**, **transfer lock on**, WHOIS privacy on.
+
+## 4. Transfers — Moving a Domain Safely
+
+Transfers are where domains get lost. The rules that matter (ICANN transfer policy):
+
+- **60-day lock** after registration or a previous transfer — a new domain cannot transfer immediately. If you just bought it, wait.
+- **Unlock at the current registrar** ("registrar lock" off) and request the **EPP/authorization code** (also called auth-code, transfer key).
+- Start the transfer at the **gaining** registrar; it emails the losing registrar, which has ~5 days to accept or silently approve. Plan a week, not an afternoon.
+- Transfer extends expiry by 1 year at most registrars. Never transfer mid-launch week, never let expiry lapse mid-transfer.
+
+```text
+Timeline:  Day 0 request EPP → Day 1-5 losing registrar approves/auto-approves
+           → Day 5-7 registry switch → nameservers from old host die
+```
+
+**Sequence that cannot hurt you:** (1) verify WHOIS email works, (2) note current NS records, (3) unlock, (4) get EPP, (5) initiate at gaining registrar, (6) re-verify DNS from two networks after the switch, (7) re-enable lock + WHOIS privacy.
+
+## 5. Renewal Traps
+
+- **Promo → renewal cliff.** Cheap year 1, expensive year 2+. Check before buying; switching registrars later costs the transfer hassle.
+- **WHOIS-email mismatch.** ICANN sends expiry warnings to the registrant email. If that email is dead, you get no warning until the domain is gone.
+- **Auto-renew with an expired card.** Set a calendar reminder 60 days before expiry anyway; both can fail silently.
+- **Premium TLD "access cost."** Some names are priced as premium renewals. The registrar must say so pre-purchase — if it does not, ask support before checkout.
+
+## 6. Choosing a TLD — `.com` vs `.dev` vs Country Codes
+
+- **`.com`** — universal recognition, spam-filter friendly, but premium pricing on anything pronounceable ($10–$4,500/yr).
+- **`.dev`** — HTTPS-only by policy (Google enforces preloaded HSTS at the registry). Great dogfood for this book; ~$12–35/yr renewal.
+- **`.io`** — startup-favored, expensive (~$30–60/yr), trademark baggage. Check renewal before falling in love.
+- **ccTLDs** (`.co.uk`, `.de`) — residency/local-presence requirements sometimes apply; renewals are stable.
+- **New gTLDs** — cheap promo, aggressive renewal cliffs, occasionally poor deliverability of mail from them to strict inboxes.
+
+Whichever you pick: **renewal price is the total cost** in disguise. Write both numbers down at purchase time.
+
+## 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Domain says "clientTransferProhibited" on WHOIS | Transfer lock is on | Registrar panel → unlock domain (expected before any transfer) |
+| EPP code rejected | Typo, or wrong registrar panel (auth code is per-registrar) | Re-copy code; check you are in the transferring-in flow of the *new* registrar |
+| Transfer "stuck" 5+ days | Losing registrar never approved (or email in spam) | Check spam/WHOIS inbox; call/chat gaining registrar with the transfer ID |
+| Domain expired and "renew" blocked | Registry grace vs redemption period | Within ~30 days: normal renew. Past that: redemption fee (often $80–200) or lose it. Never let a domain you care about lapse |
+| Site down after registrar change | Nameservers reverted to old host | Verify `nslookup -type=NS`; re-point NS at new host; re-check records |
+
+## 8. Cost and Safety Notes
+
+Registrar prices drift — compare at renewal, not checkout. Never paste registrar credentials or the zone's API token anywhere (chat, screenshot, AI tools). Enable registrar-level 2FA *today*; a hijacked domain is a hostage situation, not an inconvenience.
+
+## 9. Practice
+
+**Guided exercise.** At your registrar (or a sandbox), locate: WHOIS privacy toggle, transfer lock toggle, auto-renew toggle, and your registrant email. Enable/verify all four. `nslookup -type=NS` your domain and identify who is authoritative.
+
+**Independent exercise.** Compare the renewal price of the same domain at two accredited registrars (e.g., Namecheap vs Cloudflare Registrar vs Porkbun); write down both numbers and which you would choose and why.
+
+**Challenge.** Simulate a transfer on paper: list the exact 8 steps you would perform to move `shopcore.dev` from registrar A to registrar B with zero downtime, including DNS re-verification commands after the switch. Have a friend or classmate critique the sequence.
+
+**Assessment checklist**
+
+- [ ] I can name registrar vs DNS host vs web host and which one I actually pay.
+- [ ] My registrar account has 2FA, WHOIS privacy, auto-renew and transfer lock.
+- [ ] I know how to get an EPP code and what the 60-day lock means.
+- [ ] I verified my domain's nameservers with `nslookup -type=NS`.
+- [ ] I will never type registrar credentials into a terminal or screenshot.
+
+</BookNodePage>

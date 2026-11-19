@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Docusaurus build output & caches
+build/
+.docusaurus/
+.next/
+coverage/
+
+# Python caches (reference projects)
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# Environment files — never publish secrets (.env.example is the only exception)
+.env
+.env.*
+!.env.example
+
+# Internal audit / review evidence — not part of the published book
+audit/
+AGENTS.md
+CURRICULUM_MASTER_PLAN.md
+COMPREHENSIVE_AUDIT_PART_00_TO_08.md
+IMPLEMENTATION_REPORT.md
+BOOK_PROGRESS.md
+PROGRESS.md
+AUDIT_REPORT*.md
+audit_report*.md
+page_ledger*.md
+chapter-39-review-report.md
+PARTS_03_04_05_REVIEW_REPORT.md
+PART_05_AUDIT.md
+metadata.json
+app/
+hooks/
+lib/

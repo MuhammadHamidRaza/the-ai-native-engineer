@@ -1,0 +1,122 @@
+---
+id: "00-10-12-the-municipal-library-capstone-technical-design"
+title: "00.10.12 The Municipal Library Capstone: Technical Design"
+sidebar_label: "00.10.12 Capstone: Technical Design"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-12-the-municipal-library-capstone-technical-design"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-12">
+
+Stage 3 turns the PRD into a buildable architecture. Every decision below must carry a **reason** — if you cannot write the "why" in one sentence, you are not ready to choose. The design deliberately extends ShopCore: same Postgres discipline, same auth model, same deployment path.
+
+## 1. Architecture in One Diagram
+
+```text
+Patron browser ──HTTPS──> Nginx/Caddy ──> Chapterhouse Web (Next.js, Vercel or VPS)
+                                            │ /api/*  ──> Chapterhouse API (Express)
+                                            │                    │
+                                            │                    ├── PostgreSQL (ShopCore-shaped
+                                            │                    │    schema + catalog/holds tables)
+                                            │                    │
+                                            │                    └── Assistant service ──> LLM API
+                                            │                          (server-side keys only;
+                                            │                           policy corpus only; no PII)
+                                            └── Static: catalog search SSR + client fetch
+```
+
+## 2. Data Model — Catalog + Holds on a ShopCore Spine
+
+Extend the [canonical ShopCore schema](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema) with:
+
+```sql
+CREATE TABLE works (               -- a *work*, not an edition/row of the CSV
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  isbn          TEXT NOT NULL UNIQUE,
+  title         TEXT NOT NULL,
+  author        TEXT NOT NULL,
+  year          INTEGER,
+  category      TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE holdings (            -- copies per branch/work
+  work_id       BIGINT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+  branch        TEXT NOT NULL,
+  copies_total  INTEGER NOT NULL CHECK (copies_total >= 0),
+  copies_held   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (work_id, branch)
+);
+CREATE TABLE holds (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  work_id       BIGINT NOT NULL REFERENCES works(id),
+  user_id       BIGINT NOT NULL REFERENCES users(id),  -- ShopCore users table
+  status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','ready_for_pickup','fulfilled','cancelled','expired')),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at    TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_holds_user ON holds (user_id, status);
+CREATE INDEX idx_holds_work ON holds (work_id, status);
+```
+
+Design notes you must be able to defend:
+
+- **`copies_held` is derived, but cached.** Derived means "computable from `holds` + `loans`"; cached means checkout/return flows update it atomically in the same transaction (never `n+1` recompute).
+- **Idempotency on hold placement:** `holds` gets `idempotency_key TEXT UNIQUE` from the client — double-click yields one hold (the ShopCore 005 pattern, verbatim).
+- **Expiry is a job, not a hope:** nightly sweeper `UPDATE holds SET status='expired' WHERE status='active' AND expires_at < now()` + audit row.
+- **Category kept as text with an enum-ish allowlist** from the import job, rejecting unknowns to the reject report, not into free text.
+
+## 3. API Contracts (Chapter 13 patterns)
+
+```text
+GET  /api/catalog/search?q=asimov&category=&page=   → { works: [...], page, total }
+POST /api/auth/*                                   (ShopCore verbatim)
+GET  /api/works/:id                                → work + holdings per branch + queue length
+POST /api/holds        Idempotency-Key: <uuid>     → 201 { hold } | 409 { error: 'already_held' | 'no_copies_ever' }
+DELETE /api/holds/:id                              → 204
+POST /api/assistant    { question }                 → { answer, citations[], refused }
+POST /api/admin/holds/:id/override { reason }      (admin role; audit row)
+```
+
+Required status semantics: `409` for business-rule collisions (already in hold, zero copies ever), `422` for malformed JSON, `401/403` for auth/role, never `200 { error: ... }`.
+
+## 4. The Assistant — Boundary Design (the part most designs botch)
+
+- The assistant gets **policy text only**: the five PDFs chunked and indexed per Chapter 28 (`pgvector` if you ship it on the VPS; the offline reference in `examples/shopcore-helpbot/` proves the shape).
+- **It has no tools.** It cannot query holds, cannot see patron data, cannot act. It answers from the corpus or refuses — that is the entire contract.
+- **Reservations flow through the normal REST API** with auth + idempotency + transaction, never through the model. The model cannot create or modify a hold, ever.
+- Citations are mandatory: every factual sentence carries `[n]` mapped to a policy section; no citation → the sentence is dropped or the answer refuses.
+- **Latency logging** per assistant call (`p50/p95`, `refused`), separate from catalog metrics (NFR-2) — never averaged into catalog latency numbers.
+
+## 5. Failure Handling
+
+| Failure | Behavior |
+| :-- | :-- |
+| Assistant/LLM down or 5xx | Catalog unaffected; assistant route returns canned "Assistant unavailable — see posted policy or ask staff" with 200 + `refused: true` |
+| Citation verification fails | Answer is replaced with the refusal template; never shown unciteable |
+| CSV import row invalid | Row goes to reject CSV with reason; rest of file imports |
+| Double checkout race | Transaction + `SELECT ... FOR UPDATE` on `holdings`; one wins, other gets 409 |
+| Worker/sweeper crash | Re-run is idempotent (status checks, not blind UPDATEs) |
+
+## 6. Deployment Plan (Chapter 16–20 verbatim)
+
+- **Pilot:** single VPS (Hetzner/DO ~$5-10) with Docker Compose: `web`, `api`, `postgres`, `caddy` (HTTPS). Or Render free + Neon free if budget must be $0 (cold starts acceptable for pilot).
+- **Backups:** nightly `pg_dump` to object storage, 30-day retention; tested restore once before pilot.
+- **Health:** `/health` (liveness), `/health/ready` (DB probe) — per Part 05.
+- **Rollback:** previous image tag stays deployed; one command to revert; DNS is the 15-minute lever.
+- **Secrets:** `.env` outside git; only `.env.example` committed; LLM keys server-side only.
+
+## 7. Why No Microservices / No Redis (The Discipline of "Not Yet")
+
+The workload is one branch's catalog (2k works) and a handful of patrons per minute. A queue or cache would be decorative complexity here. **Write that sentence down** — it is the kind of scope restraint the client is actually paying for. The exception list you will revisit at 10 branches or 100k works.
+
+## 8. Stage 3 Done Criteria
+
+- [ ] Diagram, data model, API table, assistant boundary, failure table — all written
+- [ ] Every decision has a one-sentence reason
+- [ ] Costed hosting plan with the $0 fallback identified
+- [ ] "Why not" section exists for at least three deliberate non-choices
+
+**Next:** [00.10.13 Build, AI Assistant & Safety](/book/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-13-the-municipal-library-capstone-build-and-ai-assistant)
+
+</BookNodePage>

@@ -1,0 +1,164 @@
+---
+id: "20-2-3-monitoring-logs-and-alerts-with-prometheus-and-grafana"
+title: "20.2.3 Monitoring, Logs and Alerts with Prometheus and Grafana"
+sidebar_label: "20.2.3 Monitoring, Logs and Alerts with Prometheus and Grafana"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-3-monitoring-logs-and-alerts-with-prometheus-and-grafana"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s2-t3">
+
+Your uptime pinger from Part 04/17 can tell you the site is down; it cannot tell you *why*, or warn you an hour before. Observability has three pillars — **metrics** (numbers over time), **logs** (discrete events), **traces** (request waterfall). This lesson covers metrics and logs; traces get their full treatment when the system is distributed enough to need them.
+
+## 1. The Prometheus Model — Pull, Not Push
+
+Prometheus **scrapes** HTTP endpoints (`/metrics`) on a schedule (default 15s/30s) and stores the results as timestamped time series: `metric_name{label="value"} 42 <unix ts>`. Nothing ships metrics to Prometheus; Prometheus fetches them. Consequences: Prometheus must be able to *reach* your targets; `up{job="x"} == 0` means a target is down; and stale data is "target missing," never "silently fake zero."
+
+In Kubernetes, service discovery is dynamic — Prometheus (via the **prometheus-operator**, which the stack installs) auto-discovers Pods, Services and Endpoints through ServiceMonitor/PodMonitor CRDs. You label your ServiceMonitor; the operator does the wiring. Key metric sources in the stack:
+
+- **node_exporter** (DaemonSet) — CPU, memory, disk, network per node.
+- **kube-state-metrics** — deployment replica counts, pod phase, restart counts, job status.
+- **kubelet/cAdvisor** — per-container CPU/memory.
+- **Your app** — `/metrics` via a client library (`prom-client` for Node): request rate, errors, duration histogram.
+
+## 2. Install in kind via Helm (kube-prometheus-stack)
+
+Where to run: terminal with Docker + kind cluster from 20.1 running, Helm installed.
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace
+kubectl get pods -n monitoring        # first pull: several images, ~2-5 min
+```
+
+(Current chart is 93.x as of Nov 2026 — check [artifact hub](https://artifacthub.io) if `helm` complains; the classic `helm repo` path works, OCI also supported.)
+
+Expected: pods `Running` — `monitoring-grafana`, `monitoring-kube-prometheus-prometheus`, `monitoring-kube-state-metrics`, `monitoring-prometheus-node-exporter-*`, etc.
+
+## 3. Open Grafana and Get Your Bearings
+
+```bash
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+# new terminal: get the admin password
+kubectl get secret -n monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+
+Open **http://localhost:3000** — login `admin` / (password above). First stop: **Dashboards → browse → folders "General" / "Kubernetes / Compute Resources"**. Orientation tour:
+
+1. **Node Exporter Full** — CPU/mem/disk/network per node; disk % is the one that kills servers at midnight.
+2. **Kubernetes / Pods** — restarts and memory per pod; `shopcore-api` visible by namespace.
+3. **Kubernetes / Compute Resources / Cluster** — aggregate saturation (are we out of headroom?).
+
+Explore any panel with the **Explore** view (Prometheus data source preselected): `rate(http_requests_total[5m])` or `kube_pod_container_status_restarts_total` as raw queries. Learn to read the PromQL shape `rate(...[5m]) by (pod)` — it is 90% of what you'll do.
+
+**Prometheus UI** for target/rule debugging: `kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090` → http://localhost:9090 → **Status → Targets** (anything red?) and **Alerts** (pending vs firing).
+
+**PromQL essentials you will actually use:**
+
+| Query | Meaning |
+| :-- | :-- |
+| `up{job="node-exporter"}` | Is this target being scraped? (1/0) |
+| `rate(http_requests_total[5m])` | Requests per second, 5-minute window |
+| `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))` | p95 latency |
+| `kube_pod_container_status_restarts_total` | Restart counters per container |
+| `node_filesystem_avail_bytes / node_filesystem_size_bytes` | Free disk fraction |
+
+**A complete PrometheusRule for high error rate** (apply with `kubectl apply -f alert.yaml`):
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shopcore-alerts
+  namespace: monitoring
+  labels: { release: monitoring }      # must match the stack's ruleSelector
+spec:
+  groups:
+    - name: shopcore.rules
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+              / sum(rate(http_requests_total[5m])) > 0.05
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "5xx rate above 5% for 5 minutes"
+            runbook: "Roll back the last deploy or flip the kill-switch flag (20.2.2)."
+```
+
+The `labels: { release: monitoring }` is the one every beginner misses — without it, the operator ignores your rule and wonders why nothing fires.
+
+## 4. The Five Alerts Worth Starting With
+
+Add as a PrometheusRule (conceptually — the stack ships hundreds; you need these five first):
+
+| Alert | Expression sketch | Severity |
+| :-- | :-- | :-- |
+| **TargetDown** | `up == 0` for 2m | warning |
+| **Pod restarts** | `rate(kube_pod_container_status_restarts_total[15m]) > 0` | warning |
+| **High error rate** | `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05` | critical |
+| **Disk almost full** | `node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.1` | critical |
+| **Certificate expiry** | prometheus-blackbox exporter SSL cert probe `< 14d` | warning |
+
+**Alertmanager routing basics:** Alertmanager dedupes, groups and routes alerts to receivers. Minimal shape:
+
+```yaml
+route:
+  group_by: ['alertname', 'severity']
+  receiver: team-slack
+  routes:
+    - matchers: [{ severity: critical }]
+      receiver: pager
+receivers:
+  - name: team-slack
+    slack_configs: [{ api_url: '<webhook>', channel: '#alerts' }]
+  - name: pager
+    pagerduty_configs: [{ service_key: '<key>' }]
+```
+
+(`matchers` is the current Alertmanager syntax; older `match` was renamed to avoid ambiguity with metric-name matchers.)
+
+Rule: an alert nobody routes to a human is decoration. Pager = someone wakes up; Slack = someone looks in the morning. Choose per severity.
+
+## 5. Logs — Pointer Level
+
+- **Loki** (Grafana Labs) — logs as label-indexed streams; tiny footprint; queried with LogQL in the *same* Grafana as your metrics — the sane default for Kubernetes.
+- **ELK/OpenSearch** — full-text search at scale; heavy to operate; what enterprises already run.
+- **Cloud equivalents** — CloudWatch Logs/Container Insights (AWS), Cloud Logging (GCP), Azure Monitor — zero ops, per-GB ingest pricing that adds up.
+- **Structure first:** JSON logs with `requestId`, `userId`, `level` — unstructured logs are un-greppable at volume. Sample aggressively at debug level in production (1–5%).
+- **Correlation:** put the same `requestId` in the log line, the HTTP response header and the trace — one ID, three views, instant root-cause. This is cheaper than any observability platform you will be sold.
+
+**Where alerting and logging meet:** an alert tells you *that* something is wrong; the log around the same `requestId` tells you *what*. Wire both into one Grafana — Prometheus for the trigger, Loki for the evidence — before you sign up for anything fancier.
+
+## 6. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Grafana shows "No data" | Port-forward died / datasource URL wrong | Re-run port-forward; ConfigMap datasource check |
+| Targets all `down` | Prometheus can't reach scrape endpoints | NetworkPolicy? Wrong port? `kubectl describe svc` |
+| `up{job="kubernetes-pods"} == 0` locally | Normal in kind without RBAC tweaks | Use stack's built-in targets; verify via Targets page |
+| Alerts fire constantly, ignored forever | Alert fatigue from bad thresholds | Tune thresholds; page on symptoms (error rate), not causes (CPU 70%) |
+| Grafana login fails | Forgot password | Delete/recreate `monitoring-grafana` secret or use `adminPassword` values override |
+
+## 7. Practice and Assessment
+
+**Guided.** Install the stack, port-forward Grafana and Prometheus, log in, find the **Node Exporter Full** dashboard, screenshot CPU/disk for your node, and verify every target is `up` in Prometheus.
+
+**Independent.** Add one PrometheusRule for high HTTP 5xx rate (use your API's `/metrics` or a demo target) and confirm it transitions Inactive → Pending → Firing by raising the error rate deliberately (hit a failing endpoint).
+
+**Challenge.** Wire Alertmanager to a Slack incoming webhook (or a webhook.site URL) for `PodRestartedTooOften` and screenshot the delivered alert.
+
+**Assessment checklist**
+
+- [ ] I can explain scrape-vs-push and why `up == 0` means the target is down.
+- [ ] I can install kube-prometheus-stack in kind and port-forward Grafana + Prometheus.
+- [ ] I can name and threshold the five alerts that matter most to start.
+- [ ] I know when to reach for Loki vs ELK vs cloud log services.
+
+**Cost note:** the stack runs entirely inside kind on your laptop — $0. On a cloud cluster expect monitoring pods to request real CPU/RAM; budget it.
+
+</BookNodePage>

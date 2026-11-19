@@ -1,0 +1,188 @@
+---
+id: "15-3-1-react-vite-setup-and-api-integration"
+title: "15.3.1 React + Vite Setup and API Integration"
+sidebar_label: "15.3.1 Frontend Setup"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-3-frontend-build/15-3-1-react-vite-setup-and-api-integration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s3-t1">
+
+Milestone 6: the React frontend comes online — Vite scaffold, an `api.js` client that talks to the Express backend with credentials, and the catalog page fetching real data from your real API. No mock data from here on.
+
+## 1. Scaffold Vite + React
+
+```bash
+cd shopcore/apps
+npm create vite@latest web -- --template react
+cd web
+npm install
+npm run dev
+```
+
+Expected: Vite prints `Local: http://localhost:5173/` and the React starter page renders.
+
+## 2. Configure the Dev Proxy (The One Line That Matters)
+
+`vite.config.js`:
+
+```javascript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',       // your Express API
+        changeOrigin: true,
+      },
+    },
+  },
+});
+```
+
+With this proxy, the browser talks to `http://localhost:5173/api/...`; Vite forwards to `:4000`. **Same-origin cookies work** — no CORS headaches in dev, and production (Express serving the built SPA) is same-origin too.
+
+## 3. Folder Structure
+
+```text
+apps/web/src/
+├── main.jsx
+├── App.jsx            # router: / (catalog), /login, /register, /cart, /orders
+├── api.js             # the ONLY place that talks to HTTP
+├── pages/
+│   ├── Catalog.jsx
+│   ├── Login.jsx      ├── Register.jsx
+│   ├── Cart.jsx
+│   └── Orders.jsx
+└── components/
+    ├── ProductCard.jsx
+    └── Header.jsx     # nav + auth state + cart count
+```
+
+## 4. The API Client — `src/api.js`
+
+One file owns every `fetch` call. The backend contract (from Chapters 13/15.2) is: JSON in, JSON out, cookies via `credentials: 'include'`, errors as `{ error, message }`.
+
+```javascript
+export class ApiError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function request(path, init = {}) {
+  const res = await fetch(`/api/v1${path}`, {
+    credentials: 'include',                    // ALWAYS — cookies carry the session
+    headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+    ...init,
+  });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    throw new ApiError(res.status, body?.error ?? 'HTTP_ERROR', body?.message ?? res.statusText);
+  }
+  return body;
+}
+
+export const api = {
+  products: (q) =>
+    request(`/products${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  product: (id) => request(`/products/${id}`),
+
+  me: () => request('/auth/me'),
+  login: (email, password) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  register: (email, full_name, password) =>
+    request('/auth/register', { method: 'POST', body: JSON.stringify({ email, full_name, password }) }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+
+  cart: () => request('/cart'),
+  setCartItem: (productId, qty) =>
+    request(`/cart/items/${productId}`, { method: 'PUT', body: JSON.stringify({ qty }) }),
+  checkout: () => request('/orders/checkout', { method: 'POST' }),
+};
+
+// Data shapes (documented for the reader; the backend is the contract):
+// Product  = { id: number, sku: string, title: string, price_cents: number, stock_qty: number, category?: string }
+// User     = { user_id?: number, email: string, full_name?: string, role: 'customer' | 'admin' }
+// CartLine = { product_id: number, title: string, qty: number, price_cents: number }
+```
+
+## 5. Render the Catalog From the Real API — `src/pages/Catalog.jsx`
+
+```jsx
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import ProductCard from '../components/ProductCard';
+
+export default function Catalog() {
+  const [products, setProducts] = useState([]);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.products()
+      .then((data) => setProducts(data.products))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p>Loading catalog…</p>;
+  if (error) return <p role="alert">Failed to load products: {error}</p>;
+
+  return (
+    <ul className="grid">
+      {products.map((p) => (
+        <li key={p.id}>
+          <ProductCard product={p} onAdd={(id) => api.setCartItem(id, 1)} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Error and loading states are not optional polish — this component is the template for every fetch in the app: **loading → data → error**, always.
+
+## 6. Auth State in the Header
+
+```jsx
+const [user, setUser] = useState(null);
+useEffect(() => { api.me().then((d) => setUser(d.user)).catch(() => setUser(null)); }, []);
+```
+
+Header shows: **Sign in / Register** when anonymous; **name + Orders + Logout** when signed in. Logout: `api.logout()` then re-read `me` — server destroyed the session, the cookie is gone.
+
+## 7. Verify End to End
+
+1. `npm run dev` (API), `npm run dev` (web, another terminal).
+2. Vite on 5173 → catalog renders 3 seeded products (titles from your real Postgres).
+3. DevTools → Network → one `GET /api/v1/products?...` → 200, JSON body visible.
+4. Log in → React re-renders header with your name; cookie `session` present (`HttpOnly` ✓).
+
+If the catalog is empty but curl returns products, the proxy is wrong — check `vite.config.js` and the API log line.
+
+## 8. Practice
+
+**Guided exercise.** Scaffold exactly as above; seeded catalog must render on 5173 with Network showing 200s.
+
+**Independent exercise.** Add a search box (`?q=`) wired to `api.products(query)` with 300 ms debounce. Verify against `BK-03` search results.
+
+**Challenge.** Add `api.admin.products()` and an `/admin` route gated client-side by `user.role === 'admin'` — then note in the client code a comment: **"Client checks are convenience, server enforces (15.2.3)"**. This exact twin-layer reasoning is what interviewers probe.
+
+**Assessment checklist**
+
+- [ ] Vite dev server proxies `/api` → Express; SPA and API share one origin's cookies.
+- [ ] Every HTTP call goes through `src/api.js` — no raw `fetch` elsewhere.
+- [ ] I see loading/error states handled in every fetch component.
+- [ ] Login persists across refresh (`/auth/me` bootstraps session).
+- [ ] The app breaks gracefully offline (error UI, not a white screen).
+
+</BookNodePage>

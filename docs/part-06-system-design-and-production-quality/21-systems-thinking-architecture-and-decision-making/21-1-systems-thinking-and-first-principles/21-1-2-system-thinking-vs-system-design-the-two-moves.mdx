@@ -1,0 +1,117 @@
+---
+id: "21-1-2-system-thinking-vs-system-design-the-two-moves"
+title: "21.1.2 System Thinking vs System Design: The Two Moves"
+sidebar_label: "21.1.2 System Thinking vs System Design: The Two Moves"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles/21-1-2-system-thinking-vs-system-design-the-two-moves"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s1-t2">
+
+Half the architecture disasters you will be called into start the same way: somebody opened a code editor and started designing before they understood. The other half are the opposite — somebody drew diagrams for six months and never shipped. Both are missing one of two distinct moves. Learn them by name, know when each applies, and you will catch — in yourself and in your team — the two failure modes this lesson is about.
+
+## 1. The Two Moves, Stated Plainly
+
+| | **System Thinking** | **System Design** |
+| :-- | :-- | :-- |
+| Question | What is actually going on here? Who affects whom? | What are we going to build, exactly? |
+| Job | Understand relationships and dynamics *before* building | Commit to components, boundaries and contracts *to* build |
+| Output | Maps, loops, causal claims, "what hurts and why" | Services, data stores, APIs, queues, caches, SLOs |
+| Mindset | Curious, skeptical, no commitments yet | Decisive, sacrificial — every choice forecloses others |
+| Fails as | Analysis paralysis — never ships | Distributed monolith — ships the wrong shape confidently |
+| Timebox | Hours to a day or two | The design doc itself, then ADRs (21.2.2) |
+
+They are not rivals; they are sequence. **Think until the picture is stable, then design.** If a design meeting starts with "should we use Kafka?", thinking is not finished.
+
+## 2. Side-by-Side on ShopCore — Same Problem, Two Diagrams
+
+**Thinking diagram** (relationships, no technology choices):
+
+```text
+                     fraud heuristics (3rd-party)
+                              |  score
+        +----------+   paid   v
+customers ----> orders -----> payments ----> delivery ----> customers
+    ^                   |         |            |                |
+    |                 approve/  refund      dispatch       notify|
+    |                 decline    |            |                |
+    |                   |        v            v                v
+    +--------------- support <- tickets <-----+----------------+
+                         |
+                         v
+                  inventory (stock feedback)
+```
+
+What Thinking surfaces: orders connect **everything**; money flows and goods flow in opposite directions; support is on the critical path of perceived quality; the fraud engine sits on the payment path and is outside your control. Finding: *if fraud scoring is slow, checkout is slow.* No design decision made yet — just a fact with consequences.
+
+**Design diagram** (components and contracts, no code yet):
+
+```text
+React SPA
+   |  REST/JSON (OpenAPI contract)
+   v
++---------------------------------------------+
+|  API gateway / Express 5 monolith (modules) |
+|  Catalog | Cart | Ordering | Payments       |
+|       \   |    |      |        |            |
++--------+-----+--------+--------+------------+
+         |             |          |
+         v             v          v
+   PostgreSQL      Redis     Payment provider
+   (orders,       (cache,    (Stripe) <-- webhook
+    catalog,      rate limit)  --> /webhooks/stripe
+    idempotency)                (idempotent consumer)
+         |
+         v
+   Job queue (email, fraud re-check) --> workers
+```
+
+What Design surfaces: the monolith stays (yet); Redis is a cache, **not** a source of truth; the webhook path is a separate entry point with different auth (signature, not cookies); the queue decouples email/fraud from checkout latency. Finding: *fraud scoring may not be on the synchronous payment path — move it post-authorization with a risk review queue.*
+
+Same problem, two different questions, two diagrams. Skipping the first gives you the second with wrong boxes; skipping the second ships the first as a PDF.
+
+## 3. Three Real Scenarios, Both Moves in Order
+
+**Scenario A — Rolling out a new fraud heuristic.** Thinking: who else is affected? (Payments team, support — false positives create tickets — and finance — chargebacks.) Is the dependency synchronous or async? (Your design says async, post-auth.) Design: feature flag `fraud_v2_shadow`, shadow mode scoring (log only, no block), compare false-positive rates for 2 weeks, then enforce. Without Thinking you would have hot-patched the payment path at peak; without Design you would have "shadow mode" as a concept and no flag infrastructure.
+
+**Scenario B — The holiday surge.** Thinking: the loop is `latency ↑ → retries ↑ → load ↑↑ → latency ↑↑`. Where does it break first? (The DB pool.) What pressure relieves it? (Caching catalog pages, shedding low-priority traffic like analytics beacons.) Design: pre-warm cache, cap queue depth, 503 + `Retry-After` for shed routes, autoscale API on p99, freeze deploys Nov 20 – Jan 2. Thinking found the loop; Design built the ladder out of it.
+
+**Scenario C — Partial outage: Stripe webhooks delayed 40 minutes.** Thinking: what diverges? (Orders say "paid" in Stripe but "pending_payment" locally; inventory not decremented; customers panic; support floods.) Which move first? Watch (probe) → confirm the delay hypothesis with Stripe status → then respond. Design: the order-status page already reads from an `orders` column — surface "payment is confirming; this can take a few minutes" instead of an error; workers replay the webhook backlog idempotently; no re-charge, no duplicate decrement. You cannot design this tolerance without first understanding the delay dynamic.
+
+## 4. When Each Move Fails (and the Receipts)
+
+**Design without Thinking → the distributed monolith.** Five services, one shared Postgres schema, synchronous call chains A→B→C→D, a network boundary with none of the isolation benefits — every deploy needs four teams. Tells: distributed transactions discussed weekly; "it's faster to query the other service's table." Prevention: you do not draw service boxes until the Thinking map shows where the *seams* (blast radius, change cadence, data ownership) actually are.
+
+**Thinking without Design → analysis paralysis.** Forty-page system maps, no contracts, no tickets, quarter ends, nothing ships, stakeholders conclude architecture is decoration. Tells: the same meeting re-litigates the same arrow; "we need one more workshop." Prevention: timebox Thinking (see 21.2.1) and force the output to be a Design artifact — an ADR or a context map with owner names. Thinking that cannot produce a decision is a hobby.
+
+## 5. The Working Rule
+
+1. If the room lacks a shared causal story, you are in Thinking — no technology may be named.
+2. If the room agrees on the story, you are in Design — every claim must land in a contract, an ADR, or a backlog item.
+3. After Design, new facts send you back to Thinking briefly; then you re-enter Design and adjust the contract. Normal operation is an oscillation, not a one-way door.
+
+| Situation | Move | Output |
+| :-- | :-- | :-- |
+| Incident bridge, cause unknown | Thinking (probe) | Timeline + causal hypothesis |
+| New feature, shape unclear | Thinking first | Context map arrow changes |
+| Shape agreed, need build plan | Design | ADR + OpenAPI sketch + ADR consequences |
+| Migration of a table/service | Thinking (blast radius) → Design (steps) | Migration plan + rollback |
+
+## 6. Practice
+
+**Guided exercise.** Take the ShopCore checkout. Draw only the Thinking diagram. Have a colleague ask "so is it a monolith or microservices?" — your correct answer is "not a design question yet." Keep going until the map survives five adversarial questions.
+
+**Independent exercise.** You inherit ShopCore with zero docs. Produce the Thinking diagram first (2 hours, no tools beyond a whiteboard), then the Design diagram, and note 3 places where they disagree — disagreements are exactly where production incidents live.
+
+**Challenge.** For the holiday surge scenario, write the one-page Design addendum: flag names, queue caps, shed order (analytics → recommendations → product Q&A → never checkout), autoscale thresholds, and the rollback trigger. Bring it to your next retro.
+
+**Assessment checklist**
+
+- [ ] I can define both moves and state which artifacts each produces.
+- [ ] I can draw the Thinking and Design diagrams for ShopCore and explain every arrow's fate in an incident.
+- [ ] I can name the two failure modes, spot them in my team, and apply the Section 5 rule.
+- [ ] I can solve the fraud-rollout, surge and partial-outage scenarios using both moves in sequence.
+- [ ] I will not allow technology names into a meeting that lacks a shared causal story.
+
+</BookNodePage>

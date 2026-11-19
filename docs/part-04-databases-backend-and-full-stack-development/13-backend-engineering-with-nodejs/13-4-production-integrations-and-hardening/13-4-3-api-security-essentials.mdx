@@ -1,0 +1,114 @@
+---
+id: "13-4-3-api-security-essentials"
+title: "13.4.3 API Security Essentials"
+sidebar_label: "13.4.3 API Security Essentials"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-3-api-security-essentials"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s4-t3">
+
+Feature-complete is not ship-ready. This lesson is the hardening checklist your ShopCore API needs before real users touch it — each item maps to an attack you can now name and defeat.
+
+## 1. Secrets and Environment Hygiene
+
+- **All secrets live in `.env`** (`DATABASE_URL`, `MONGODB_URI`, `SESSION_SECRET`, `GITHUB_CLIENT_SECRET`, `WEBHOOK_SECRET`) — never in source, never in Docker images, never in client-side code.
+- **`.env` in `.gitignore`** — verify: `git check-ignore .env` prints `.env`. If you see no output, fix it **before** any `git add`.
+- **`.env.example`** committed with placeholder-only values (`DATABASE_URL=postgresql://user:password@localhost:5432/shopcore`) so teammates know what to fill in.
+- **`SESSION_SECRET`** = 32+ random bytes: `openssl rand -hex 32`. Rotating it invalidates all existing sessions — expected behavior.
+- Committed a secret once? It is compromised forever. **Rotate the credential**, then scrub history (`git filter-repo`) — or better, avoid it by never committing.
+
+## 2. Helmet — Secure Headers in One Line
+
+```bash
+npm install helmet
+```
+
+```javascript
+import helmet from 'helmet';
+app.use(helmet());
+```
+
+Sets `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, removes `X-Powered-By: Express` (don't advertise your stack). You may tune CSP for your frontend later; defaults are sane.
+
+## 3. CORS — An Allowlist, Never a Wildcard
+
+```javascript
+import cors from 'cors';
+
+const allowed = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173').split(',');
+app.use(cors({ origin: allowed, credentials: true }));
+```
+
+`origin: '*'` + `credentials: true` is blocked by browsers anyway — and even `*` without credentials tells the world any site can read your API. **Allowlist exactly your frontends**: `http://localhost:5173,https://shopcore.example.com`.
+
+## 4. Secure Cookies and Sessions
+
+- `HttpOnly` (JS can't read it — XSS token theft dies here), `Secure` (HTTPS only, production), `SameSite=Lax` (cross-site POSTs don't carry cookies).
+- Sessions stored **server-side** (DB or Redis) with random IDs — never signed "I am an admin" claims in the cookie. JWT = 13.3.1's discussion; mixing is worse than either.
+- CSRF: `SameSite=Lax` blocks default cross-site POSTs; additionally verify `Origin`/`Referer` on state-changing routes, or use a double-submit CSRF token for cookie-authenticated SPAs.
+
+## 5. Input Validation Is an API Boundary, Not Hygiene
+
+Every route input is validated with Zod at the boundary (13.2.3). Never let raw `req.body` near SQL. **Zod schema → parsed data** is the only path. Wrong types, oversized strings, malicious strings — rejected with `400 VALIDATION_ERROR` before any business logic.
+
+## 6. Rate Limiting (Quick Recipe)
+
+```bash
+npm install express-rate-limit
+```
+
+```javascript
+import { rateLimit } from 'express-rate-limit';
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7' });
+const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, skipSuccessfulRequests: true });
+app.use('/api/', apiLimiter);
+app.use('/auth/', authLimiter);   // credential stuffing dies here
+```
+
+For high-scale apps use Redis-backed limiters; in-memory is correct for one node process.
+
+## 7. SQL Injection, XSS, and Dependency Audits
+
+- **SQLi**: impossible via `pg` parameterized queries (13.2.5) — string-built SQL is the only hole; never do it.
+- **XSS**: escape untrusted output; your React frontend escapes by default; never `dangerouslySetInnerHTML` user content. Build responses as JSON, not HTML, here.
+- **Dependency vulnerabilities**: `npm audit` in CI; fix with `npm audit fix` after reading changelogs; pin majors with lockfile.
+- **`npm audit` output reading**: prioritize critical/high in production deps; dev-only transitive lows can wait.
+
+## 8. Logging and Error Hygiene
+
+- Log **server-side** with `pino` (`npm install pino-http`): request id, method, path, status, duration — never passwords, tokens, or full bodies.
+- Clients get **generic `500` + `requestId`**; stack traces stay in logs. `AppError` carries safe messages outward; unexpected errors go to logs only.
+- `NODE_ENV=production` enables Express's production error behavior and disables verbose traces.
+
+## 9. Pre-Ship 10-Point Checklist
+
+- [ ] `.env` untracked; secrets rotated; example file exists
+- [ ] Helmet enabled; `X-Powered-By` gone
+- [ ] CORS allowlist is explicit; `*` nowhere
+- [ ] Cookies: `HttpOnly`, `Secure` (prod), `SameSite`
+- [ ] All inputs Zod-validated at boundary
+- [ ] SQL is 100% parameterized
+- [ ] Rate limits on auth + general API
+- [ ] Errors: generic client message, full server log, request IDs
+- [ ] `npm audit` clean or justified
+- [ ] Auth distinguished from authorization everywhere (13.3.2)
+
+## 10. Practice
+
+**Guided exercise.** Install helmet + cors + express-rate-limit; enable them; hit `/api/` 121 times and observe 429; confirm `X-Powered-By` header is gone (`curl -I http://localhost:4000/health`).
+
+**Independent exercise.** Add `.env.example`, ensure `.env` is ignored, and write the 3 commands a teammate needs to boot the API on a fresh clone.
+
+**Challenge.** Add a `requestId` middleware (`crypto.randomUUID()`), attach it to every log line and every 500 response body, and explain how a support human would trace one user's failed checkout end to end.
+
+**Assessment checklist**
+
+- [ ] I can configure helmet, CORS allowlist and rate limits without reference.
+- [ ] I never ship a wildcard CORS origin and never commit `.env`.
+- [ ] My cookies carry HttpOnly + SameSite and production adds Secure.
+- [ ] Every input passes Zod; every query is parameterized.
+- [ ] I run `npm audit` and know what its output means.
+
+</BookNodePage>

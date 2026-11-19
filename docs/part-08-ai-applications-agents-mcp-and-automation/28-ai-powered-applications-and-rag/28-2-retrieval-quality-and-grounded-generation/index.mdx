@@ -1,0 +1,38 @@
+---
+id: "index"
+title: "28.2 Retrieval Quality & Grounded Generation"
+sidebar_label: "28.2 Retrieval Quality & Grounded Generation"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28-s2">
+
+Ingestion (28.1) made HelpBot *able* to retrieve. This section makes it *trustworthy*. Two failure modes remain after a correct vector index: the right chunk is not ranked first (retrieval quality), and the model ignores or mangles the context it was given (grounding). Both are engineering problems with measurable fixes — not prompt superstition.
+
+## Why Naive Retrieval Is Not Enough
+
+A pure semantic search ranks "Can I return an opened item?" beautifully on the refunds clause — but fails on exact terms: `SKU-114`, "30 calendar days", invoice codes, a specific policy number. Keyword search (BM25) catches those exactly but is blind to paraphrase. **Hybrid retrieval plus a reranker** is the standard production answer: run both retrievers, fuse the rankings, then re-score the fused shortlist with a cross-encoder that reads the (query, chunk) pair together.
+
+| Symptom after 28.1 | Root cause | Fixed in |
+| :-- | :-- | :-- |
+| Right chunk exists, sits at rank 6 | Dense/BM25 disagree | 28.2.1 (RRF fusion) |
+| Exact SKU/clause queries fail | Dense blur of tokens | 28.2.1 (BM25 half of hybrid) |
+| Shortlist is right, order is wrong | No cross-encoder pass | 28.2.1 (reranking) |
+| Answer contradicts its own sources | Ungrounded generation | 28.2.2 (template + validator) |
+| Bot invents policy on unknowns | No refusal discipline | 28.2.2 (refusal pattern) |
+| Legal disputes the citation | No audit trail | 28.2.2 (logging, chips) |
+
+## The Two Topics in This Section
+
+- **[28.2.1 Hybrid Search and Reranking](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation/28-2-1-hybrid-search-and-reranking)** — BM25 + dense search, Reciprocal Rank Fusion math with a worked example, cross-encoder reranking (Cohere `rerank-v4.0-fast`, open-source `BAAI/bge-reranker-v2-m3` — verified Nov 2026), the end-to-end TypeScript pipeline, a realistic latency budget, and the degradation ladder for when the reranker is down.
+- **[28.2.2 Citations, Hallucination Mitigation and UX](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation/28-2-2-citations-hallucination-mitigation-and-ux)** — citation discipline (every claim traceable to a retrieved chunk), grounded-answer templates with `[n:path#page]` markers, a hallucination taxonomy, the "I don't know" refusal pattern, and the HelpBot UI contract: one citation chip, confidence band, human-contact CTA, red-flag list for refunds and PII.
+
+## Exit Criteria for HelpBot
+
+After 28.2, HelpBot answers policy questions with clickable source chips, declines out-of-scope questions instead of improvising, and logs retrieval scores, chunk IDs, model and tokens for every interaction — the raw material Chapter 36 turns into evaluations. Prerequisites: 28.1 complete (six policy docs indexed and hand-verified). Latency and model facts cited were verified against official Cohere, BAAI and OpenAI docs in November 2026; re-verify before production.
+
+A concrete exit test: run 20 questions from the support team's FAQ list. HelpBot should answer at least 16 with a correct citation chip, refuse the rest, and never cite a stale policy. If it cannot, go back to 28.1 — grounding cannot fix a broken index.
+
+</BookNodePage>

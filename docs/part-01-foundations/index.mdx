@@ -1,0 +1,145 @@
+---
+id: "index"
+title: "Part 01: Foundations"
+sidebar_label: "Part 01 — Foundations"
+slug: "/part-01-foundations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-01">
+
+Every costly production outage, unexplainable deployment failure, or hallucination-riddled AI pull request traces back to the exact same root cause: someone tried building application layers on top of foundations they treated as invisible magic. When a local web server works on `localhost:3000` yet refuses connections inside Docker (`ECONNREFUSED`), when an integer ID silently rounds in JSON (`2^53`), when a slow database query stalls an entire Node.js API, or when an AI assistant invents a plausible-looking command that breaks Git history, surface syntax tricks cannot save you. **Foundational systems literacy** does.
+
+**Part 01 — Foundations (`26 Focused Learning Hours`)** is the bedrock upon which all remaining **638 hours** of **The AI-Native Engineer** stand. Before writing production React applications (`Part 02`), Python FastAPI backends (`Part 03`), PostgreSQL relational schemas (`Part 04`), containerized deployments (`Part 05`), or autonomous RAG and MCP agent systems (`Parts 07–08`), you build exact mental models of **how machines compute**, **how operating systems isolate and run programs**, **how data travels reliably across the internet**, **how engineers decompose ambiguity systematically**, and **how to command Git, terminals, and debugging tools with calm authority**.
+
+## Why Foundations Matter More—Not Less—in the AI Era
+
+A common trap among newcomers learning software engineering alongside modern LLMs is assuming foundational mechanics belong to a bygone decade: *"Why learn binary numbers, OS processes, DNS resolution, stack traces, or Git internals if an AI assistant generates React components in three seconds?"*
+
+Empirical field engineering teaches the exact opposite lesson. When code generation drops toward zero cost, **verification, system boundaries, debugging, and architectural judgment become the entire bottleneck**:
+
+1. **AI optimizes locally unless you understand the machine globally:** An assistant can write a recursive loop or fetch wrapper instantaneously—yet fail to notice it buffers a 2 GB file into RAM, blocks a single-threaded event loop, writes unindexed files into `/tmp`, or leaks credentials across OS process environments.
+2. **Debugging shifts from syntax typos to boundary mismatches:** Today's failures rarely look like missing semicolons. They look like DNS resolution timeouts, TLS handshake mismatches, `PATH` shadowing between global Python and a project `.venv`, line-ending corruption across Windows/Linux boundaries, or silent off-by-one assumptions inside generated helper functions.
+3. **Every advanced Part assumes fluent Part 01 habits:**
+   - **Part 02 (`JavaScript & Frontend`, 92h)** expects you to understand IEEE 754 number precision limits, UTF-8 encoding, HTTP request/response lifecycles, browser security origins, and clean flow tracing.
+   - **Part 03 (`Python Development`, 40h)** expects clean command-line fluency, virtual environment isolation, file I/O discipline, and stack-trace ownership.
+   - **Part 04 (`Databases & Full-Stack`, 124 h)** builds directly on storage hierarchies, concurrency control, network round trips, and transactional invariants.
+   - **Part 05 (`Deployment, Cloud & DevOps`, 62h)** turns Part 01 operating systems, TCP/IP, DNS, HTTPS/TLS, and Git history into live containerized infrastructure.
+   - **Parts 07–08 (`AI Engineering & Agents`, 128h)** demand crystal-clear engineering judgment to spot hidden assumptions in model output, trace multi-hop tool failures, and keep verification ahead of generation speed.
+
+## Architectural Map of Part 01 (`26 Hours`, `3 Chapters`)
+
+Part 01 divides neatly into **three tightly coupled pillars** spanning hardware-to-HTTP mechanics, analytical reasoning, and hands-on developer instrumentation:
+
+```text
++-----------------------------------------------------------------------------------+
+|                        PART 01 — FOUNDATIONS (26 HOURS TOTAL)                     |
++-----------------------------------------------------------------------------------+
+|                                                                                   |
+|  CHAPTER 01 (8h): HOW COMPUTERS, SOFTWARE & THE INTERNET WORK                     |
+|  [01.1 Computer Fundamentals] -> [01.2 Operating Systems] -> [01.3 The Internet]  |
+|   Transistors, CPU/RAM/SSD,       Kernel, Processes, RAM      Packets, IP Routing,|
+|   Binary, UTF-8, IEEE 754         Virtualization, POSIX       DNS, TCP, TLS 1.3,  |
+|                                   Shells, Env Vars & PATH     HTTP/1.1–3 & Browser|
+|                                                                                   |
+|  CHAPTER 02 (8h): CRITICAL THINKING & PROBLEM SOLVING                             |
+|  [02.1 Analytical Thinking]   -> [02.2 Algorithmic Logic] -> [02.3 AI Judgment]   |
+|   Problem Decomposition,          State Machines, Control     Evaluating AI Code, |
+|   First Principles, Constraints   Flow, Edge Cases, Specs     Hidden Assumptions, |
+|   & Root Cause Analysis           & Mental Flow Tracing       Verification Habits |
+|                                                                                   |
+|  CHAPTER 03 (10h): DEVELOPER TOOLS, GIT, DEBUGGING & AI LEARNING                  |
+|  [03.1 Modern Workspace]      -> [03.2 Version Control]   -> [03.3 Debugging]     |
+|   VS Code, POSIX CLI Fluency,     Git Snapshots, Branching,   Stack Traces, Logs, |
+|   npm / pip / uv Isolation        Merging & GitHub Remotes    Bisect & AI Tutoring|
+|                                                                                   |
++-----------------------------------------------------------------------------------+
+                                          |
+                                          v
+          Ready for Part 02 (JavaScript & Frontend, 92h) -> Part 10 (Capstone)
+```
+
+## Canonical Chapter Breakdown & Learning Objectives
+
+| Chapter | Title | Focused Hours | Subchapters & Topics | Core Practical Outcome |
+| :--- | :--- | :---: | :--- | :--- |
+| **[01](/book/part-01-foundations/01-how-computers-software-and-the-internet-work)** | **How Computers, Software & the Internet Work** | **8h** | `01.1` Computer Fundamentals (`4` topics)<br/>`01.2` Operating Systems (`3` topics)<br/>`01.3` How the Internet Works (`4` topics) | Trace a live HTTPS web request end-to-end across CPU/RAM, OS processes, DNS lookup, IP routing, TLS 1.3 encryption, and browser rendering |
+| **[02](/book/part-01-foundations/02-critical-thinking-and-problem-solving)** | **Critical Thinking & Problem Solving** | **8h** | `02.1` Analytical Thinking (`3` topics)<br/>`02.2` Algorithmic & Structured Logic (`3` topics)<br/>`02.3` Engineering Judgment in the AI Era (`3` topics) | Decompose ambiguous specs into explicit invariants, trace state transitions manually on paper, and catch subtle defects in AI-generated logic |
+| **[03](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning)** | **Developer Tools, Git, Debugging & AI Learning** | **10h** | `03.1` Modern Developer Workspace (`4` topics)<br/>`03.2` Version Control with Git (`3` topics)<br/>`03.3` Debugging & AI-Assisted Learning (`3` topics) | Configure an isolated CLI/IDE workspace, manage feature branches cleanly via `git switch`/`merge` + GitHub PRs, and isolate bugs systematically |
+
+## How Part 01 Integrates With the Book's Teaching Philosophy
+
+Before diving into `01.1`, lock in three non-negotiable study rules established in [Part 00 — Teaching and Practice Method](/book/part-00-about-this-book/00-6-teaching-and-practice-method):
+
+1. **Run Every Terminal Probe Yourself:** Reading an explanation of DNS records or OS environment variables grants surface familiarity. Running `dig`, `curl -v`, `ps`, `env`, and `git log --graph` personally inside your own WSL 2 / macOS / Ubuntu shell builds muscle memory that never fades under interview or production pressure.
+2. **Manual First, AI Verification Second:** Throughout Chapters 01–03, keep inline IDE autocomplete **off** while executing command-line exercises, writing trace tables, and repairing intentionally broken scripts. Use AI exclusively as a Socratic tutor *after* reading error messages directly (`03.3.3`).
+3. **Trace Failures Down to Observable Evidence:** Every chapter in Part 01 pairs plain-English intuition with **exact diagnostic instrumentation**. Whenever something misbehaves, train yourself to ask: *"What can I inspect directly—memory usage, exit code, `PATH`, DNS answer, HTTP status header, or `git status`—to prove what happened?"*
+
+## Concrete Capstone Readiness Gate for Part 01 (`Exit Criteria`)
+
+Do not rush past Hour 26 into JavaScript (`Part 02`) simply because you read every page. Verify you can complete all **five unassisted checks** cleanly before marking **Part 01 Done** inside your `PROGRESS.md` ledger (`00.11.5`):
+
+1. **Machine & Data Check (`Ch 01.1`):** Convert small decimal integers to binary/hexadecimal by hand, explain why UTF-8 uses 1–4 bytes across Unicode code points, and explain why storing currency as floating-point numbers triggers rounding bugs (`IEEE 754`).
+2. **OS & Shell Check (`Ch 01.2`):** Inspect running processes, explain parent-child environment variable inheritance, resolve a shadowed command via `which -a` / `$PATH`, and explain why virtual memory lets dozens of apps coexist inside fixed RAM.
+3. **Network & HTTP Probe Check (`Ch 01.3`):** Run a terminal DNS query (`dig` / `nslookup`) and raw verbose HTTP fetch (`curl -ILv https://example.com`), explaining DNS resolution, TCP handshake, TLS 1.3 negotiation, status codes (`200`, `301`, `404`, `500`), and response headers cleanly.
+4. **Spec & Flow Audit (`Ch 02`):** Given a messy 1-paragraph feature description and an AI-written snippet with two hidden edge-case bugs (for example, timezone boundary or empty input crash), locate both defects using a written state trace before running any interpreter.
+5. **Clean Git Workflow & Repro (`Ch 03`):** Initialize a project with isolated Node/Python tooling, create a feature branch using `git switch -c`, resolve an intentional merge conflict cleanly, trace a stack trace to its exact root-cause line, and push clean commit history to GitHub.
+
+## Guided Walkthrough: Seeing All Three Chapters Work Together
+
+Suppose you open a team repository on Monday morning, run `npm test`, and watch a suite fail with `TypeError: Cannot read properties of undefined (reading 'trim')` right after an API call returns unexpectedly. Watch how an engineer armed with **Part 01 (`Ch 01 + Ch 02 + Ch 03`)** resolves the failure calmly in four minutes instead of panic-prompting an LLM:
+
+- **Chapter 01 lens (Systems & Network):** Immediately checks whether the local environment (`env`, `.venv`, `node -v`) matches project requirements and inspects the live HTTP status (`curl -i`)—discovering the mock endpoint actually returned `404` HTML instead of `200` JSON due to a misspelled host URL.
+- **Chapter 02 lens (Critical Thinking & Edge Cases):** Recognizes two separable bugs: an environment URL mismatch *plus* a missing null/status guard in parser logic (`if (!res.ok) throw ...` never ran before `.json()`).
+- **Chapter 03 lens (Tools, Git & Debugging):** Creates a minimal reproduction test, fixes the missing response check on a clean feature branch (`git switch -c fix/handle-non-ok-response`), inspects `git diff`, commits atomically, and documents the root cause clearly for teammates.
+
+Notice the transformation: **Part 01 turns opaque machine errors into transparent, solvable engineering puzzles.**
+
+## A Diagnostic Field Guide: Connecting Symptoms to Foundational Layers
+
+Whenever your code misbehaves across Parts 02–10, resist guessing blindly or pasting entire files into an AI prompt. Instead, classify the observable symptom against the exact foundational layer where it originates:
+
+| Observable Symptom | Likely Root-Cause Layer | Part 01 Subchapter | First 30-Second Probe |
+| :--- | :--- | :--- | :--- |
+| Numeric rounding bug (`0.1 + 0.2`) or corrupted 18-digit JSON ID | IEEE 754 `binary64` float representation | `01.1.4` | Check `Number.isSafeInteger(id)` or convert money to integer cents |
+| International text turns into `Ã©` or slices off mid-emoji | UTF-8 multi-byte vs. UTF-16 code unit confusion | `01.1.4` | Check HTTP `charset=utf-8` header and `Buffer.byteLength()` |
+| `command not found` after installing Node, Python, or Git | Shell `$PATH` ordering or unexported shell startup | `01.2.3` | Run `which -a python3 node` and inspect `echo "$PATH"` |
+| `EADDRINUSE` (`port already in use`) on local dev server | Orphaned OS background process still holding socket | `01.2.2` | Run `lsof -i :3000` or `ss -tulpn` to identify owning `PID` |
+| `ENOTFOUND` or `ERR_NAME_NOT_RESOLVED` on API request | DNS resolution mismatch, typo, or local `/etc/hosts` | `01.3.3` | Run `dig +short api.example.com` or `nslookup` |
+| App connects locally (`localhost`) yet fails inside Docker | Loopback `127.0.0.1` binding vs. `0.0.0.0` bridge network | `01.3.2` | Inspect server listen host and port binding inside container |
+| Edge case crashes on empty list, timezone boundary, or duplicate event | Incomplete specification decomposition & unmodeled state | `02.1`–`02.2` | Sketch explicit state machine transitions and trace inputs on paper |
+| AI-generated utility passes one test yet silently skips auth or scale | Hidden assumptions inside fluent generated output | `02.3` | Audit failure paths, nulls, tenant scope, and complexity bounds |
+| Merge markers (`<<<<<<< HEAD`) or lost local edits | Unclear Git snapshot vs. branch graph model | `03.2` | Inspect `git status`, `git diff`, and `git log --oneline --graph` |
+| Long mysterious crash output with 25 lines of module paths | Unread Python traceback or Node/Browser stack trace | `03.3.1` | Locate your own file/line frame first, then inspect surrounding inputs |
+
+## Recommended Pacing Plan Across Your 26 Hours
+
+Do not compress Part 01 into a rushed weekend skim. Spreading `26 focused hours` deliberately across **10–14 study sessions** locks in retention through spaced recall and hands-on practice:
+
+1. **Sessions 1–3 (`Chapter 01`, `8 Hours`):** Dedicate ~2.5 hours to `01.1` (build binary/hex fluency and run the Python/Node memory & UTF-8 probes), ~2.5 hours to `01.2` (experiment safely with `ps`, permissions, `$PATH`, and exit codes), and ~3.0 hours to `01.3` (capture live `dig` and `curl -ILv` traces and dissect every header).
+2. **Sessions 4–6 (`Chapter 02`, `8 Hours`):** Work strictly with paper or a blank Markdown scratchpad beside your screen (`02.1` problem decomposition trees, `02.2` hand-executed variable trace tables, and `02.3` timed 3-minute audits on intentionally flawed AI snippets). Resistance to jumping straight into an editor is normal—stay disciplined until decomposition feels automatic.
+3. **Sessions 7–10 (`Chapter 03`, `10 Hours`):** Configure your editor and terminal shortcuts cleanly (`03.1`), run every Git branching, conflict-resolution, and PR drill inside a throwaway sandbox repo (`03.2`), practice `git bisect` and minimal 10-line bug reproductions (`03.3`), and log every verified milestone inside your `PROGRESS.md` tracker.
+
+## Five-Minute Part 01 Baseline Pre-Flight Check
+
+Before reading `01.1.1`, run this quick diagnostic snippet inside your terminal (`Ubuntu on WSL 2`, `macOS Terminal`, or `Ubuntu Linux`) to verify your foundational workbench is ready for the full part ahead:
+
+```bash
+echo "=== SHELL & OS ==="
+uname -a
+echo "Shell: $SHELL | Working Dir: $(pwd)"
+echo "=== RUNTIMES & TOOLS ==="
+git --version && node --version && npm --version && python3 --version
+```
+
+If every command responds cleanly with current versions, your workstation is ready. If `git`, `node`, or `python3` prints `command not found`, pause for ten minutes and finish the platform installation steps inside **00.11.2 Setting Up Your Development Environment** first so every hands-on lab runs smoothly from Page 1 onward.
+
+## Official Part 01 Cross-Links & Start Line
+
+- **Prerequisite Check:** Ensure your workstation satisfies [00.11.1 Computer and System Requirements](/book/part-00-about-this-book/00-11-before-you-begin/00-11-1-computer-and-system-requirements) and your OS/shell/editor setup matches [00.11.2 Setting Up Your Development Environment](/book/part-00-about-this-book/00-11-before-you-begin/00-11-2-setting-up-your-development-environment).
+- **Begin Chapter 01:** [01. How Computers, Software & the Internet Work (8 Hours)](/book/part-01-foundations/01-how-computers-software-and-the-internet-work)
+- **Jump Next After Part 01:** [Part 02 — JavaScript & Frontend Development (92 Hours)](/book/part-02-javascript-and-frontend-development)
+- **Quick Reference Appendix:** [Appendix E — Developer Reference Materials](/book/appendix/appendix-e-developer-reference-materials)
+
+</BookNodePage>

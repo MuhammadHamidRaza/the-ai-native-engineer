@@ -1,0 +1,127 @@
+---
+id: "02-3-2-spotting-hidden-assumptions"
+title: "02.3.2 Spotting Hidden Assumptions"
+sidebar_label: "02.3.2 Spotting Hidden Assumptions"
+slug: "/part-01-foundations/02-critical-thinking-and-problem-solving/02-3-engineering-judgment-in-the-ai-era/02-3-2-spotting-hidden-assumptions"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-02-s3-t2">
+
+Ask any seasoned engineer what caused the strangest outage of their career, and rarely was it a blatant syntax typo or missing `try/catch`. Almost always, the system passed unit tests cleanly, passed staging QA smoothly, ran quietly for six weeks—and then exploded catastrophically at 00:05 UTC on January 1st, or the first time two customers shared an identical surname, or the afternoon an international client uploaded a file from Tokyo!
+
+Every single one of those delayed-fuse failures grows out of a **Hidden Assumption**: an unstated, untested bet silently baked into code (*"every day has 24 hours"*, *"filenames only contain English ASCII letters"*, *"the laptop clock matches server UTC"*, *"only one user clicks Approve at a time"*, *"a webhook arrives exactly once in strict order"*). Both novice humans and AI coding assistants bake dozens of hidden assumptions into default code unless you systematically drag them into the light.
+
+## 1. Plain-English Intuition: Icebergs Under Calm Water
+
+Think of a visible code snippet (`25 lines of Python or TypeScript`) as the **tip of an iceberg** floating smoothly above calm water. Beneath the surface hide **silent environmental guarantees** that the code never declares explicitly in its function signature—yet relies on completely for survival!
+
+If you assume *"the restaurant delivery app runs only in New York City, only for USD cash, on one single tablet"* when building a prototype, and six months later a restaurant in Lahore or Toronto opens across two tablets during Daylight Saving Time switchover, the hidden submerged icebergs rip the hull open overnight!
+
+**Spotting Hidden Assumptions** means developing X-ray vision that asks beside every innocent-looking line: *"What secret condition about the world must be true for this line not to lie or crash?"*
+
+## 2. The Eight Classic Hidden-Assumption Categories (Every Engineer Meets These!)
+
+Memorize these eight recurring real-world assumption traps—you will catch bugs across **Parts 02–10** effortlessly the moment you recognize them:
+
+| Assumption Category | What Naive Code Silently Assumes | Real-World Truth That Breaks It | Safe Engineering Default |
+| :--- | :--- | :--- | :--- |
+| **1. Time, Dates & Timezones** | *"Local laptop time == Server time == User time; every day has 24 hours; dates parse identically (`04/05/2026`)"* | Cloud servers run **UTC**; browser users span global timezones; DST creates 23h/25h days; `04/05` means April 5 (US) vs. May 4 (UK/EU) | Store & transmit timestamps strictly in **UTC `ISO-8601` (`timestamptz`)**; convert to user local timezone strictly at UI display |
+| **2. Text, Names & Encoding (`01.1.4`)** | *"Users have First + Last name, ASCII letters only, never contain `'`, `,`, emojis, or spaces"* | Single-word names, multi-part surnames, `"O'Connor"`, `"José"`, `"محمد"`, RTL scripts, CSV commas inside company names | Use **UTF-8 everywhere**, never split `fullName.split(" ")[1]`, parameterize SQL, quote CSV via standard library (`csv`) |
+| **3. Identity & Uniqueness** | *"Email addresses never change; usernames/names uniquely identify people forever"* | Two users share `"Muhammad Ali"`; employees change email domains on marriage/rebrand | Always key records internally on **immutable surrogate IDs (`UUID` / `BIGINT`)**, never mutable emails or names |
+| **4. Network, Retries & Delivery Order** | *"Webhooks arrive exactly once, instantaneously, and in exact chronological order"* | Providers retry dropped timeouts (`at-least-once` delivery!); `updated` webhook can arrive *before* delayed `created`! | Enforce **idempotency keys (`UNIQUE`)** and compare authoritative event timestamps/versions before overwriting newer state! |
+| **5. Concurrency & Race Conditions** | *"One user runs Step 1 (`check balance`) → Step 2 (`deduct`) uninterrupted"* | Two tabs, double-clicks, or background workers interleave Step 1 simultaneously! | Protect critical state updates inside **atomic database SQL checks / transactions** (`Part 04`) |
+| **6. Ordering Without `ORDER BY`** | *"Database queries and JS object keys always return rows in insertion order"* | PostgreSQL returns rows in arbitrary disk/parallel scan order unless **`ORDER BY`** is explicitly requested (`Ch 11`)! | Never rely on implicit query ordering—always specify deterministic `ORDER BY col, id` |
+| **7. Single-Tenant / Small-Data Scale** | *"This `SELECT *` table only holds 50 rows and belongs to one customer"* | Production grows to 400,000 rows across 80 separate customer workspaces | Enforce **`WHERE workspace_id = $1`** and **`LIMIT` / pagination** from commit one |
+| **8. Floating-Point Money & Units (`01.1.4`)** | *"Numbers represent exact base-10 decimals and units (`seconds` vs `ms`, `USD` vs `cents`) are obvious"* | `0.1 + 0.2 !== 0.3`; mixing `timeout: 5` (5s in Python `requests` vs. 5ms in JS `setTimeout`!) silently fails | Suffix every ambiguous variable clearly with units: `timeout_ms`, `price_cents`, `size_bytes`! |
+
+## 3. Case Study: Five Silent Assumptions Packed Into Four Innocent Lines
+
+Look at this tiny, totally ordinary snippet an AI coding assistant writes effortlessly when prompted *"Group daily revenue totals per user and alert top spenders"*:
+
+```python
+# Look closely — how many silent assumptions hide in 6 innocent lines?
+def daily_revenue_by_user(orders):
+    totals = {}
+    for o in orders:
+        day = o["created_at"][:10]           # Assumption #1 & #2!
+        key = (day, o["user_email"])         # Assumption #3!
+        totals[key] = totals.get(key, 0) + float(o["amount"])  # Assumption #4 & #5!
+    return totals
+```
+
+Count the submerged icebergs exposed immediately when pressure-tested:
+1. **`o["created_at"][:10]` (`Timezone + Format Trap`):** Slicing characters `0..10` blindly assumes `"2026-11-15T23:30:00Z"` means November 15 for *every* user—even a customer in New York (`18:30 EST`, still Nov 15) vs. Karachi (`04:30 PKT`, already Nov 16!)—and crashes silently if an ISO string lacks leading zeros or comes in as a Python `datetime` object!
+2. **Missing Status / Refund Filter (`Domain Assumption`):** Sums `"cancelled"`, `"refunded"`, or `"failed"` orders straight alongside `"paid"` revenue unless status is checked explicitly!
+3. **`o["user_email"]` (`Case & Mutability Trap`):** `"Alice@Acme.com"` and `"alice@acme.com"` split into *two separate user buckets* unless keyed cleanly on immutable `user_id` (and emails lowercase-normalized!).
+4. **`float(o["amount"])` (`Currency & Unit Precision Trap`):** Sums floating-point dollars (`0.1 + 0.2` rounding drift) AND silently mixes `"USD"` and `"EUR"` or `"JPY"` if multi-currency orders ever arrive!
+5. **`orders` fits comfortably in RAM (`Scale Trap`):** Fine for 500 orders; silently OOMs a container when handed 2 million unpaginated historical rows instead of aggregating inside PostgreSQL `GROUP BY` (`Ch 11`)!
+
+## 4. How to Cultivate Assumption-Hunting Reflexes (`Pre-Mortem Habit`)
+
+Before finalizing any non-trivial function or AI-generated plan, execute a quick **60-Second Assumption Pre-Mortem**:
+
+1. **Swap the Clock & Map:** *"What happens if the server runs in UTC, the user sits in Tokyo (`UTC+9`), and a timestamp lands at `23:55 UTC`?"*
+2. **Swap the Input Size (`× 0` and `× 100,000`):** *"What breaks if the list is empty (`0`), OR holds `100,000` items?"*
+3. **Swap the Network (`Offline / Slow / Duplicate`):** *"What happens if this external API takes 20 seconds, returns `503`, OR triggers our webhook twice identically?"*
+4. **Swap the Actor (`Wrong Tenant / Malicious String`):** *"What happens if User B guesses User A's UUID, or enters `O'Brien, LLC 🚀` into the name field?"*
+
+## 5. Runnable Lab: Observe Subtle Real-World Assumption Failures Live
+
+Run this quick Python probe illustrating **three hidden assumptions breaking live**: float accumulation drift, unnormalized string equality (`"Alice@"` vs `"alice@"`), and missing unit suffixes (`ms` vs `seconds` / naive string date slicing):
+
+```bash
+python3 - << 'EOF'
+from decimal import Decimal
+
+# 1. Float summation drift vs integer cents / Decimal
+prices_float = [0.10] * 3
+print("Float 0.10 * 3 == 0.30?", sum(prices_float) == 0.30, "| actual:", sum(prices_float))
+prices_cents = [10] * 3
+print("Integer cents sum == 30? ", sum(prices_cents) == 30, "| formatted:", f"${sum(prices_cents)/100:.2f}")
+
+# 2. Hidden Case & Whitespace Assumption on Emails / Coupon Keys
+user_a = "Alice@Example.com "
+user_b = "alice@example.com"
+print("Naive match:", user_a == user_b, "| Normalized match:", user_a.strip().lower() == user_b.strip().lower())
+
+# 3. Hidden Mutated Caller List Assumption vs Pure Sorted Copy
+raw_times = [420, 120, 900]
+ordered = sorted(raw_times)   # Safe copy; .sort() mutates raw_times silently!
+print("Original preserved:", raw_times, "| Sorted:", ordered)
+EOF
+```
+
+Notice how tiny, effortless engineering defaults—**integer `cents` (`_cents`), `.strip().lower()` normalization + immutable IDs, unit-suffixed identifiers (`_ms`, `_bytes`), and non-mutating transforms**—eliminate whole families of silent assumptions before bugs ever happen!
+
+## 6. Failure Modes & Common Pitfalls
+
+- **Naming variables ambiguously without units (`timeout`, `delay`, `price`, `size`):** Passing `timeout = 5000` into an API expecting seconds locks connections for **83 minutes** (`5000s`) instead of 5 seconds! Always embed explicit units (`timeout_ms`, `timeout_sec`, `max_bytes`, `amount_cents`).
+- **Assuming frontend validation protects the backend (`Part 02 + 04`):** Marking `<input type="number" min="1" max="100" required />` in HTML/React only helps polite UI users—anyone with `curl` (`01.3.4`) sends `{"quantity": -999}` straight past browser validation unless your backend API re-validates every constraint!
+- **Assuming browser storage or local filesystems persist forever:** Writing user state strictly to browser `localStorage` fails silently in Safari private windows, across devices, or when users clear cache; similarly, writing uploaded PDFs into `/tmp` or a container's ephemeral disk vanishes on the next cloud redeploy (`Part 05`) unless persisted in PostgreSQL or Object Storage (`S3`)!
+- **Assuming stable connectivity during multi-step user actions:** Mobile users walk into elevators mid-submit, browsers suspend background tabs (`throttling timers`), and laptops go to sleep mid-stream. Design flows cleanly with explicit loading states, server timeouts, and idempotent retries!
+- **Assuming AI models know your project's unwritten rules:** Unless you explicitly inform an AI coding assistant *"all prices are integer cents; all endpoints enforce `workspace_id`; all dates are UTC ISO strings"*, the model **must guess**—and its hidden guess rarely matches your architecture (`00.7.2`)!
+- **Assuming existing database rows stay empty during schema changes (`Part 04`):** Adding a new `NOT NULL` column without a default value breaks live migrations if 50,000 legacy customer rows already exist in production. Always ask: *"What happens to yesterday's rows when this code ships tomorrow?"*
+
+## 7. Hands-On Practice Exercises
+
+1. **Hunt 5 Hidden Assumptions in a "Simple" Booking Spec:** Suppose someone writes a meeting-room scheduler storing `start_time = "14:00"`, `duration_hours = 1`, `booked_by = "Hamid"`, checking `if room.bookings.every(b => b.start_time !== req.start_time)`. List **five hidden assumptions** that break this scheduler in real life (`date missing`, `overlapping duration 14:00 vs 14:30`, `timezone mismatch`, `name collision`, `double-click race condition`).
+2. **Unit-Suffix Refactor Check:** Audit these 4 sloppy variable names—`limit`, `price`, `ttl`, `delay`—and rewrite each with an unmistakable explicit unit suffix (`max_upload_bytes`, `subtotal_cents`, `cache_ttl_sec`, `retry_backoff_ms`) explaining what disaster each unit suffix prevents.
+3. **Ephemeral vs. Persistent Storage Audit:** Explain why saving uploaded user PDFs inside `./uploads/` inside a cloud container works cleanly on your local laptop for two weeks and mysteriously deletes every uploaded document after your first deployment update (`Part 05`).
+
+## Key Takeaways
+
+- **Hidden assumptions** are silent bets about timezones, text encodings, money precision, concurrency, uniqueness, network reliability, and data scale buried inside normal-looking code.
+- Always run a **60-second Pre-Mortem** swapping clock/timezone, scale (`0` & `100k`), network drops/retries, and adversarial inputs before approving your own or AI-written code.
+- Eliminate ambiguity structurally using **immutable IDs**, **UTC ISO timestamps**, **integer minor currency units**, **explicit unit suffixes (`_ms`, `_cents`, `_bytes`)**, and **explicit backend validation**.
+
+## Official Primary References
+
+- [PostgreSQL Documentation — Date/Time Types (`timestamptz` best practices)](https://www.postgresql.org/docs/current/datatype-datetime.html)
+- [Falsehoods Programmers Believe About Names (`kalzumeus.com`)](https://www.kalzumeus.com/2010/06/17/falsehoods-programmers-believe-about-names/)
+- [Stripe API Design — Idempotency Keys & Minor Currency Units (`docs.stripe.com`)](https://docs.stripe.com/api/idempotent_requests)
+
+**Next Topic:** [02.3.3 Verification Habits and Mental Discipline](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-3-engineering-judgment-in-the-ai-era/02-3-3-verification-habits-and-mental-discipline)
+
+</BookNodePage>

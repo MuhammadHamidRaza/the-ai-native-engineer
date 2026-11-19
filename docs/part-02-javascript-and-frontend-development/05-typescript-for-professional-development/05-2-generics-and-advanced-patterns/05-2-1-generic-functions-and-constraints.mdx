@@ -1,0 +1,87 @@
+---
+id: "05-2-1-generic-functions-and-constraints"
+title: "05.2.1 Generic Functions and Constraints"
+sidebar_label: "05.2.1 Generic Functions and Constraints"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-2-generics-and-advanced-patterns/05-2-1-generic-functions-and-constraints"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s2-t1">
+
+Imagine writing `firstItem(arr)` so it works for arrays of numbers, strings, or `Task` objects *while remembering the exact element type returned*. Returning `unknown` forces the caller to re-check the type; using `any` throws away safety. **Generics** act as **type parameters** that lock input and output types together dynamically at each call site.
+
+## 1. Plain-English Intuition: Type Variables
+
+Think of `<T>` in `function firstItem<T>(items: readonly T[]): T | undefined` just like a normal function parameter—except instead of passing a *value*, TypeScript infers a *type* when you call the function:
+
+```typescript
+export function firstItem<T>(items: readonly T[]): T | undefined {
+  return items[0];
+}
+
+const n = firstItem([10, 20, 30]);       // inferred T = number -> n: number | undefined
+const s = firstItem(["a", "b"]);         // inferred T = string -> s: string | undefined
+```
+
+## 2. Constraining Generics with `extends` and `keyof`
+
+Sometimes a generic function needs a minimum shape on `T`—for example, accessing `.id` or indexing by a known key:
+
+```typescript
+// Constraint: T must have an `id: string` property
+export function indexById<T extends { id: string }>(items: readonly T[]): Map<string, T> {
+  const map = new Map<string, T>();
+  for (const item of items) {
+    map.set(item.id, item);
+  }
+  return map;
+}
+
+// Indexing safely using `K extends keyof T`
+export function pluck<T, K extends keyof T>(items: readonly T[], key: K): T[K][] {
+  return items.map((item) => item[key]);
+}
+
+const tasks = [
+  { id: "t1", title: "Write tests", done: true },
+  { id: "t2", title: "Ship release", done: false },
+];
+
+const byId = indexById(tasks);
+const titles = pluck(tasks, "title"); // string[]
+// pluck(tasks, "missing"); // Compile Error! "missing" is not in keyof Task
+console.log(byId.get("t1")?.title, titles);
+```
+
+## 3. Generic Interfaces for API Responses
+
+```typescript
+export interface PaginatedResult<TItem> {
+  items: readonly TItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+export function createEmptyPage<TItem>(pageSize = 20): PaginatedResult<TItem> {
+  return { items: [], page: 1, pageSize, totalCount: 0 };
+}
+```
+
+## 4. When *Not* to Reach for Generics
+
+If a type parameter appears **only once** in a signature and does not connect two values (e.g., `function logLength<T extends string>(s: T): void`), drop the generic and write `(s: string): void`. Generics exist to link types together, not to look clever.
+
+## 5. Practice Exercises
+
+1. Write a generic `groupBy<T, K extends string | number>(items: readonly T[], getKey: (item: T) => K): Record<K, T[]>` helper using `Map` or object accumulation safely.
+2. Write `wrapResponse<T>(data: T)` returning `{ ok: true, data: T, timestamp: number }` and verify TypeScript infers the exact nested `data` type.
+
+## Mastery Checklist
+
+- [ ] Uses `<T>` to preserve type relationships between inputs and outputs.
+- [ ] Constrains type parameters cleanly with `extends` and `keyof`.
+- [ ] Avoids useless single-use type parameters.
+
+</BookNodePage>

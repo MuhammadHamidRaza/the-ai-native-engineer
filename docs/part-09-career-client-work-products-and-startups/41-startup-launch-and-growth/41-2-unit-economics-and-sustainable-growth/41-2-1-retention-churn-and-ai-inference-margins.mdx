@@ -1,0 +1,114 @@
+---
+id: "41-2-1-retention-churn-and-ai-inference-margins"
+title: "41.2.1 Retention, Churn and AI Inference Margins"
+sidebar_label: "41.2.1 Retention, Churn and AI Inference Margins"
+slug: "/part-09-career-client-work-products-and-startups/41-startup-launch-and-growth/41-2-unit-economics-and-sustainable-growth/41-2-1-retention-churn-and-ai-inference-margins"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-41-s2-t1">
+
+AI products die by inference costs and churn, not by bad ideas. This lesson teaches you to measure the three numbers that decide whether CareQueue (or your own product) is a business or a bonfire — with real arithmetic, not rules of thumb.
+
+## 1. The Three Numbers That Matter
+
+- **CAC** (Customer Acquisition Cost) — total cost to acquire one paying customer, all-in: ads + sales time × your loaded hourly rate + tooling + fees.
+- **LTV** (Lifetime Value) — gross profit from one customer over their lifetime.
+- **Inference margin** — % of revenue left after model API costs.
+
+**The bar:** LTV ≥ 3× CAC, payback ≤ 12 months, gross margin ≥ 60% after inference costs. Miss all three and more customers = faster death.
+
+## 2. Worked Example: CareQueue's Unit Economics (Illustrative — Your Numbers Will Differ)
+
+**Pricing:** $99/mo GA (annual prepay $990 = 2 months free).
+
+**Volume per practice per month:** 300 triaged messages, 100 billing-draft approvals.
+
+**Inference cost per practice:**
+- Triage: 300 × ($0.0027 input + $0.0018 output) ≈ **$1.35/mo** (Haiku-class model at ~$3/$15 per M)
+- Billing drafts: 100 × ($0.005 in + $0.008 out) ≈ **$1.30/mo**
+- Digest + embeddings + retries + evals: ≈ **$1.00/mo**
+- **Total inference ≈ $3.65/mo per practice ≈ 3.7% of revenue** (96% margin on model costs)
+
+**Infrastructure:** Postgres + Render/Railway/Fly shared ≈ $40/mo fixed; storage+egress ≈ $5/mo; total fixed ≈ $45/mo.
+
+**One fully-loaded founder-hour cost for sales/onboarding:** $60/hr loaded (or your salary ÷ 2,000 working hours — use $50–$80 as a sane band).
+
+**CAC via warm outbound (the actual CareQueue channel):**
+- 10 cold-but-warm emails → 4 calls → 2 pilots → 1 paid annual.
+- Time: 2h email+reply + 2× 30min calls + 2h setup = ~5h → **CAC ≈ $300**
+
+**Lifetime:** 5% monthly logo churn → average lifetime ≈ 20 months (1/0.05). Churn is measured on logos; for SMB dental practices (contract-free, relationship-based) 5%/mo (≈46%/yr) is *typical bad*, 2%/mo (≈22%/yr) is good. Use 4%/mo for this worked example (avg lifetime 25 months) — be honest that you don't know yet: **measure it; assume nothing.**
+
+**LTV (gross profit, not revenue):**
+- Monthly gross profit per logo = $99 − $3.65 (inference) − $5/12 hosting share ≈ **$95/mo**
+- = $95 × 25 months ≈ **$2,375 LTV**
+- LTV / CAC = 2375 / 300 ≈ **7.9×** — healthy. Even at $450 CAC and 15-month lifetime: ($95 × 15) / 450 ≈ **3.2×** — still above the 3× bar.
+
+**Break-even:** fixed $45/mo ÷ $95/mo gross profit ≈ **1 paying practice**. Two pilots paying for the infra — that is the shape you want before public launch.
+
+## 3. Churn Math (Do This for Your Product)
+
+```text
+logo churn = logos lost this month / logos at start of month
+revenue churn = MRR lost this month / MRR at start of month
+gross churn = MRR lost; net churn = MRR lost − expansion MRR
+```
+
+CareQueue after 90 days (illustrative): 6 pilots → 5 retained, 1 lost → 16.7%/quarter churn ≈ **5.5%/mo**. At that rate: lifetime ≈ 18 months, LTV ≈ $1,710, LTV/CAC ≈ 5.7 — still viable, barely. **One churn-reason conversation with the lost practice** ("setup too heavy") → change onboarding → churn drops to 3%/mo → LTV jumps to $2,850. The single cheapest growth lever for CareQueue is churn, not acquisition.
+
+**Logo vs revenue churn:** if your biggest practice ($249/mo) stays and two small ones leave, logo churn looks bad while revenue churn is fine. Track both separately, and never celebrate logo growth that hides revenue shrinkage.
+
+## 4. AI-Specific Margin Engineering
+
+- **Route by difficulty.** 80% of messages are confirmations/simple — Haiku-class at $0.0045; only billing drafts need the better model at $0.013. Routing saves ~55% of inference spend.
+- **Cache aggressively.** Identical billing question phrasings (insurance codes repeat!) hit a response cache → draft cost ~$0.001 after the first.
+- **Small models first.** Base model by default; escalate only when confidence is low or `Needs Human` is tagged.
+- **Cap tokens hard.** `max_tokens` on every draft; 90% of drafts fit in &lt;200 tokens.
+- **Batch the nightly evals.** Evals offline; not on the request path, not in the user's latency budget.
+- **Watch the meter weekly.** Cost per *approved draft* — not cost per token — is your business metric. If it rises, quality or volume mix changed; investigate.
+
+## 5. Sensitivity Analysis (Before You Scale)
+
+| Scenario | Inference | Churn | LTV/CAC | Verdict |
+| :-- | --: | --: | --: | :-- |
+| Base | $3.65/mo | 4%/mo | 7.9× | Scale |
+| Model prices double | $7.30/mo | 4%/mo | 6.4× | Fine |
+| Churn doubles | $3.65/mo | 8%/mo | 3.9× | Fix retention first |
+| Both | $7.30/mo | 8%/mo | 3.3× | Barely viable; do not add sales spend |
+
+**Rule:** before raising prices or adding a hire, run this table with churn ±100% and inference ±100%. If the business survives both, you can afford to grow. If not, grow nothing yet.
+
+## 6. Common Failure Modes
+
+- **Never measuring inference cost** — $0.02×3,000 calls = surprise $4k invoice.
+- **Free tier without hard limits** — free users burn API budget; cap every free interaction.
+- **LTV ignoring gross profit** — $99 price ≠ $99 profit; subtract inference + hosting + support time.
+- **CAC counting cash but not your time** — founder-hours are the most expensive employees you have.
+- **Ignoring churn signals** — silent cancellations; measure weekly cohort retention, not MRR snapshot.
+
+## 7. Exercise
+
+Build the CareQueue unit-economics model for your product (or this one):
+
+1. Fill in: price, volume/mo per customer, inference cost (input+output+overheads), hosting share, loaded founder-hour cost.
+2. Compute LTV (gross profit × expected lifetime from *your assumed* churn), CAC (time × rate + cash), LTV/CAC.
+3. Compute break-even logos and the month the fixed $45 stops mattering.
+4. Run the § 5 sensitivity table with your numbers.
+5. Write the **one retention lever** you would pull first, and the 3 events you would measure weekly.
+
+**Acceptance criteria.**
+- [ ] Explicit, stated assumptions for: price, churn %, CAC ($ and hours), inference $
+- [ ] LTV, CAC, LTV/CAC, payback computed — not asserted
+- [ ] Break-even customer count shown
+- [ ] Sensitivity table with at least churn ×2 and inference ×2 rows
+- [ ] One retention metric chosen + the events you will watch every week
+
+## 8. Where This Leads
+
+**41.2.2** applies these numbers to the hardest transition in a solo product: hiring your first human — what to delegate, when, and how to keep your unit economics alive while payroll starts eating the margin.
+
+**Next:** [41.2.2 Transitioning From Solo Builder to Team](/book/part-09-career-client-work-products-and-startups/41-startup-launch-and-growth/41-2-unit-economics-and-sustainable-growth/41-2-2-transitioning-from-solo-builder-to-team)
+
+</BookNodePage>

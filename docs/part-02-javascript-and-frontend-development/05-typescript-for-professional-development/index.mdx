@@ -1,0 +1,81 @@
+---
+id: "index"
+title: "Chapter 05: TypeScript for Professional Development"
+sidebar_label: "Chapter 05: TypeScript for Professional Development"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05">
+
+JavaScript lets you misspell a property name (`user.emial`), forget that `find()` can return `undefined`, or change an API response shape in one file while ten components silently break at runtime. **TypeScript** solves this class of bugs *before your code runs* by checking structural type contracts across your entire project—while compiling down to clean, standard JavaScript.
+
+**Chapter 05 (`12 Focused Hours`)** starts by installing TypeScript and running `tsc` from scratch, then builds practical fluency across narrowing, generics, utility types, strict compiler flags, and **runtime validation with Zod** (so you never confuse compile-time types with runtime safety).
+
+## Setup: Installing TypeScript & Compiling Your First Project
+
+Run these commands inside a fresh folder (`Windows PowerShell`, `WSL 2`, `macOS`, or `Linux`):
+
+```bash
+mkdir ts-starter && cd ts-starter
+npm init -y
+npm install -D typescript @types/node
+npx tsc --init
+```
+
+Update `package.json` with `"type": "module"` and helpful scripts:
+
+```json
+{
+  "name": "ts-starter",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
+```
+
+Create `src/index.ts`:
+
+```typescript
+interface GreetingConfig {
+  recipient: string;
+  attempt: number;
+}
+
+function formatGreeting(config: GreetingConfig): string {
+  return `Hello, ${config.recipient} (check #${config.attempt})`;
+}
+
+console.log(formatGreeting({ recipient: "TypeScript", attempt: 1 }));
+```
+
+Ensure `tsconfig.json` has `"rootDir": "./src"`, `"outDir": "./dist"`, `"module": "NodeNext"`, `"moduleResolution": "NodeNext"`, `"strict": true`, then compile and execute:
+
+```bash
+npm run build
+npm start
+```
+
+**Expected Output:** `Hello, TypeScript (check #1)` — and notice `dist/index.js` contains pure JavaScript with all type annotations erased.
+
+## Troubleshooting Setup Errors
+
+- **`Cannot find name 'console'` or `Cannot find module 'node:fs'`:** You forgot `@types/node` (`npm install -D @types/node`).
+- **Node complains about ES modules during `npm start`:** Ensure `"type": "module"` is in `package.json` AND `"module": "NodeNext"` is set in `tsconfig.json`.
+
+## Chapter 05 Roadmap
+
+- **05.1 Static Typing Foundations:** Annotations vs. inference, `unknown` vs. `any`, interfaces, type aliases, unions, intersections, and type narrowing.
+- **05.2 Generics & Advanced Patterns:** Generic functions/constraints, `Partial`/`Pick`/`Omit`/`Record`, mapped types, and strict `tsconfig.json` flags.
+- **05.3 Type-Safe Application Contracts:** Why TypeScript disappears at runtime, validating JSON/API payloads with Zod, and modeling domain state with discriminated unions.
+
+</BookNodePage>

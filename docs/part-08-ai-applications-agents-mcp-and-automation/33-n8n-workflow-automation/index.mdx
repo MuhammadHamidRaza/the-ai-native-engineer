@@ -1,0 +1,49 @@
+---
+id: "index"
+title: "33. n8n Workflow Automation"
+sidebar_label: "33. n8n Workflow Automation"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33">
+
+Chapter 30 built the Postmaster as code. Chapter 31 hardened it with tools, state and guardrails. Chapter 32 gave it a protocol. This chapter steps sideways: **n8n** — a visual, node-based automation platform that lets ShopCore connect SaaS tools and LLMs into reliable, scheduled business workflows without hand-writing every integration. It is where "glue work" (new refund-dispute email arrives → LLM classifies → Slack notice or a tracked ticket) becomes a reviewable, versioned, retryable artifact instead of a cron job someone forgot about.
+
+**n8n** (pronounced "nodemation") is a fair-code, source-available workflow automation tool aimed at technical teams: it is self-hostable, it speaks JavaScript natively inside nodes, and it has first-class AI node support. It is not no-everything — think of it as low-code with an escape hatch to real code. ShopCore uses it for the operations layer: the Postmaster's *inputs* and *outputs*, not its reasoning core.
+
+## What You Will Build in This Chapter
+
+The running example is the **ShopCore refund-dispute pipeline**, the same case the Postmaster handles in Chapters 29–32, here implemented as an automation:
+
+1. A new customer email about a disputed charge arrives in the support mailbox.
+2. An n8n workflow triggers, parses and classifies it with an LLM (auto-resolvable vs must-escalate).
+3. Auto-resolvable disputes post a Slack notice to `#support-ops` with the order ID; everything else opens a tracked ticket in Linear/Notion with the LLM's summary attached.
+4. Every step is logged, retried on transient failure, and routed to an error workflow when something breaks permanently.
+
+By the end of the chapter you will have installed n8n, built this pipeline, connected OpenAI/Anthropic/Google models, and self-hosted the result behind HTTPS with backups.
+
+## Chapter Contents
+
+- **33.1 Visual Orchestration & Nodes** ([33.1.1 Triggers, Webhooks and Data Mapping](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes/33-1-1-triggers-webhooks-and-data-mapping), [33.1.2 Branching, Batching and Custom Code Nodes](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes/33-1-2-branching-batching-and-custom-code-nodes)) — install n8n, learn the node mental model, wire triggers to real data, and control flow with conditions, batches and the Code node.
+- **33.2 AI Nodes & Reliable Automations** ([33.2.1 Connecting LLMs to Business SaaS Tools](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations/33-2-1-connecting-llms-to-business-saas-tools), [33.2.2 Error Workflows, Retries and Self-Hosting](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations/33-2-2-error-workflows-retries-and-self-hosting)) — the AI Agent node and chat-model sub-nodes, the SaaS catalog, and the production discipline that turns a demo into an operations tool.
+
+## Who n8n Is For — and Who It Is Not For
+
+| You should reach for n8n when | Reach for code instead when |
+| :-- | :-- |
+| Integrating 3+ SaaS tools with moderate logic | Core business logic belongs in your service layer, tested with your stack |
+| Ops/RevOps-style automations owned by one team | You need sub-100ms latency or heavy transactional guarantees |
+| You want LLM steps inside a deterministic flow | The agent loop *is* the product (then Chapter 30's SDK path wins) |
+| You want self-hosting and no per-task pricing | You need guaranteed cross-region HA without operating infrastructure |
+
+## Verified November 2026
+
+Versions, prices and node names in this chapter were checked against n8n's official docs and GitHub releases in **November 2026**: the `stable` Docker tag was `2.47.7` (2026-11-13), the 3.x line (3.0 released 2026-10-27) ships breaking changes with npm installs deprecated from n8n 3.0, and n8n Cloud pricing starts at **€20/month billed annually (Starter, 2,500 executions)** with **Pro at €50/month (10,000 executions)** and **Business (self-hosted only) €667/month (40,000)**; the self-hosted **Community Edition is free** under the Sustainable Use (fair-code) license. n8n's AI node set (AI Agent, OpenAI Chat Model, Anthropic Chat Model, Google Gemini Chat Model and more) is documented below from the current docs. APIs and price pages drift — re-check before you budget.
+
+## Prerequisites and Outcomes
+
+Prerequisites: Part 04 (Node/Postgres/Express basics), Part 05 (deployment, HTTPS, Docker Compose — you will reuse both for 33.2.2), and Chapters 28–32 for the ShopCore Postmaster context. After this chapter you will be able to: install and verify n8n locally; build triggered, branching, batching workflows with the Code node where needed; wire an LLM to Slack/Linear/Notion/Postgres with credentials handled safely; and deploy a self-hosted instance with error workflows, retries and backups.
+
+</BookNodePage>

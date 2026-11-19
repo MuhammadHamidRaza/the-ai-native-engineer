@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "32.2 Building & Securing MCP Servers"
+sidebar_label: "32.2 Building & Securing MCP Servers"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-2-building-and-securing-mcp-servers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32-s2">
+
+**Subchapter 32.2** turns the protocol from reading into shipping: first a real ShopCore server end-to-end (stdio → Inspector → Claude Desktop → remote Streamable HTTP with bearer auth), then the hardening most tutorials skip — OAuth 2.1, sandboxing, supply chain, and a leaked-token runbook.
+
+## Lessons in Subchapter 32.2
+
+1. **[32.2.1 Implementing Custom MCP Servers](/book/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-2-building-and-securing-mcp-servers/32-2-1-implementing-custom-mcp-servers):** scaffold with `mcp[cli]`, implement policy-lookup + order-lookup tools with Pydantic validation, run over stdio, debug in MCP Inspector, register in Claude Desktop (exact config JSON), then deploy the Streamable HTTP variant behind bearer auth — with latency checks, version pinning, `./mcp/shopcore/` layout and protocol-frame tests.
+2. **[32.2.2 Auth, Sandboxing and Enterprise Integrations](/book/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-2-building-and-securing-mcp-servers/32-2-2-auth-sandboxing-and-enterprise-integrations):** OAuth 2.1 + PKCE as required for HTTP transports, audience restriction, per-tool scopes, runtime-injected secrets, container sandboxing, supply-chain controls (SBOMs, pinning, signed artifacts), rate limiting, enterprise SSO/SCIM pointers, and the leaked-bearer-token rotation runbook.
+
+Build 32.2.1 first — 32.2.2 is the same server, hardened.
+
+</BookNodePage>

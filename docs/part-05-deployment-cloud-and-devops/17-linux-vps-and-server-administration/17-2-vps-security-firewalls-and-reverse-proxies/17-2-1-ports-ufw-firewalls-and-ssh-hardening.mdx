@@ -1,0 +1,144 @@
+---
+id: "17-2-1-ports-ufw-firewalls-and-ssh-hardening"
+title: "17.2.1 Ports, UFW Firewalls and SSH Hardening"
+sidebar_label: "17.2.1 Ports, UFW Firewalls and SSH Hardening"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-1-ports-ufw-firewalls-and-ssh-hardening"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s2-t1">
+
+A VPS with a public IP is scanned within minutes — accept this as weather, not as news. The defense is layered and boring: a firewall that denies by default, SSH that requires keys, an SSH daemon that even root cannot log into, and `fail2ban` to swat down the spray. This lesson gives you the layers **and the undo button** for when you lock yourself out.
+
+> **Do §5 (lockout recovery) before anything else.** You cannot recover from a lockout by reading the paragraph about lockouts from a laptop that no longer reaches the server.
+
+## 1. Ports You Will Actually Use
+
+| Port | Service | Public? |
+| :-- | :-- | :-- |
+| 22/tcp | SSH | Yes — restricted (see §3 and §4) |
+| 80/tcp | HTTP (redirect/ACME) | Yes |
+| 443/tcp | HTTPS | Yes |
+| 4000/tcp | Node API (direct) | **No** — proxy it (17.2.2) |
+| 5432/tcp | PostgreSQL | **Never** — not on 0.0.0.0, period |
+
+Everything else: closed. "But the app needs port X" — proxy it through 443 (17.2.2) instead of opening X.
+
+## 2. UFW — Default Deny, Explicit Allow
+
+Ubuntu's `ufw` is a friendly front for iptables/nftables. The correct order — **allow 22 before enabling** — is non-negotiable:
+
+```bash
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp comment 'SSH'
+sudo ufw allow 80/tcp comment 'HTTP'
+sudo ufw allow 443/tcp comment 'HTTPS'
+sudo ufw enable            # asks for confirmation; type y
+sudo ufw status numbered
+```
+
+Expected:
+
+```text
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 22/tcp                     ALLOW IN    Anywhere                   # SSH
+[ 2] 80/tcp                     ALLOW IN    Anywhere                   # HTTP
+[ 3] 443/tcp                    ALLOW IN    Anywhere                   # HTTPS
+[ 4] 22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH
+```
+
+Manage rules by number: `sudo ufw delete 4`, `sudo ufw insert 1 allow from 203.0.113.5 to any port 22` (office IP only — see below). `sudo ufw --force disable` removes the firewall entirely.
+
+> **Cost/ops safety:** a VPS only costs you money while it exists. If this is a practice box, destroy it after the chapter — `ufw` will not stop the meter. Set a billing alert at provider signup (16.1.2 §2).
+
+## 3. sshd_config Hardening
+
+Edit `/etc/ssh/sshd_config` (keep a **second SSH session open** while you do this — that is your rollback):
+
+```text
+PermitRootLogin no
+PasswordAuthentication no          # ONLY after key login is proven (see below)
+PubkeyAuthentication yes
+MaxAuthTries 3
+LoginGraceTime 30
+X11Forwarding no
+AllowUsers deploy                 # optional allowlist of human accounts
+```
+
+Apply and validate **before** trusting it:
+
+```bash
+sudo sshd -t                          # syntax check — silent on success
+sudo systemctl reload ssh             # or: sudo systemctl reload sshd
+```
+
+Then, **in a new terminal** (keep the old one open): `ssh deploy@203.0.113.10` must work. Only then close the safety session. Ubuntu's OpenSSH on 24.04: the service is `ssh`; socket-based activation can interfere — check `systemctl status ssh.socket` and `sudo systemctl disable --now ssh.socket` if port 22 seems stale after config edits, then `systemctl restart ssh`.
+
+**Key-only timing rule.** Set `PasswordAuthentication no` only after `ssh deploy@...` provably lands with your key — from a *fresh* connection, not the session where you edited config.
+
+## 4. fail2ban — Automated Banishment
+
+```bash
+sudo apt install -y fail2ban
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+```
+
+`/etc/fail2ban/jail.local` (override, never edit jail.conf):
+
+```ini
+[sshd]
+enabled = true
+maxretry = 5
+bantime = 1h
+findtime = 10m
+```
+
+```bash
+sudo systemctl enable --now fail2ban
+sudo fail2ban-client status sshd    # shows currently banned IPs
+```
+
+## 5. Lockout Recovery — Do This Before You Need It
+
+Scenario: `ufw enable` ran before `allow 22`, or `sshd_config` has a typo that kills auth, or you banned yourself with fail2ban after too many attempts. Your SSH session dies. Every cloud provider keeps an **out-of-band console** — use it:
+
+1. **DigitalOcean/Hetzner/Lightsail console:** log into the provider dashboard → your droplet/instance → **Access → Launch Droplet Console** (or "Web console" / "Serial console"). It is a full terminal in the browser, unaffected by ufw/ssh.
+2. Log in as root or your user (provider console bypasses SSH, not the UNIX login).
+3. Fix: `sudo ufw allow 22/tcp` (or `ufw disable`), correct `/etc/ssh/sshd_config`, `sudo sshd -t && sudo systemctl reload ssh`, or `fail2ban-client set sshd unbanip <your-ip>`.
+4. Verify from your own machine again before assuming victory.
+
+Without step 1 you would be locked out of a paid machine you cannot fix and cannot resize — the number-one beginner VPS disaster. Find the console link **now**, before the exercises.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Locked out after `ufw enable` | Allowed 80/443, forgot 22 | Provider console → `sudo ufw allow 22/tcp` |
+| `Connection refused` on 22 | sshd down or socket conflict | Console → `systemctl status ssh`; check `ssh.socket`; reload config |
+| `Permission denied (publickey)` post-hardening | `PasswordAuthentication no` before key was copied | Console → set back to `yes` temporarily → fix keys → re-disable |
+| fail2ban banned my IP | Too many auth attempts | Console → `sudo fail2ban-client set sshd unbanip <ip>` |
+| `sshd -t` prints errors | Syntax error in sshd_config | Do NOT reload; fix lines it names; re-run `sshd -t` |
+| Bots still hammering 22 | Normal background radiation | Confirm `passwordauthentication no` in effective config (`sshd -T \| grep -i password`) |
+
+## 7. Practice
+
+**Guided exercise.** On a throwaway VPS (or WSL2 for ufw syntax only): apply §2, then `ufw status numbered` and delete rule 2 by number. Prove 22/80/443 remain. Then open the provider console once, just to see it — pointer path only, no changes.
+
+**Independent exercise.** Install fail2ban, set `maxretry=3, bantime=10m`, and trigger a ban from a deliberate failed login on a disposable account; then unban via `fail2ban-client`.
+
+**Challenge.** Draft (on paper) the exact 5-step recovery you would perform if you typed `ufw enable` as your first command ever. Include where you click at your chosen provider. Then do it for real on the throwaway box: block port 22, recover via console, verify.
+
+**Assessment checklist**
+
+- [ ] I applied default-deny + allow 22/80/443, in that order.
+- [ ] I know key-only vs password auth and when to flip it.
+- [ ] `sshd -t` and a config reload are in my muscle memory.
+- [ ] I found my provider's console and unbanned/unblocked myself once.
+- [ ] PostgreSQL (5432) is not listening on any public interface.
+
+</BookNodePage>

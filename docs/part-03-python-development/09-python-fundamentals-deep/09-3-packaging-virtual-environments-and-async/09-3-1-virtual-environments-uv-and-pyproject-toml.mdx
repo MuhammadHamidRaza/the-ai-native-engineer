@@ -1,0 +1,82 @@
+---
+id: "09-3-1-virtual-environments-uv-and-pyproject-toml"
+title: "09.3.1 Virtual Environments, uv and pyproject.toml"
+sidebar_label: "09.3.1 Virtual Environments, uv and pyproject.toml"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async/09-3-1-virtual-environments-uv-and-pyproject-toml"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s3-t1">
+
+Every Python project deserves its own isolated **virtual environment (`.venv`)**—never `pip install` third-party libraries into your system-wide Python! Isolation guarantees every project locks its exact dependencies cleanly without version collisions.
+
+## 1. Standard `venv` + `pip` Workflow (Cross-Platform)
+
+Create and activate `.venv` inside your project folder:
+
+```bash
+mkdir my-py-app && cd my-py-app
+python -m venv .venv        # On macOS/Linux use: python3 -m venv .venv
+```
+
+Activate it based on your shell:
+- **Windows PowerShell:** `.venv\Scripts\Activate.ps1` *(if blocked by execution policy, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once)*
+- **Windows Command Prompt (`cmd`):** `.venv\Scripts\activate.bat`
+- **macOS / Linux / WSL 2 (`bash`/`zsh`):** `source .venv/bin/activate`
+
+Once `(.venv)` appears in your prompt, verify `python -m pip --version` points inside `.venv`, install packages (`pip install pydantic pytest`), and exit anytime with `deactivate`. Always add `.venv/` to `.gitignore`!
+
+## 2. Modern Standard: `uv` + `pyproject.toml`
+
+**`uv`** (by Astral) replaces slow `pip` + `venv` + `pip-tools` workflows with a single ultra-fast tool that manages Python versions, `.venv`, `pyproject.toml`, and reproducible `uv.lock` lockfiles in milliseconds.
+
+Install `uv`:
+- **Windows PowerShell:** `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- **macOS / Linux:** `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+Start a modern project with `uv`:
+
+```bash
+uv init --package invoice-tool && cd invoice-tool
+uv add pydantic
+uv add --dev pytest ruff
+uv run pytest
+```
+
+(`uv init --package` creates a **src-layout package** with a build backend and installs it editable by default — `uv run python -m invoice_tool.calculator` then just works. Plain `uv init` creates an unpackaged project where `python -m invoice_tool.calculator` fails with `ModuleNotFoundError` until you add `[build-system]` and `uv pip install -e .` yourself.)
+
+Look at the generated `pyproject.toml`—that single file is Python's official standard (`PEP 621`) replacing messy `setup.py` + `requirements.txt` splits:
+
+```toml
+[project]
+name = "invoice-tool"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.8"]
+```
+
+## 3. Clean Package Structure & Imports
+
+```text
+invoice-tool/
+├── pyproject.toml
+├── src/
+│   └── invoice_tool/
+│       ├── __init__.py
+│       └── calculator.py
+└── tests/
+    └── test_calculator.py
+```
+
+Run code with `uv run python -m invoice_tool.calculator` so Python resolves module paths cleanly from the project root rather than fragile relative `sys.path` hacks.
+
+## Mastery Checklist
+
+- [ ] Creates and activates `.venv` per project and excludes `.venv/` from Git.
+- [ ] Manages dependencies cleanly with `pyproject.toml` via `uv` (`uv init`, `uv add`, `uv run`).
+
+</BookNodePage>

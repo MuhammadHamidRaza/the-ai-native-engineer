@@ -1,0 +1,99 @@
+---
+id: "10-1-2-dependency-injection-and-background-tasks"
+title: "10.1.2 Dependency Injection and Background Tasks"
+sidebar_label: "10.1.2 Dependency Injection and Background Tasks"
+slug: "/part-03-python-development/10-python-for-apis-files-and-automation/10-1-building-apis-with-fastapi/10-1-2-dependency-injection-and-background-tasks"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-10-s1-t2">
+
+Real APIs share cross-cutting concerns across dozens of endpoints: reading configuration safely from `.env`, checking API tokens, permitting browser frontends via CORS, running quick post-response jobs, and testing routes automatically without starting an external server.
+
+## 1. Settings from `.env` + Dependency Injection (`Depends`)
+
+Install `pydantic-settings` (`pip install pydantic-settings`) so missing secrets fail immediately at startup rather than mid-request:
+
+```python
+from typing import Annotated
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    api_token: str = "dev-secret-token"
+    frontend_origin: str = "http://localhost:5173"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+def get_settings() -> Settings:
+    return Settings()
+
+def require_api_token(
+    x_api_token: Annotated[str | None, Header()] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = ...,
+) -> str:
+    if x_api_token != settings.api_token:
+        raise HTTPException(status_code=401, detail="Invalid API token")
+    return x_api_token
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[Settings().frontend_origin],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Token"],
+)
+
+def write_audit_log(message: str) -> None:
+    print(f"[audit] {message}")
+
+@app.post("/reports")
+def trigger_report(
+    bg: BackgroundTasks,
+    _token: Annotated[str, Depends(require_api_token)],
+) -> dict[str, str]:
+    bg.add_task(write_audit_log, "Report requested")
+    return {"status": "queued"}
+```
+
+**When *not* to use `BackgroundTasks`:** `BackgroundTasks` runs in the same server process—if the server restarts or crashes mid-job, the task vanishes! Use it for lightweight non-critical work (telemetry, audit print), and move critical emails/billing jobs to a persistent queue (`Part 04` / `Part 06`).
+
+## 2. Testing FastAPI Routes with `TestClient` + `pytest`
+
+Install `pytest` and `httpx` (`pip install pytest httpx`) and test endpoints directly in milliseconds. With the single-file layout used here, tell pytest where `main.py` lives — otherwise `from main import app` fails depending on the directory you invoke `pytest` from:
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+```
+
+```python
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_reports_requires_valid_token() -> None:
+    res = client.post("/reports")
+    assert res.status_code == 401
+
+    ok = client.post("/reports", headers={"X-API-Token": "dev-secret-token"})
+    assert ok.status_code == 200
+    assert ok.json() == {"status": "queued"}
+```
+
+> **Scaling up:** once the app grows past one file, move to a `src/` package (`src/myapp/main.py`, `pythonpath = ["src"]` or editable install) — the imports and tests stay the same; only the layout changes. See `examples/pytest-harness/` and `examples/python-async-lab/` for both patterns.
+
+## 3. Running in Production (`fastapi run`)
+
+Never deploy with `fastapi dev` (single worker with auto-reload enabled). In production, run `fastapi run main.py --port 8000` (or `uvicorn main:app --host 0.0.0.0 --port 8000`).
+
+## Mastery Checklist
+
+- [ ] Validates configuration with `pydantic-settings` and enforces explicit CORS origins.
+- [ ] Reuses auth/DB helpers cleanly via `Depends()` and tests endpoints with `TestClient`.
+
+</BookNodePage>

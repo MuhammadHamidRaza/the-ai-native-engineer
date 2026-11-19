@@ -1,0 +1,29 @@
+---
+id: "index"
+title: "21.1 Systems Thinking & First Principles"
+sidebar_label: "21.1 Systems Thinking & First Principles"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s1">
+
+**Subchapter 21.1** is the foundation the rest of Part 06 stands on. Before you compare monoliths to services or draw a context map, you need the three thinking moves every senior engineer actually uses: see the system, pick the right move, and carry a toolkit of reasoning patterns.
+
+## Lessons in Subchapter 21.1
+
+1. **[21.1.1 What a System Is: Components, Boundaries, Feedback and Emergence](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles/21-1-1-what-a-system-is-components-boundaries-feedback-emergence):** Components, boundaries and environment; inputs → outputs; negative and positive feedback loops; delays; emergence; failure propagation (ShopCore's stock-emerges-after-webhook case); complexity and Cynefin; causation vs correlation; three modeling exercises on ShopCore.
+2. **[21.1.2 System Thinking vs System Design: The Two Moves](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles/21-1-2-system-thinking-vs-system-design-the-two-moves):** The mandatory comparison — when to map relationships vs when to commit to components; side-by-side worked Thinking and Design diagrams of ShopCore; the three scenarios where teams fail either move; solving fraud rollouts, holiday surges and partial outages with both moves in sequence.
+3. **[21.1.3 The Thinking Toolkit: First Principles, Decomposition, Abstraction and Modeling](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles/21-1-3-thinking-toolkit-first-principles-decomposition-abstraction-modeling):** First principles (rebuild the price engine), in-place decomposition (checkout: capture / verify / settle), abstraction (payment surrogate), context/domain/deployment diagrams and state machines, failure trees, probabilistic reasoning (p99, SLO math) — each with a ShopCore scenario and a checklist.
+
+Work this subchapter in order. 21.1.1 is the vocabulary; 21.1.2 is the discipline; 21.1.3 is the toolbox. If you skim 21.1.2, every later design decision in this book will feel arbitrary.
+
+**Exit checklist**
+
+- [ ] I can draw the ShopCore context diagram and label the payment webhook boundary.
+- [ ] I can name the one missing feedback loop in ShopCore's stock flow and what happens without it.
+- [ ] I can state, for a given change, which move I am in — Thinking or Design — and why.
+- [ ] I can rebuild ShopCore's pricing rule from first principles on a whiteboard.
+
+</BookNodePage>

@@ -1,0 +1,89 @@
+---
+id: "09-2-3-type-annotations-and-pydantic-models"
+title: "09.2.3 Type Annotations and Pydantic Models"
+sidebar_label: "09.2.3 Type Annotations and Pydantic Models"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-2-functions-oop-and-type-hints/09-2-3-type-annotations-and-pydantic-models"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s2-t3">
+
+Standard Python is dynamically typed: `def add(a: int, b: int) -> int:` lets VS Code (**Pylance**) and static checkers (**mypy** / **pyright**) flag bugs *before you run the file*, **yet Python itself does NOT reject `add("hello", "world")` at runtime!** Bridging static checking with **Pydantic v2** closes that gap cleanly.
+
+## 1. Modern Python Type Annotations
+
+Use modern Python built-in generics (`list[str]`, `dict[str, int]`, `str | None`) alongside `Literal`, `TypedDict`, `Callable`, `TypeVar`, and structural `Protocol`:
+
+```python
+from typing import Literal, Protocol, TypedDict
+
+Role = Literal["viewer", "editor", "admin"]
+
+class UserRow(TypedDict):
+    id: str
+    email: str
+    role: Role
+
+class Notifier(Protocol):
+    def send(self, message: str) -> None: ...
+
+def welcome_user(user: UserRow | None, notifier: Notifier) -> str:
+    if user is None:
+        return "skipped"
+    # Type checker narrows `user` from UserRow | None to UserRow!
+    notifier.send(f"Welcome {user['email']} ({user['role']})")
+    return "sent"
+```
+
+Run static type checking locally (`pip install mypy` or `pyright`):
+
+```bash
+mypy src/
+```
+
+## 2. Runtime Validation with Pydantic v2
+
+Install Pydantic v2 inside your virtual environment (`pip install pydantic` or `uv add pydantic`). Pydantic enforces constraints **at runtime**, coerces clean types safely, formats nested JSON errors clearly, and powers FastAPI (`10.1`) and modern AI structured outputs (`Part 07`):
+
+```python
+from pydantic import BaseModel, Field, ValidationError
+
+class Address(BaseModel):
+    city: str = Field(min_length=1)
+    country_code: str = Field(min_length=2, max_length=2)
+
+class OrderPayload(BaseModel):
+    order_id: str
+    quantity: int = Field(gt=0, le=100)
+    address: Address
+
+# Valid payload -> parsed & coerced cleanly
+order = OrderPayload.model_validate({
+    "order_id": "ord_42",
+    "quantity": "3", # Coerced safely to int 3!
+    "address": {"city": "Lahore", "country_code": "PK"},
+})
+print("Dict:", order.model_dump())
+print("JSON:", order.model_dump_json())
+
+# Invalid payload -> informative ValidationError!
+try:
+    OrderPayload.model_validate({"order_id": "x", "quantity": -5, "address": {"city": "", "country_code": "USA"}})
+except ValidationError as exc:
+    print("Errors caught:", len(exc.errors()))
+```
+
+*(Note Pydantic v2 uses `.model_validate()`, `.model_dump()`, and `.model_dump_json()` instead of legacy v1 `.parse_obj()`, `.dict()`, and `.json()`.)*
+
+## 3. `@dataclass` vs. Pydantic `BaseModel`
+
+- **Use `@dataclass`:** Internal trusted objects already inside your Python codebase (zero dependency, lightweight).
+- **Use Pydantic `BaseModel`:** Trust boundaries—API request/response bodies, config `.env` files, CSV/JSON imports, and LLM structured outputs where bad runtime data must fail loudly.
+
+## Mastery Checklist
+
+- [ ] Understands that standard Python type hints are ignored at runtime unless checked by `mypy`/`pyright` or validated by Pydantic.
+- [ ] Uses Pydantic v2 `BaseModel`, `Field`, `.model_validate()`, and `.model_dump()`.
+
+</BookNodePage>

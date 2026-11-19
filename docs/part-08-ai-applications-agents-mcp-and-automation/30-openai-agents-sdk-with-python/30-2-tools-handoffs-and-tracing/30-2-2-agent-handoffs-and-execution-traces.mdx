@@ -1,0 +1,175 @@
+---
+id: "30-2-2-agent-handoffs-and-execution-traces"
+title: "30.2.2 Agent Handoffs and Execution Traces"
+sidebar_label: "30.2.2 Agent Handoffs and Execution Traces"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-2-tools-handoffs-and-tracing/30-2-2-agent-handoffs-and-execution-traces"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30-s2-t2">
+
+One agent per specialty, handoffs between them, and a trace for every run — that is the whole architecture of the Postmaster in code. This lesson wires it up with the current SDK API (verified Nov 2026), then shows you how to read the failure in the dashboard instead of guessing.
+
+## 1. Handoffs — What Actually Happens
+
+A handoff is **a tool the model calls**. If an agent named `Refund specialist` is in `handoffs=[...]`, the model sees a tool named `transfer_to_refund_specialist` (default `transfer_to_<agent_name>`; override with `tool_name_override`). When called: the current agent stops, the *new agent takes over the conversation* (it sees the history unless filtered), and the run continues — same budget, same trace, same `max_turns` clock. Handoffs stay within one run; input guardrails see only the first agent, output guardrails run only on the final one (verified).
+
+```python
+from agents import Agent, handoff, RunContextWrapper
+from pydantic import BaseModel
+
+class EscalationNote(BaseModel):
+    reason: str
+    priority: str   # kept str; validate against P1..P3 downstream in code
+
+async def on_escalation(ctx: RunContextWrapper, note: EscalationNote) -> None:
+    ctx.context.db.execute("INSERT INTO escalation_log(ticket_id, reason, priority, corr)"
+                           " VALUES (%s, %s, %s, %s)",
+                           (ctx.context.ticket_id, note.reason, note.priority,
+                            ctx.context.correlation_id))
+
+escalation = Agent(
+    name="Escalation",
+    handoff_description="Route to a human queue with a structured reason. Use for anything "
+                        "outside refund_dispute / address_change / inventory_shortfall.",
+    instructions="Package the ticket for a human. Never adjudicate. Always call escalate_to_human.",
+    tools=[escalate_to_human],
+)
+refund_specialist = Agent(
+    name="Refund specialist",
+    handoff_description="Owns refund disputes end to end: verify, propose, issue (gated) or dispute.",
+    instructions=REFUND_SPECIALIST_PROMPT,     # includes the forbidden-actions checklist (29.2.1)
+    tools=[lookup_order, get_customer_tier, lookup_shipment_status,   # built in 30.2.1 exercises
+           open_dispute_ticket, issue_refund],
+)
+triager = Agent(
+    name="Postmaster triager",
+    instructions=POSTMASTER_INSTRUCTIONS,
+    model="gpt-5.6-luna",
+    handoffs=[refund_specialist,
+              handoff(escalation, input_type=EscalationNote, on_handoff=on_escalation)],
+)
+```
+
+The current `handoff(...)` API (verified): `handoff(agent, on_handoff=, input_type=, tool_name_override=, tool_description_override=, input_filter=, is_enabled=, nest_handoff_history=)`. Useful knobs: `input_type` = *model-generated metadata at handoff time* (a reason string — not your DB session); `on_handoff` = side effect at the moment of transfer (must authorize *before* side effects; the SDK continues the transfer after it returns); `input_filter` = change what history the next agent sees (`agents.extensions.handoff_filters.remove_all_tools` exists for common cases); `is_enabled=` = bool or callable to expose/hide the handoff per run. **Cheap trick that measurably improves handoff reliability:** prefix specialist instructions with `agents.extensions.handoff_prompt.RECOMMENDED_PROMPT_PREFIX`, or compose your prompt with `prompt_with_handoff_instructions(...)` — models select handoffs better when told they exist.
+
+## 2. Execution Traces — The Actual Skill
+
+Open [platform.openai.com/traces](https://platform.openai.com/traces) (login → Traces). Your run appears as `Agent workflow` (or your `RunConfig(workflow_name=...)`, which you should always set, plus `group_id=<correlation_id>` to link multi-run conversations). Inside a trace you get spans: `task` → `turn` → `agent` → `generation` (per LLM call) and `function` (per tool call), with inputs, outputs, token usage and timings. Reading a **failed** run, in order:
+
+1. Find the terminal span — usually `function` with `output_type` error, or a `generation` whose output was rejected by an output guardrail.
+2. Expand the parent `agent` span → which agent held the wheel at failure (triager vs specialist — determines whether your routing or your specialist failed).
+3. Check the `handoff_span` immediately before — wrong target? missing `handoff_description`?
+4. Check the `guardrail_span` — a tripped tripwire shows `tripwire_triggered: true` with `output_info` naming the guardrail.
+5. Compare against a **good run of the same ticket** (Traces → same `group_id` or filter by `workflow_name`): diverging span is your bug. This diffing habit is the single highest-leverage debugging move you have.
+
+Set `trace_include_sensitive_data=False` in prod (or `OPENAI_AGENTS_TRACE_INCLUDE_SENSITIVE_DATA=false`) — it strips LLM/tool payloads but keeps span structure, timings and token counts. ZDR orgs: no tracing at all; rely on your own structured logs with correlation IDs.
+
+**Trace-comparison worksheet (use it once per debugging session, save the diff):**
+
+```text
+Run A (good):  spans → agent=triager(1.1s) → generation(310 tok) →
+               tool_called=lookup_order(0.2s) → handoff→Refund specialist(0.8s) →
+               generation(280 tok) → tool_called=issue_refund → final
+Run B (bad):   spans → agent=triager(1.3s) → generation(355 tok) →
+               tool_called=search_orders(5.0s TIMEOUT) → generation(150 tok) →
+               final "I couldn't find the order"  ← NO escalation happened
+```
+
+The divergence is obvious once side by side: Run B treated a tool timeout as terminal. Prompt fix ("on tool error, always escalate or narrow — never answer as if the read happened") lands as eval case; the diff becomes your PR description. This is why traces beat print-debugging for agents: nondeterministic code debugs deterministically at the *boundary* of each span.
+
+**Handoff-selection quality checklist (paste into your PR template):**
+
+- [ ] Every specialist has a one-line `handoff_description` naming its job AND its exclusion ("never for address changes").
+- [ ] Exactly one unambiguous owner per ticket type; overlapping descriptions = random routing.
+- [ ] The triage prompt lists the same routing table as the code — drift between them is silent misrouting.
+- [ ] Handoff tools are fewer than 8; more and the model's selection noise climbs.
+- [ ] You have seen the `handoff_requested` → `handoff_occured` [sic] pair in a real trace.
+- [ ] Rejection path exists: an agent that should NOT take the ticket hands back to triage or escalates — never improvises outside its mandate.
+
+## 3. SDK Guardrails vs Chapter-29 Policy — Who Enforces What
+
+| Mechanism | Enforced by | Runs where | Good for | Not good for |
+| :-- | :-- | :-- | :-- | :-- |
+| `@input_guardrail` | SDK | FIRST agent only | Block injection/off-topic before spend | Per-step checks mid-run |
+| `@output_guardrail` | SDK | FINAL agent only | Catch policy-violating final text | Money limits (tool already ran) |
+| Tool guardrails (`@tool_input_guardrail`) | SDK | Every guarded call | Deterministic pre-checks on args | Replacing invariants in the tool |
+| `needs_approval` interruptions | SDK + you | Pause point | Refunds $50–$500 | Tier 4 — must be unofferable |
+| Policy in `RunContext` + tool code | **Your code** | Everywhere | Hard caps, idempotency, read-only mode | — |
+| Prompt instructions | Your prompt | Model's discretion | Intent, tone, routing hints | Anything you cannot afford to "maybe enforce" |
+
+The division of labor from Chapter 29 holds exactly: prompts propose, **code disposes**. An SDK guardrail that fails closed is policy; a prompt that says "never" is a hope.
+
+## 4. The Full Morning Loop — Runnable Shape
+
+```python
+# postmaster/run_morning.py
+import asyncio
+from agents import Runner, RunConfig, ModelSettings
+from agents.exceptions import MaxTurnsExceeded
+from .agents import triager, build_ctx           # build_ctx(db, ticket_id) -> PostmasterContext
+from .db import get_db
+
+async def handle_ticket(db, ticket) -> str:
+    ctx = build_ctx(db, ticket.id, ticket.text)
+    cfg = RunConfig(workflow_name="postmaster-morning", group_id=ctx.correlation_id,
+                    trace_include_sensitive_data=False,
+                    model_settings=ModelSettings(timeout=30.0))   # per model call; wall clock lives in the watchdog (29.2.1)
+    try:
+        result = await Runner.run(triager, ticket.text, context=ctx,
+                                  max_turns=8, run_config=cfg)
+        pending = result.interruptions             # approval gates fired? pause, don't proceed
+        while pending:                             # (CLI demo: prompt; prod: write to approvals table)
+            state = result.to_state()
+            for hit in pending:
+                if input(f"approve {hit.name}({hit.arguments})? [y/N] ").strip().lower() == "y":
+                    state.approve(hit)
+                else:
+                    state.reject(hit, rejection_message="reviewer rejected")
+            result = await Runner.run(triager, state)
+            pending = result.interruptions
+        return result.final_output
+    except MaxTurnsExceeded:
+        return "ESCALATE: turn limit — routed to ops queue"   # + escalate_to_human() call
+
+async def main():
+    db = get_db()
+    tickets = db.execute("SELECT id, text FROM tickets WHERE state='new' ORDER BY created_at").all()
+    for t in tickets:                               # sequential on purpose: watch the first 10 yourself
+        print(t.id, "→", await handle_ticket(db, t))
+
+asyncio.run(main())
+```
+
+## 5. Common SDK Pitfalls — Asked in Every Review
+
+- **Cost surprises.** You pay for *every turn*, including dead ends; `max_turns=8` with 3 retries collapses budget fast. Cap tokens in `ModelSettings`, watch `wrapper.usage`, set a daily breaker. Quantified: at 160 agentic tickets/day with a healthy 6.5k tokens/ticket ≈ 1M tokens/day; one enthusiastic re-loop on all 160 → 8M tokens/day — 8× the invoice, for zero shipped actions. Tracing itself is free, but logged content lands in OpenAI's dashboard — decide deliberately.
+- **Handoff ping-pong.** Two agents handing a ticket back and forth burn the shared `max_turns` budget silently — detect via `agent_updated_stream_event` alternation count; add "if unsure, escalate to a human — never hand back" to both prompts.
+- **Streaming misuse.** Iterating `stream_events()` then reading `result.final_output` is correct; *storing* raw deltas as the conversation is not. Use `result.to_input_list()` for next-turn state, never your parsed deltas.
+- **Sync inside async.** `run_sync` in FastAPI/async CLI raises immediately; conversely `await Runner.run` in a plain script without `asyncio.run` never starts. Match the flavor to the call site.
+- **Approval resume without RunState.** Re-calling with the original input after an interruption duplicates side effects — you must resume from `result.to_state()` (29.2.2, idempotency keys still required).
+- **`output_guardrail` theatre.** Guardrails see the final text; they do not claw back a tool side effect. If a guardrail rejects a terminal *tool-made* output, the SDK withholds the payload with a placeholder — good — but the Stripe refund already happened. Non-negotiable: Tier-3+ effects go through interruptions, not output guardrails.
+- **Version drift.** `pip show openai-agents` before debugging weird behavior; pin in requirements; re-read the CHANGELOG on bumps — Agents SDK ships weekly and defaults move.
+
+## 6. Honest Limits — What This SDK Is Not
+
+Not production HA by itself: no built-in queueing, no leader election, no cross-process approval storage — you bring your own (DB table + watchdog from 29.2.1). Local state helpers (`SQLiteSession`) are a **local dev aid**, fine for replay and tests, wrong for multi-worker prod. Traces are observability, not enforcement or evidence retention — export what you must keep. Handoffs isolate nothing: all agents share context, budget and trust. And the SDK will happily run an agent that should not exist — Chapter 29 was the gate; this chapter is just the engine.
+
+## 7. Practice
+
+**Guided exercise.** Wire triager → specialist/escalation with `handoff(...)`, run three fixture tickets (broken item, $250 refund request, garbage ticket), approve/reject the interruption at the CLI, and screenshot the failing trace.
+
+**Independent exercise.** Add `RunConfig(workflow_name="postmaster-morning", group_id=…)`; run all three; in the dashboard, filter to your `group_id` and read token usage per ticket.
+
+**Challenge.** Deliberately break one handoff (rename the specialist's `handoff_description` to something misleading) and watch the trace. Write the one-line diagnosis you would post in a PR review.
+
+**Assessment checklist**
+
+- [ ] I can explain what the model sees as the handoff "tool" and its default name.
+- [ ] I read one failed trace end-to-end and can name the diverging span.
+- [ ] I know which layer (prompt / SDK guardrail / code) enforces each Postmaster rule.
+- [ ] My morning loop enforces max_turns, timeout-per-call, and pauses on interruptions.
+- [ ] I can state three SDK limits without notes.
+
+</BookNodePage>

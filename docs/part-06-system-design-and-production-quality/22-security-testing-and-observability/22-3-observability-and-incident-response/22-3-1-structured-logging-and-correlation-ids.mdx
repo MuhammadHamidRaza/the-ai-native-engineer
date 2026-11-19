@@ -1,0 +1,141 @@
+---
+id: "22-3-1-structured-logging-and-correlation-ids"
+title: "22.3.1 Structured Logging and Correlation IDs"
+sidebar_label: "22.3.1 Structured Logging and Correlation IDs"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-3-observability-and-incident-response/22-3-1-structured-logging-and-correlation-ids"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s3-t1">
+
+Unstructured logs are a guilt journal: every entry matters and none can be queried. "2026-11-17 14:22:01 ERROR something failed for user 88412" — which order, which deployment, which downstream call? This lesson makes ShopCore's logs structured, searchable and honest: JSON lines, one correlation id from browser to worker, redaction proven by test, and alerting that pages on symptoms — never on raw log lines.
+
+## 1. Why Structured JSON Logs
+
+Structured logs are machine-readable records, one event per line:
+
+```json
+{"level":30,"time":1731810121000,"reqId":"req_01JAC8K2E5","method":"POST","url":"/v1/orders","status":201,"responseTime":183,"userId":"cust_88412","msg":"request completed"}
+```
+
+Query that in thirty seconds: `status:201 AND responseTime>500 AND url:/v1/orders`. Try it with prose logs. pino is the Fastify-native, low-overhead JSON logger; Express works via `pino-http`:
+
+```js
+// logging.js — the only logger instance in the codebase
+import pino from 'pino';
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? 'info',
+  redact: {
+    paths: ['req.headers.authorization', 'req.headers.cookie',
+            '*.password', '*.token', '*.cardNumber', '*.card.number',
+            '*.ssn', '*.email'],
+    censor: '[REDACTED]',
+  },
+});
+```
+
+## 2. pino-http and Request-ID Propagation
+
+Every inbound request gets an id (or inherits the edge's), bound to a child logger so every subsequent line carries it:
+
+```js
+import pinoHttp from 'pino-http';
+import { randomUUID } from 'node:crypto';
+
+app.use(pinoHttp({ logger,
+  genReqId: (req, res) => {
+    const id = req.headers['x-request-id'] ?? `req_${randomUUID()}`;
+    res.setHeader('x-request-id', id);      // echo back to the browser
+    return id;
+  },
+}));
+
+// route handler: req.log is the child logger — always use it
+app.post('/v1/orders', async (req, res) => {
+  req.log.info({ cartTotal: total }, 'checkout started');
+  // ... every downstream log line in this request carries reqId
+});
+```
+
+Outbound calls must re-attach the id — the Stripe charge, the Shipping quote, the outbox relay:
+
+```js
+await fetch(stripeChargeUrl, { headers: { 'Idempotency-Key': key,
+                                           'x-request-id': req.id } });
+```
+
+Async workers (queue consumers, webhook handlers) create child loggers from the *event's* `correlationId` field — which was captured at enqueue time from the originating request — so one checkout is traceable through three processes and forty minutes.
+
+## 3. The Correlation Diagram
+
+```text
+browser                LB/edge              API (Express)         worker (queue)
+   |                      |                     |                      |
+   |  x-request-id: req_A |                     |                      |
+   |--------------------->|  x-request-id: req_A|                      |
+   |                      |-------------------->|  child logger reqId=A|
+   |                      |                     |---> outbox (order.paid, correlationId=A)
+   |                      |                     |                      v
+   |                      |                     |              consumer(child logger A)
+   |                      |                     |                      |
+   |  x-request-id: req_A |  tab: support / logs search reqId:req_A   |
+```
+
+The browser can pre-generate `x-request-id` for UI traces (a UUID in sessionStorage) — then even a support screenshot of a failing request correlates to backend lines.
+
+## 4. Log Levels and Sampling at Scale
+
+| Level | Meaning | Ship to prod? | Sample |
+| :-- | :-- | :-- | :-- |
+| `fatal` | process must exit | yes, page | 100% |
+| `error` | request failed, needs eyes | yes, alert on rate | 100% |
+| `warn` | degraded (cache miss storm, retry used) | yes | 100% |
+| `info` | one line per request + key business events (order placed) | yes | 100% at up to 1k rps, then tail-sample |
+| `debug` | internals for developers | no (enable locally / 1% sample) | 1% |
+| `trace` | everything | never in prod | n/a |
+
+At 10k rps, unsampled info-logs are a budget line, not observability — sample by route (`/healthz` = drop, `/v1/orders` = 100%) and keep errors at 100% always.
+
+## 5. What Must Never Be Logged
+
+Concrete bans, with the redaction line that kills them:
+
+- **Passwords/tokens**: `req.headers.authorization`, session cookies, reset tokens — redact at the logger, not at call sites (humans forget; the logger doesn't).
+- **PII**: full email, address, phone — log `customerId` instead; log `emailDomain` only for abuse analysis.
+- **Card data**: PANs, CVC — ShopCore never sees PANs (Stripe Elements, 22-1-1's NFR-004); CVC must never appear anywhere. If it does, stop the deploy, treat as incident, rotate per 22-1-2.
+- **JWT payloads** beyond `sub`/`role`.
+
+Proof, not intention: a unit test asserts the logger emits `[REDACTED]` for a synthetic request carrying each banned field, and CI runs it (22-2-2 gate).
+
+## 6. Alert on Symptoms, Not Log Lines
+
+Log-line alerts ("page when \"error\" appears 3 times") train people to silence PagerDuty. Symptom alerting ties to 22-3-2's SLOs: page on **error-rate SLO burn** and **checkout p99 > 300 ms**; log lines are the *diagnostic link* the responder clicks, not the trigger. Logs exist to answer "why", metrics to answer "whether". Keep them separate and each stays good at its job.
+
+## 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Two requests interleave in one log line | Multi-line message (stack trace as msg) | JSON serializer ON (pino default); `err` key, not raw newlines |
+| Support can't correlate user report to logs | No browser-side id reuse | SPA sends its stored `x-request-id`; server honors/echoes |
+| `grep -r cardNumber logs/` finds a hit | A `logger.info(req.body)` slipped in | Redact paths expanded; CI redaction test; code review checklist |
+| Log volume 40 GB/day | No sampling, `/healthz` at info | Drop health endpoints; sampling config; level audit |
+| PII in third-party APM dashboards | pino transport ships raw | Redact before transport, or pipe through `pino-redact`-style filter |
+
+## 8. Practice
+
+**Guided exercise.** Wire the Section 2 setup into ShopCore: pino-http, child loggers, `x-request-id` echo. Make one checkout and grep the logs for the id — count how many lines across processes share it.
+
+**Independent exercise.** Add the redaction unit test: synthesize a request with password, cookie, card number, email in every plausible position (headers, body, nested object) and assert each is `[REDACTED]` in the output.
+
+**Challenge.** Simulate the partial outage from 21.4.2 drill (Stripe slow): capture the log volume and the error-rate alert; write the three queries (`reqId` for one failing request, `status:5xx rate-5m`, `p99 checkout`) a responder runs first.
+
+**Assessment checklist**
+
+- [ ] I can produce one JSON log line and query it in my log stack in under a minute.
+- [ ] I can explain how `x-request-id` flows browser → edge → API → worker → back to the user.
+- [ ] I can list six never-log fields and the exact redact paths that enforce them.
+- [ ] I can define sampling rules and say what stays at 100% always.
+- [ ] I know why alerting on log lines loses to alerting on SLO burn.
+
+</BookNodePage>

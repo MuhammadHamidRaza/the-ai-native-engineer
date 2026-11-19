@@ -1,0 +1,161 @@
+---
+id: "09-3-2-exceptions-logging-and-testing-with-pytest"
+title: "09.3.2 Exceptions, Logging and Testing with pytest"
+sidebar_label: "09.3.2 Exceptions, Logging and Testing with pytest"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async/09-3-2-exceptions-logging-and-testing-with-pytest"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s3-t2">
+
+Swallowing errors silently (`except: pass`), scattering `print()` calls across production modules, and clicking through scripts manually instead of writing automated tests turns every refactor into a gamble.
+
+## 1. Specific Exception Handling (`try / except / else / finally`)
+
+Never write a bare `except:`—it catches `KeyboardInterrupt` (`Ctrl+C`) and masks real bugs! Catch the **narrowest expected exception**, preserve context with `raise ... from exc`, and put success-only logic inside `else:`:
+
+```python
+import json
+from pathlib import Path
+
+class ConfigLoadError(Exception):
+    """Domain error raised when application configuration cannot be parsed."""
+
+def load_settings(path: Path) -> dict:
+    try:
+        raw = path.read_text(encoding="utf-8")
+        settings = json.loads(raw)
+    except FileNotFoundError as exc:
+        raise ConfigLoadError(f"Missing config file: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ConfigLoadError(f"Malformed JSON in {path}") from exc
+    else:
+        return settings
+```
+
+## 2. Structured `logging` Over `print()`
+
+Python's built-in `logging` module attaches timestamps, severity levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`), and module names automatically—and can be filtered cleanly in production without editing source files:
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("billing")
+logger.info("Processed invoice %s ($%.2f)", "inv_101", 49.00)
+```
+
+## 3. Writing Real Tests with `pytest`
+
+Install pytest (`uv add --dev pytest` or `pip install pytest`) and name test files `test_*.py`. Use the project layout below — this exact project is in the repository at `examples/pytest-harness/` and its suite was executed (Python 3.14, pytest 9.2.0): **`5 passed in 0.12s`**.
+
+```text
+myapp/
+├── pyproject.toml        # dependencies + pytest config
+├── src/
+│   └── pricing.py        # application code
+└── tests/
+    └── test_pricing.py   # tests import from src/ via pythonpath
+```
+
+**`pyproject.toml`** — declare dependencies and tell pytest where to find things:
+
+```toml
+[project]
+name = "pricing-demo"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]        # pytest ≥ 7.0: puts src/ on sys.path
+```
+
+```python
+# src/pricing.py
+def apply_discount(price_cents: int, percent: int) -> int:
+    if not 0 <= percent <= 100:
+        raise ValueError("Discount percent must be between 0 and 100")
+    return round(price_cents * (100 - percent) / 100)
+```
+
+```python
+# tests/test_pricing.py
+import pytest
+
+from pricing import apply_discount
+
+@pytest.mark.parametrize("price,percent,expected", [
+    (1000, 0, 1000),
+    (1000, 25, 750),
+    (1000, 100, 0),
+])
+def test_apply_discount_valid(price: int, percent: int, expected: int) -> None:
+    assert apply_discount(price, percent) == expected
+
+def test_apply_discount_rejects_out_of_range() -> None:
+    with pytest.raises(ValueError, match="between 0 and 100"):
+        apply_discount(1000, 150)
+
+def test_env_override_with_monkeypatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TAX_RATE", "0.08")
+    import os
+    assert os.environ["TAX_RATE"] == "0.08"
+```
+
+Run it:
+
+```bash
+cd examples/pytest-harness
+python -m venv .venv && . .venv/Scripts/activate
+pip install pytest
+pytest -v
+```
+
+`pytest` discovers `tests/test_*.py` (`testpaths`), prints rich diffs on assertion failures, restores `monkeypatch` changes after each test, and fails loudly if an import cannot be resolved.
+
+> **Two import strategies, one trade-off:** `pythonpath = ["src"]` (above) is perfect for learning and small tools — zero install step. For real applications and CI, switch to a packaged `src/` layout with `pip install -e ".[dev]"` so the tested code is exactly what ships. `examples/python-async-lab/` (lesson `09.3.3`) uses that editable-install pattern with the same `src/`+`tests/` shape.
+
+## 3. Debugging Failing Tests — The Commands That Matter
+
+When a test fails, resist the urge to sprinkle `print()` and re-run blindly. Use pytest's built-in debugging surface:
+
+```bash
+python -m pytest tests/ -x                     # stop at the FIRST failure (fast feedback)
+python -m pytest tests/ -x --pdb               # drop into pdb at the failing line
+python -m pytest tests/test_calculator.py::test_should_reject_negative -q   # one test, quiet
+python -m pytest tests/ -l                     # show locals at the failure site (--showlocals)
+python -m pytest tests/ -x --sw                # stepwise: stop at first failure, rerun to advance (--stepwise)
+```
+
+Inside `pdb`: `p variable` prints, `n` steps to the next line, `s` steps into functions, `c` continues, `q` quits. For async code, `breakpoint()` (Python 3.7+) works too — it pauses wherever you place it, then drops you into `pdb` with the coroutine's frame.
+
+Run the full suite before anything else: `python -m pytest tests/ -x -q` — if that passes, the failure is somewhere your new change touched, not in the fixture or the environment.
+
+**Common failure signatures:**
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `ModuleNotFoundError` | src layout not on `sys.path` | `uv pip install -e .`, or `pythonpath = ["src"]` in `[tool.pytest.ini_options]` |
+| Test passes alone, fails in suite | Fixture leakage, shared global, test ordering | isolate with `monkeypatch`; don't share mutable module state |
+| `tmp_path` empty / file not found | Wrong CWD assumption | always use the `tmp_path` fixture; never `open("input.csv")` relative to the repo |
+| Time-dependent flakes | `now()` without a freeze | `freezegun`, or inject the clock into the function under test |
+| `capsys` shows nothing | output went to stderr or a logger | use `capsys.readouterr().err`, or `caplog` for `logging` |
+
+`-x`/`--pdb` first; print statements are a last resort, not a debugging strategy.
+
+## Mastery Checklist
+
+- [ ] Catches specific exceptions (`FileNotFoundError`, `ValueError`) and avoids bare `except:`.
+- [ ] Uses `logging.getLogger(__name__)` with severity levels instead of `print()`.
+- [ ] Writes parameterized tests, `pytest.raises` checks, and `monkeypatch` isolation in `pytest`.
+
+</BookNodePage>

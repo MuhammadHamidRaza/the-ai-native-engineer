@@ -1,0 +1,262 @@
+---
+id: "13-4-1-background-jobs-and-idempotency"
+title: "13.4.1 Background Jobs and Idempotency"
+sidebar_label: "Background Jobs and Idempotency"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s4-t1">
+
+Beginners often start "background work" by omitting `await` (`void sendWelcomeEmail(user.email)`) or pushing objects into an in-memory JavaScript array (`const queue = []`). In production, both patterns silently drop data:
+
+- If Node crashes, restarts during a deploy, or runs out of memory, every job inside `const queue = []` disappears forever.
+- If you run 3 API containers behind a load balancer, Container A cannot see Container B's in-memory array, and shutting down Container A kills in-flight promises immediately.
+- If a client retries a slow `POST /api/orders` request after a mobile timeout, your API risks creating **two orders** or charging **twice** unless the mutation is **idempotent**.
+
+## 1. The Producer -> Queue -> Worker Architecture
+
+Reliable backends decouple **accepting intent** from **executing slow side effects**:
+
+1. **HTTP API (Producer):** Validates input, commits the database record, enqueues a durable job row (inside the same database transaction when using Postgres, or into Redis/BullMQ immediately after), and returns `202 Accepted` or `201 Created` in under 50 ms.
+2. **Durable Broker:** Stores pending jobs on disk (`PostgreSQL` table with `FOR UPDATE SKIP LOCKED`, `Redis` + `BullMQ`, `RabbitMQ`, or cloud SQS) with retry counts and `run_after` timestamps.
+3. **Worker Process:** Polls/subscribes independently from the HTTP server, executes the slow task (email, PDF render, LLM call, webhook delivery), marks the job `completed`, or schedules exponential backoff on failure. After `max_attempts`, the job moves to a **Dead-Letter Queue (`dead`)** for human inspection.
+
+### Durable PostgreSQL Transactional Outbox Pattern
+
+When you already run PostgreSQL, a lightweight job/outbox table gives you **transactional consistency** for zero extra infrastructure: either both the business row AND the queued job commit together, or neither does.
+
+```sql
+CREATE TABLE IF NOT EXISTS background_jobs (
+  id            BIGSERIAL PRIMARY KEY,
+  job_type      TEXT NOT NULL,
+  payload       JSONB NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'processing', 'completed', 'dead')),
+  attempts      INT NOT NULL DEFAULT 0,
+  max_attempts  INT NOT NULL DEFAULT 5,
+  run_after     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error    TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_background_jobs_claimable
+  ON background_jobs (run_after, id)
+  WHERE status = 'pending';
+```
+
+### Claiming Jobs Safely Across Multiple Workers
+
+If two workers run `SELECT ... WHERE status = 'pending' LIMIT 1`, both can grab the same job unless the database locks the row. PostgreSQL's `FOR UPDATE SKIP LOCKED` solves this atomically:
+
+```javascript
+export async function claimNextJob(pool) {
+  const { rows } = await pool.query(
+    `
+    WITH next_job AS (
+      SELECT id
+      FROM background_jobs
+      WHERE status = 'pending'
+        AND run_after <= NOW()
+      ORDER BY run_after ASC, id ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    UPDATE background_jobs j
+    SET status = 'processing',
+        attempts = j.attempts + 1,
+        updated_at = NOW()
+    FROM next_job
+    WHERE j.id = next_job.id
+    RETURNING j.id, j.job_type, j.payload, j.attempts, j.max_attempts;
+    `
+  );
+
+  return rows[0] ?? null;
+}
+
+export async function failOrDeadLetterJob(pool, job, errorMessage) {
+  const isFinalAttempt = job.attempts >= job.max_attempts;
+  const backoffSeconds = Math.min(3600, 2 ** job.attempts * 5);
+
+  await pool.query(
+    `
+    UPDATE background_jobs
+    SET status = $2,
+        run_after = NOW() + ($3 * INTERVAL '1 second'),
+        last_error = $4,
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [
+      job.id,
+      isFinalAttempt ? "dead" : "pending",
+      isFinalAttempt ? 0 : backoffSeconds,
+      errorMessage.slice(0, 1000),
+    ]
+  );
+}
+```
+
+At scale (thousands of jobs/sec, delayed cron schedules, parent-child flows), upgrade the broker from Postgres polling to **Redis + BullMQ** (`npm install bullmq ioredis`), keeping the exact same Producer/Worker boundary.
+
+## 2. Idempotency: Surviving Duplicate Requests Safely
+
+Networks guarantee **at-least-once** uncertainty: a mobile client sends `POST /api/payments`, your server charges the card and saves the row, and then the Wi-Fi drops before the client sees `201 Created`. The client retries the exact same request.
+
+An operation is **idempotent** if executing it `N` times with the same client-generated `Idempotency-Key` produces the same server state and returns the same logical response as executing it once.
+
+### Persistent Idempotency Store Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  user_id         BIGINT NOT NULL,   -- ShopCore users.id (BIGINT IDENTITY) — never UUID here
+  key_value       TEXT NOT NULL,
+  request_hash    TEXT NOT NULL,
+  response_status INT,
+  response_body   JSONB,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, key_value)
+);
+```
+
+Notice `request_hash` (a SHA-256 hash of the HTTP method, path, and canonical body). If a buggy client accidentally reuses `Idempotency-Key: abc-123` for a *different* dollar amount or payload, you reject it with `422 Unprocessable Entity` instead of silently returning an old response!
+
+### Atomic Express Idempotency Guard (Runnable Concept)
+
+Save this as `idempotency-demo.mjs` and run `node idempotency-demo.mjs` to test duplicate-retry detection, concurrent in-flight locking, and payload-mismatch rejection:
+
+```javascript
+import crypto from "node:crypto";
+import assert from "node:assert/strict";
+
+// In production, back this Map with PostgreSQL PRIMARY KEY (user_id, key_value) or Redis SET NX EX.
+const store = new Map();
+
+function hashPayload(method, path, body) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ method, path, body }))
+    .digest("hex");
+}
+
+async function handleIdempotentPost({ userId, key, method, path, body, execute }) {
+  if (!key) {
+    return { status: 400, body: { error: "MISSING_IDEMPOTENCY_KEY" } };
+  }
+
+  const compositeKey = `${userId}:${key}`;
+  const reqHash = hashPayload(method, path, body);
+  const existing = store.get(compositeKey);
+
+  if (existing) {
+    if (existing.requestHash !== reqHash) {
+      return { status: 422, body: { error: "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH" } };
+    }
+    if (existing.state === "in_flight") {
+      return { status: 409, body: { error: "REQUEST_IN_PROGRESS_RETRY_SHORTLY" } };
+    }
+    return {
+      status: existing.status,
+      body: existing.body,
+      replayed: true,
+    };
+  }
+
+  // Acquire lock before running side effects
+  store.set(compositeKey, { state: "in_flight", requestHash: reqHash });
+
+  try {
+    const result = await execute();
+    store.set(compositeKey, {
+      state: "completed",
+      requestHash: reqHash,
+      status: result.status,
+      body: result.body,
+    });
+    return { ...result, replayed: false };
+  } catch (err) {
+    // Release key if handler failed before committing so client may safely retry
+    store.delete(compositeKey);
+    throw err;
+  }
+}
+
+let sideEffectCount = 0;
+const payload = { amountCents: 4900, currency: "USD" };
+
+const first = await handleIdempotentPost({
+  userId: "u-1",
+  key: "order-77",
+  method: "POST",
+  path: "/api/orders",
+  body: payload,
+  execute: async () => {
+    sideEffectCount += 1;
+    return { status: 201, body: { orderId: "ord_101", amountCents: 4900 } };
+  },
+});
+
+const retry = await handleIdempotentPost({
+  userId: "u-1",
+  key: "order-77",
+  method: "POST",
+  path: "/api/orders",
+  body: payload,
+  execute: async () => {
+    sideEffectCount += 1;
+    return { status: 201, body: { orderId: "ord_999" } };
+  },
+});
+
+const mismatch = await handleIdempotentPost({
+  userId: "u-1",
+  key: "order-77",
+  method: "POST",
+  path: "/api/orders",
+  body: { amountCents: 9900, currency: "USD" },
+  execute: async () => ({ status: 201, body: {} }),
+});
+
+assert.equal(sideEffectCount, 1);
+assert.equal(first.replayed, false);
+assert.equal(retry.replayed, true);
+assert.equal(retry.body.orderId, "ord_101");
+assert.equal(mismatch.status, 422);
+
+console.log({ first, retry, mismatch, sideEffectCount });
+```
+
+Expected output:
+
+```text
+{
+  first: { status: 201, body: { orderId: 'ord_101', amountCents: 4900 }, replayed: false },
+  retry: { status: 201, body: { orderId: 'ord_101', amountCents: 4900 }, replayed: true },
+  mismatch: { status: 422, body: { error: 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH' } },
+  sideEffectCount: 1
+}
+```
+
+## 3. Graceful Shutdown for Workers & HTTP Servers
+
+When Kubernetes, Docker, or `systemd` deploys a new version, it sends `SIGTERM` before forcing `SIGKILL` after 10–30 seconds. A sloppy worker dies mid-job, leaving rows stuck in `'processing'` forever.
+
+Always handle `SIGTERM` and `SIGINT` by stopping new claims, awaiting the active job, closing `pool.end()`, and adding a stale-lock reaper (`status = 'processing' AND updated_at < NOW() - INTERVAL '5 minutes'`) for hard crashes.
+
+## Practice Exercises
+
+1. **Idempotent Job Handler:** Even with `SKIP LOCKED`, workers run *at-least-once* if a worker crashes right after calling `sendEmail()` and before `UPDATE background_jobs SET status = 'completed'`. Add a `processed_events(event_id TEXT PRIMARY KEY)` guard inside a worker function so sending `"invoice.paid"` twice only creates one ledger entry.
+2. **Stale Lock Recovery:** Write the SQL query that resets stuck jobs from `'processing'` back to `'pending'` if `updated_at` is older than 10 minutes and `attempts < max_attempts`, or marks them `'dead'` if `attempts >= max_attempts`.
+
+## Mastery Checklist
+
+- [ ] Can explain why in-memory queues and unawaited promises drop work on crash or multi-instance scale.
+- [ ] Can claim jobs safely across concurrent workers with PostgreSQL `FOR UPDATE SKIP LOCKED`.
+- [ ] Enforces bounded retries with exponential backoff and moves exhausted jobs to a Dead-Letter status.
+- [ ] Implements `Idempotency-Key` checks scoped per user with payload-hash mismatch detection (`422`).
+- [ ] Designs workers and side effects to remain safe under at-least-once delivery.
+
+</BookNodePage>

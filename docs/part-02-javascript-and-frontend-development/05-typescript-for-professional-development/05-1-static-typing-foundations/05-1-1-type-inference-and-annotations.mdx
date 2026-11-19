@@ -1,0 +1,84 @@
+---
+id: "05-1-1-type-inference-and-annotations"
+title: "05.1.1 Type Inference and Annotations"
+sidebar_label: "05.1.1 Type Inference and Annotations"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-1-static-typing-foundations/05-1-1-type-inference-and-annotations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s1-t1">
+
+Beginners often react to TypeScript in two opposite extremes: either annotating every local variable manually, or plastering `: any` everywhere to silence red squiggles. Both habits defeat the purpose of the compiler. Mastering **type inference** alongside targeted annotations gives you complete safety with almost zero visual noise.
+
+## 1. Let Inference Handle Obvious Local Values
+
+TypeScript automatically infers the narrowest safe type from an initializer:
+
+```typescript
+const appName = "ShopCore";      // inferred as literal type "ShopCore"
+let retryCount = 3;              // inferred as number (because `let` can change)
+const ports = [3000, 8080];      // inferred as number[]
+
+// Annotate function parameters (TypeScript cannot infer them without context)
+// and annotate return types on exported/public functions for clear contracts.
+export function calculateSubtotal(unitPriceCents: number, qty: number): number {
+  return unitPriceCents * qty;
+}
+```
+
+Why annotate return types on exported functions? If you accidentally `return` a string or forget a `return` branch inside a 40-line function, the compiler flags the mistake *inside the function* instead of letting a confusing type error ripple into five caller files.
+
+## 2. Empty Arrays & Delayed Initialization
+
+When TypeScript cannot see an initial element, annotate the variable explicitly:
+
+```typescript
+const tags: string[] = [];
+tags.push("backend");
+// tags.push(42); // Compile Error: Argument of type 'number' is not assignable to 'string'
+```
+
+## 3. `unknown` vs. `any` (The Most Important Rule in TypeScript)
+
+- **`any` turns off the type checker completely.** Calling `data.foo.bar()` on an `any` value compiles with zero errors and explodes at runtime.
+- **`unknown` says "I do not know what this value is yet—force me to verify it first."** You cannot access properties or call methods on an `unknown` value until you check its type (`05.1.3`).
+
+```typescript
+function parseRawCount(input: unknown): number {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return input;
+  }
+  if (typeof input === "string" && /^\d+$/.test(input.trim())) {
+    return Number(input.trim());
+  }
+  throw new TypeError("Expected a valid numeric count");
+}
+```
+
+## 4. Literal Types and `as const`
+
+Sometimes you want TypeScript to keep an object's exact literal strings instead of widening `{ role: "admin" }` to `{ role: string }`:
+
+```typescript
+const HTTP_STATUS = {
+  OK: 200,
+  CREATED: 201,
+  BAD_REQUEST: 400,
+} as const;
+
+// Type of HTTP_STATUS.OK is literally 200 (readonly), not generic `number`
+```
+
+## 5. Practice Exercises
+
+1. Write an unannotated `const items = []`, push a string and a number, inspect what TypeScript infers, then fix it with `: string[]`.
+2. Rewrite a helper that previously took `(payload: any)` to accept `(payload: unknown)` and narrow safely with `typeof`.
+
+## Mastery Checklist
+
+- [ ] Annotates function parameters and public return types while letting local `const`/`let` infer.
+- [ ] Replaces `any` with `unknown` for external JSON, `catch (err)`, and dynamic inputs.
+- [ ] Uses `as const` for immutable lookup tables and status codes.
+
+</BookNodePage>

@@ -1,0 +1,133 @@
+---
+id: "12-2-3-indexes-and-explain-analyze"
+title: "12.2.3 Indexes and EXPLAIN ANALYZE"
+sidebar_label: "12.2.3 Indexes & EXPLAIN"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-3-indexes-and-explain-analyze"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s2-t3">
+
+An **index** is a sorted lookup structure — like the index at the back of a textbook: instead of reading every page (`Seq Scan`), the database jumps straight to the right rows. This lesson teaches you to add the right indexes to ShopCore, prove they work with `EXPLAIN ANALYZE`, and avoid the traps that make indexes worse than useless.
+
+## 1. How to Read EXPLAIN ANALYZE
+
+Every ShopCore index we create exists because of this tool. Run:
+
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM orders WHERE user_id = 1;
+```
+
+`EXPLAIN ANALYZE` does two things: shows the **plan** the planner chose, then **executes** the query and annotates real timings. Key lines:
+
+```text
+Seq Scan on orders  (cost=0.00..1.07 rows=2) (actual time=0.021..0.023 rows=2 loops=1)
+  Filter: (user_id = 1)
+  Rows Removed by Filter: 1
+Planning Time: 0.081 ms
+Execution Time: 0.041 ms
+```
+
+- `Seq Scan` = read the whole table. `Filter:` = the `WHERE` condition applied after reading. Fine on tiny tables (< thousands of rows); deadly on big ones.
+- With an index you will instead see `Index Scan using idx_orders_user_id ...` — faster, and the cost collapses.
+- Never index on a guess — verify with `EXPLAIN ANALYZE` before **and** after.
+
+## 2. Indexes PostgreSQL Creates for You (and One It Never Will)
+
+PostgreSQL automatically builds indexes on `PRIMARY KEY` and `UNIQUE` columns — `users.email`, `products.sku`, `categories.slug`, all PK columns. It does **NOT** automatically index foreign keys. That's the #1 beginner miss.
+
+ShopCore's canonical DDL (11.1.3) already adds:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders (user_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items (order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_products_category_id ON products (category_id);
+```
+
+**Why foreign keys need indexes:** every join on that column, and every `ON DELETE CASCADE/RESTRICT` check, scans the child table otherwise. `CASCADE` deletes especially go O(n) without one.
+
+## 3. B-Tree, Composite and Partial Indexes
+
+### B-Tree (the default — 90% of your indexes)
+
+Sorted tree; supports `=`, `<`, `>`, `BETWEEN`, `ORDER BY`, `LIKE 'foo%'` (prefix). This is what `CREATE INDEX` makes.
+
+### Composite (multi-column) Indexes — Column Order Matters
+
+```sql
+-- WHERE user_id = 1 AND status = 'paid' — this index serves BOTH predicates
+CREATE INDEX idx_orders_user_status ON orders (user_id, status);
+```
+
+**Rule (Equality → Sort → Range):** leading columns answer `=` filters; put the `ORDER BY` / range column last. `WHERE status = 'paid'` alone cannot use this index — it starts with `user_id`. That's why you design indexes around your actual queries, not tables.
+
+### Partial Indexes — Index Only the Hot Rows
+
+```sql
+-- Only rows you actually query — e.g., unshipped orders for the warehouse screen
+CREATE INDEX idx_orders_pending ON orders (created_at) WHERE status = 'pending';
+```
+
+Smaller index, hotter cache, faster writes elsewhere. Partial indexes are killer for queues and status filters.
+
+### What Makes an Index Useless
+
+| Anti-pattern | Why |
+| :-- | :-- |
+| `WHERE lower(email) = 'a@b.c'` | Function on column → index ignored. Use `citext` type or an expression index `CREATE INDEX ... ON users (lower(email))` |
+| `WHERE title ILIKE '%keyboard%'` | Leading wildcard can't use B-Tree. Use full-text search (12.3.3) or `pg_trgm` |
+| `WHERE status = 'paid'` on a 2-value column | Low cardinality → planner scans anyway (it's faster) — don't bother |
+| Adding 10 indexes "just in case" | Every INSERT/UPDATE/DELETE maintains every index — write amplification |
+
+## 4. A Hands-On Index Lab in ShopCore
+
+```sql
+-- 1. Baseline (tiny table — planner picks Seq Scan, that's EXPECTED)
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 1;
+
+-- 2. Add the index
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders (user_id);
+
+-- 3. Re-run and compare
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 1;
+```
+
+Expected: both show `Seq Scan`/`Index Scan` with identical timing (table has 3 rows — planner rationally ignores the index). To **see** the difference, inflate test data:
+
+```sql
+INSERT INTO orders (user_id, status)
+SELECT (random()*1 + 1)::int, 'pending' FROM generate_series(1, 10000);
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 1 AND status = 'paid';
+```
+
+Now `idx_orders_user_status` wins. (Drop the test rows with `DELETE FROM orders WHERE id > 3;` — or reseed: `TRUNCATE orders RESTART IDENTITY CASCADE;` + 11.1.3 seed.)
+
+## 5. Verify What the Database Uses
+
+```sql
+\di                                -- psql: list indexes with definitions
+EXPLAIN (ANALYZE, BUFFERS) SELECT ...;  -- shows cache vs disk hits — "shared hit" is good
+```
+
+In pgAdmin, the Explain panel (F7 / "Explain" button) renders the same plan visually.
+
+## 6. Practice
+
+**Guided exercise.** Run section 4 on your `shopcore` database; record both plans. Then drop the index (`DROP INDEX idx_orders_user_id;`) and re-check `\di`. Re-create it afterwards.
+
+**Independent exercise.** Design the index for this exact query: `SELECT * FROM orders WHERE user_id = 7 AND status = 'shipped' ORDER BY created_at DESC LIMIT 20;` Explain why you chose column order and whether `LIMIT` changes the design (hint: sort key last).
+
+**Challenge.** Find one query in this book that would misuse your new index (e.g., filtering by `status` alone) and explain what the planner does and why.
+
+**Assessment checklist**
+
+- [ ] I can read Seq Scan vs Index Scan in EXPLAIN ANALYZE output.
+- [ ] I know Postgres auto-indexes PKs/Uniques but never plain FKs.
+- [ ] I understand composite index column order (Equality → Sort → Range).
+- [ ] I can create and drop a partial index and explain its purpose.
+- [ ] I verify every index with EXPLAIN ANALYZE — before and after.
+
+</BookNodePage>

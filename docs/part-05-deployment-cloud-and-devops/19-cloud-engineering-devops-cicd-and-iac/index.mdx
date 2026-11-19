@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "19. Cloud Engineering, DevOps, CI/CD & IaC"
+sidebar_label: "19. Cloud Engineering, DevOps, CI/CD & IaC"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19">
+
+You can now deploy the ShopCore stack to one VPS by hand ([Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment)). That is exactly what juniors do once — and what seniors never want to do twice. This chapter replaces the snowflake server with **repeatable infrastructure, automated delivery and managed cloud building blocks**.
+
+**Chapter 19 (`8 Focused Hours`)** covers the three layers: how clouds are organized and billed (19.1), how code goes from push to production automatically (19.2), and how infrastructure itself is written as reviewable code (19.3). Everything here is hands-on — including a real AWS lab with a **mandatory teardown**, and a GitHub Actions pipeline you will watch go green.
+
+## Chapter 19 Structure
+
+- **19.1 Cloud Fundamentals and AWS, Azure, Google Cloud:** Regions/AZs, VPCs and subnets, IAM users/roles/policies and least privilege, and — first, always — billing controls: a $5 budget with email alerts *before* creating anything. Then a guided AWS lab (IAM user with MFA → t3.micro → nginx → ShopCore SPA → Elastic IP → **terminate**), and the Azure/GCP service-equivalents map for the same workloads.
+- **19.2 DevOps Workflows and CI/CD Pipelines:** Git flow refresher (trunk + short branches + PRs), GitHub Actions anatomy (`on:`, `jobs`, `runs-on`, `steps`), your first lint+build workflow, then a test job, artifact upload, AWS credentials via OIDC (never stored passwords), a deploy job with rollback to the previous SHA, and failure notifications.
+- **19.3 Infrastructure as Code — Terraform and Ansible:** Terraform from zero — install, `init`/`plan`/`apply`/`destroy`, the AWS provider (VPC + EC2 + security group), state-file sensitivity and local-for-learning, `variables.tf`, and modules — ending with a **mandatory `terraform destroy`**. Then Ansible: inventory, `ping`, a playbook that installs nginx and deploys a static site to your VPS, idempotency and handlers.
+
+## What You Will Be Able to Do After This Chapter
+
+- Navigate AWS/Azure/GCP consoles safely: create least-privilege IAM identities, spot free-tier-eligible shapes, and never get a surprise bill.
+- Push code and watch it lint, build, test and (with OIDC) deploy — with a rollback path you trust.
+- Write, plan, apply and destroy a small Terraform stack; explain what state is and why it must not be committed.
+- Configure a server from nothing with an idempotent Ansible playbook.
+
+## How to Work Through This Chapter
+
+1. **19.1.1 first** — set a billing alert before touching anything cloud. The $5 budget costs nothing and has saved many learners from far worse.
+2. Do the AWS lab (19.1.2) in one sitting; end with the teardown checklist — every item, every time.
+3. Build the Actions workflow (19.2.1) against your ShopCore repo; confirm it runs on push and on PRs.
+4. Extend it with the deploy job and rollback (19.2.2). Break it on purpose once and watch the notification fire.
+5. Terraform (19.3.1) and Ansible (19.3.2) are the "so you never hand-build infra again" lessons — do them on the same small AWS account/VPS.
+
+**Prerequisites:** Chapters 16–18 (deployment, Linux, Docker). You need a GitHub account and (for 19.1.2/19.2.2/19.3.1) an AWS account with a budget alert in place — see 19.1.1. Cost is real: a forgotten t3.micro or NAT gateway bills by the hour; each lab says exactly what to delete.
+
+</BookNodePage>

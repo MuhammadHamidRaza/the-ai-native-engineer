@@ -1,0 +1,137 @@
+---
+id: "15-2-1-backend-setup-and-database-connection"
+title: "15.2.1 Backend Setup and Database Connection"
+sidebar_label: "15.2.1 Backend Setup & DB Connection"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-2-backend-build/15-2-1-backend-setup-and-database-connection"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s2-t1">
+
+Milestone 3: the API skeleton. You will scaffold `apps/api`, wire the connection to your freshly migrated `shopcore` database, and prove it with a `/health` check — the same disciplines from Chapter 13, now pointing at your project tree.
+
+## 1. Scaffold
+
+```bash
+mkdir -p shopcore/apps/api/src/{db,lib,middleware,routes}
+cd shopcore/apps/api
+npm init -y
+npm pkg set type=module
+npm install express pg zod cors helmet cookie-parser dotenv
+npm install --save-dev nodemon
+npm pkg set scripts.dev="nodemon src/server.js" scripts.start="node src/server.js" scripts.migrate="node src/db/migrate.js"
+```
+
+`.env` (never committed):
+
+```text
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/shopcore
+PORT=4000
+SESSION_TTL_DAYS=7
+```
+
+`.env.example` (committed — placeholders only):
+
+```text
+DATABASE_URL=postgresql://postgres:password@localhost:5432/shopcore
+PORT=4000
+SESSION_TTL_DAYS=7
+```
+
+`.gitignore` at the repo root already covers `.env` — verify: `git check-ignore apps/api/.env`.
+
+## 2. Database Pool — `src/db/pool.js`
+
+Copy the exact pattern from [13.2.4](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-4-connecting-databases-postgresql-and-mongodb), unchanged:
+
+```javascript
+import 'dotenv/config';
+import pg from 'pg';
+
+export const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,
+  idleTimeoutMillis: 30_000,
+});
+
+export async function pingPostgres() {
+  const { rows } = await pool.query('SELECT 1 AS ok');
+  return rows[0].ok === 1;
+}
+```
+
+## 3. App Wiring — `src/app.js`
+
+```javascript
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
+
+export const app = express();
+
+app.use(helmet());
+// Dev: Vite runs on 5173 and proxies /api → 4000, so same-origin is the default.
+// Production: Express serves the built SPA from the same origin. CORS allowlist
+// needed only in dev when bypassing the proxy:
+app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') ?? false, credentials: true }));
+app.use(express.json({ limit: '100kb' }));
+app.use(cookieParser());
+
+app.get('/health', async (_req, res) => {
+  res.json({ status: 'ok', service: 'shopcore-api', time: new Date().toISOString() });
+});
+
+// routes get mounted in 15.2.2/15.2.3
+```
+
+## 4. Server — `src/server.js`
+
+```javascript
+import 'dotenv/config';
+import { app } from './app.js';
+import { pingPostgres } from './db/pool.js';
+
+const ok = await pingPostgres().catch(() => false);
+if (!ok) {
+  console.error('PostgreSQL unreachable — check DATABASE_URL and that the service is running (12.1.1).');
+  process.exit(1);
+}
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => console.log(`shopcore-api on http://localhost:${PORT}`));
+```
+
+Run: `npm run dev` → expect:
+
+```text
+connected
+shopcore-api on http://localhost:4000
+```
+
+Verify: `curl http://localhost:4000/health` → `{"status":"ok",...}`. If it fails: wrong `DATABASE_URL`, service down, or firewall — the exact trio from 13.2.4's troubleshooting.
+
+## 5. Common Failures on First Boot
+
+| Symptom | Fix |
+| :-- | :-- |
+| Exit with "PostgreSQL unreachable" | `psql "$DATABASE_URL" -c "SELECT 1"` — reproduce outside Node; the string is wrong or the server's down |
+| Port 4000 in use | `netstat -ano \| findstr :4000` (Windows) / `lsof -i :4000` (macOS/Linux) — kill or set `PORT=4100` |
+| Env var undefined inside app | You started node without `--env-file` and without `dotenv/config` import order — keep `import 'dotenv/config'` first everywhere |
+
+## 6. Practice
+
+**Guided exercise.** Scaffold exactly as above; run `npm run dev`; capture `/health` output.
+
+**Independent exercise.** Add `/health/db` returning `{ db: "up", products: <count> }` — one real query, proving end-to-end reachability.
+
+**Challenge.** Boot with `DATABASE_URL` pointing to a non-existent DB and observe the designed failure message — then fix and confirm green.
+
+**Assessment checklist**
+
+- [ ] `npm run dev` boots and pings Postgres with a clean message on failure.
+- [ ] `/health` passes from curl.
+- [ ] `.env` is ignored; `.env.example` committed.
+- [ ] I can reproduce and fix the three first-boot failures without help.
+
+</BookNodePage>

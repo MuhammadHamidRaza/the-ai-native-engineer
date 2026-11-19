@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "17.3 VPS Operations & Real Server Deployment"
+sidebar_label: "17.3 VPS Operations & Real Server Deployment"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-3-vps-operations-and-real-server-deployment"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s3">
+
+**Subchapter 17.3** is the operational tail of the VPS story: choosing a provider without overpaying, keeping the box patched, backing it up *and testing the restore*, and then the full go-live — DNS, TLS, deploy, verify, rollback — for ShopCore on your own server.
+
+## Lessons in Subchapter 17.3
+
+1. **[17.3.1 VPS Providers, Updates, Backups and Real Deployment](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-3-vps-operations-and-real-server-deployment/17-3-1-vps-providers-updates-backups-and-real-deployment):** Provider shortlist with approximate prices (Hetzner CX23, DigitalOcean Basic, AWS Lightsail — figures move; verify), zones and images, in-place upgrades, `unattended-upgrades`, snapshots vs backups, a restore drill, and the end-to-end ShopCore deployment checklist.
+
+Prerequisites for this subchapter: 17.1 (shell/systemd) and 17.2 (ufw + reverse proxy) complete, a domain you control (16.2), and a disposable VPS. Set a billing alert at the provider before you create anything — an hourly-billed box runs up real money while you sleep.
+
+</BookNodePage>

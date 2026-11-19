@@ -1,0 +1,158 @@
+---
+id: "23-2-2-stateless-services-and-load-balancing"
+title: "23.2.2 Stateless Services and Load Balancing"
+sidebar_label: "23.2.2 Stateless Services and Load Balancing"
+slug: "/part-06-system-design-and-production-quality/23-performance-and-scalability/23-2-caching-and-horizontal-scaling/23-2-2-stateless-services-and-load-balancing"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-23-s2-t2">
+
+Horizontal scaling sounds like "add more pods," until pod B can't see what pod A remembered. **Statelessness is a data-placement decision**: anything a request might need must live in shared infrastructure (Redis, Postgres, JWT payloads) — never in process memory. This lesson covers the ShopCore blueprint for exactly that, plus the balancer mechanics that make N interchangeable instances behave like one.
+
+## 1. Where Does the Session Live? — JWT vs Server Session
+
+| | JWT (stateless) | Server session (stateful) |
+| :-- | :-- | :-- |
+| Stored where | Client holds the token; pods verify signature locally | Session id in cookie; data in Redis/PG |
+| Validation cost | Signature check each request (~sub-ms with cached JWKS/HS256 secret) | Redis round-trip each request |
+| Revocation | Hard — valid until expiry (mitigate: 5–15 min TTL + refresh) | Trivial — `DEL session:{id}` |
+| Pod interchangeability | Total | Total (state is in Redis) |
+| Best for | APIs, SPA/mobile, short calls | "Kick user now" requirements, browser sessions |
+
+ShopCore: **JWT access tokens (15 min, HS256 with secret from secrets manager per [22.1.2](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-1-application-security-engineering/22-1-2-secrets-management-and-dependency-auditing)) + refresh cookie + Redis-backed sessions for the web storefront.** Both poles must be stateless *from the pod's perspective* — nothing lives in RAM. Full auth walkthrough: [13.3.1 Sessions, JWTs and Password Hashing](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-3-authentication-and-authorization/13-3-1-sessions-jwts-and-password-hashing).
+
+**Sticky sessions** (LB pins client → pod by cookie/IP) make stateful designs tolerable, not good: rolling updates get complicated, pod death strands users, balancing quality drops, and autoscaling can't drain cleanly. Use them only as a migration crutch; measure "sessions per pod" skew to know when to retire them.
+
+## 2. L4 vs L7 — Enough to Choose, Not to Re-Teach
+
+| | Routes on | Examples | Reach for it when |
+| :-- | :-- | :-- | :-- |
+| **L4** | IP:port, no payload | NLB, HAProxy L4, kube-proxy | Raw TCP, WebSockets at huge scale, TLS passthrough |
+| **L7** | HTTP host/path/headers | nginx, traefik, Envoy, ALB | Path routing, TLS termination, retries, headers, WAF |
+
+Deep dive with the same framing: [20.2.1 §3](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-1-scaling-load-balancing-caching-and-database-scaling). ShopCore terminates TLS and routes `/api/*` vs `/static/*` at L7; the database gets nothing from the balancer at all.
+
+## 3. Nginx Round-Robin — Working ShopCore Config
+
+```nginx
+# /etc/nginx/conf.d/shopcore.conf
+upstream shopcore_api {
+    least_conn;                       # or round-robin (default) — least_conn wins for mixed handler cost
+    server 10.0.0.11:3000 max_fails=2 fail_timeout=10s;
+    server 10.0.0.12:3000 max_fails=2 fail_timeout=10s;
+    server 10.0.0.13:3000 max_fails=2 fail_timeout=10s;
+    keepalive 32;                     # reuse upstream conns; pair with proxy_http_version 1.1
+}
+server {
+    listen 443 ssl;
+    server_name api.shopcore.example.com;
+    location / {
+        proxy_pass http://shopcore_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+}
+```
+
+HAProxy equivalent:
+
+```text
+backend shopcore_api
+    balance roundrobin
+    option httpchk GET /readyz
+    server api1 10.0.0.11:3000 check inter 2s rise 2 fall 3
+    server api2 10.0.0.12:3000 check inter 2s rise 2 fall 3
+    server api3 10.0.0.13:3000 check inter 2s rise 2 fall 3
+```
+
+`max_fails`/`fail_timeout` (nginx) and `fall 3`/`rise 2` (HAProxy) are your **passive health checks** — the balancer quietly ejects a sick pod. They complement — never replace — app-level health endpoints (§6).
+
+**Connection draining:** when a pod leaves (deploy, scale-in), the LB must stop *new* connections but let in-flight ones finish. nginx Plus offers `slow_start=30s` on rejoin; open-source nginx has no slow-start — compensate with `max_fails` ejection and app-side graceful shutdown instead. Keep `proxy_next_upstream` limited to idempotent methods (never transparently retry `POST /v1/orders`). On shutdown: SIGTERM → app stops accepting, finishes in-flight requests (drain window ~15–30 s) → exits, paired with Kubernetes `preStop` hook and `terminationGracePeriodSeconds: 30`. HAProxy uses `hard-stop-after` / admin socket `disable server`; Kubernetes Service load-balancing removes the endpoint from iptables/IPVS as soon as readiness fails. Skip draining and every deploy cuts live checkouts — your users' 2 a.m. is a deploy you authorized.
+
+## 4. Autoscale Triggers — Pick the Signal That Predicts Pain
+
+| Trigger | Strengths | Failure mode |
+| :-- | :-- | :-- |
+| **CPU %** | Universal, easy | Scales *after* saturation; IO-heavy apps look "idle" while dying; noisy neighbors |
+| **RPS / concurrency** | Directly proportional to work | Ignores request cost (a search vs a health check count the same) |
+| **p95/p99 latency** | Scales to *symptom* | Lagging indicator; oscillation (scale up → latency drops → scale down → repeat) |
+| **Queue depth** (worker tier) | Perfect for consumers | Needs the metric; not for request-driven HTTP |
+
+ShopCore rule of thumb: **HPA on CPU at 60–65% average with a p95 < 250 ms sanity check, scale-up aggressively (stabilization 0 s, +2 pods/min), scale-down slowly (5 min stabilization, never to zero during business hours).** Kubernetes details: [20.1.2 §Autoscaling](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-1-kubernetes-and-helm-fundamentals/20-1-2-ingress-probes-autoscaling-helm-and-local-cluster-lab). If p95 rises while CPU stays flat, your autoscaler is watching the wrong signal — do not add pods to a latency problem you haven't diagnosed (see 23.1.2's triage tree).
+
+## 5. WebSocket Load Balancing — The Long-Connection Exception
+
+WebSockets pin a client to an instance for the life of the socket. Options: L7 balancer with **consistent-hash / least-connections + `Connection: Upgrade` pass-through** (nginx: `proxy_set_header Upgrade $http_upgrade;`), or a dedicated WS tier; on Kubernetes, prefer a separate Service with `sessionAffinity: ClientIP` only for that tier, or terminate at the ingress with upgrade support. Draining long-lived sockets is harder than draining HTTP — send a `server_shutting_down` message and reconnect clients (exponential backoff + jitter) instead of hard-closing. Cross-instance fan-out (user A's message → user B connected to pod 2) goes through **Redis pub/sub**, not pod memory — same stateless rule.
+
+## 6. Health vs Readiness — Two Questions, Two Endpoints
+
+| Endpoint | Question | Failing means | Response when failing |
+| :-- | :-- | :-- | :-- |
+| `/healthz` (liveness) | "Is the process broken beyond recovery?" | Kernel/event-loop wedged, deadlock | Orchestrator **restarts** the container |
+| `/readyz` (readiness) | "Can this instance serve a correct response *right now*?" | DB pool exhausted, Redis unreachable, migrations pending | LB **stops routing** new requests; container stays alive |
+
+```js
+// ShopCore /readyz — cheap, honest, and fast (< 50 ms)
+app.get('/readyz', async (req, res) => {
+  try {
+    await db.query('SELECT 1');               // pool alive?
+    await redis.ping();                        // cache alive?
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    res.status(503).json({ ok: false, err: e.message });
+  }
+});
+```
+
+Liveness must be *dumber* than readiness (self-check only — no DB, or every DB blip restarts every pod). Readiness carries the dependencies. Miswiring these is the #1 cause of self-inflicted cascading restarts.
+
+## 7. The ShopCore Reference Architecture
+
+```text
+                        ┌─────────────┐
+        shoppers  ────► │  CDN / WAF  │  static assets, images, SWR HTML
+                        └──────┬──────┘
+                               ▼
+                        ┌─────────────┐    TLS terminates here (L7)
+                        │ Load balancer│   path /api/* -> api pool, / -> web
+                        └──────┬──────┘
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+        ┌──────────┐    ┌──────────┐    ┌──────────┐
+        │ api pod 1│    │ api pod 2│    │ api pod 3│   stateless, interchangeable
+        └────┬─────┘    └────┬─────┘    └────┬─────┘
+             │               │               │
+             ├── catalog reads ──┐   ┌───────┤
+             ▼                   ▼   ▼       ▼
+        ┌─────────┐        ┌───────────────┐ ┌──────────────┐
+        │  Redis  │        │ PG primary     │ │ PG replica   │
+        │ cache + │        │ (writes,       │ │ (reads:      │
+        │ carts + │        │  checkout)     │ │  catalog,    │
+        │ rate-lim│        └───────────────┘ │  reports)    │
+        └─────────┘                          └──────────────┘
+```
+
+Request flows: catalog browse → LB → pod → Redis (hit, 90%+) or PG **replica**; `POST /v1/orders` → LB → pod → PG **primary** (transaction + idempotency) → Redis cart cleared; admin product update → primary → `DEL product:{id}`. One line you should be able to defend in review: **the replica never sees a checkout write, and checkout writes never load-balance.**
+
+## 8. Practice
+
+**Guided.** Stand up ShopCore with §3's nginx config against two local API instances (`PORT=3001`/`3002`). Kill one mid-request (`kill -9`), reload — observe `max_fails` eject it and traffic continue. Restore it.
+
+**Independent.** Add `/healthz` and `/readyz` as in §6. Wire both into `kind`/compose healthchecks. Then simulate Postgres down (stop the container) and verify `/readyz` flips to 503 while `/healthz` stays 200 — and that the orchestrator stops routing but does not restart the API.
+
+**Challenge.** Run k6 (23.1.2) through nginx at 50 → 200 VUs, CPU-triggered HPA (or `--scale` on compose). Record throughput linearity and p99 at each step; identify the VU count where adding pods stops helping — you have found the next bottleneck (likely the database; that is Chapter 24).
+
+**Assessment checklist**
+
+- [ ] I can explain JWT-vs-session placement and name this shop's choice and why.
+- [ ] I know when sticky sessions are a crutch and how to retire them.
+- [ ] I have a working nginx/HAProxy balancer config with passive health checks.
+- [ ] I can implement connection draining across LB + app + orchestrator.
+- [ ] I know why CPU is often the wrong autoscale signal, and what I'd use instead.
+- [ ] I can draw §7's diagram from memory and narrate a catalog read and a checkout write through it.
+
+</BookNodePage>

@@ -1,0 +1,101 @@
+---
+id: "00-3-6-ai-solutions-engineer"
+title: "00.3.6 AI Solutions Engineer"
+sidebar_label: "00.3.6 AI Solutions Engineer"
+slug: "/part-00-about-this-book/00-3-career-paths-and-professional-roles/00-3-6-ai-solutions-engineer"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-3-6">
+
+An **AI Solutions Engineer** connects real enterprise problems, technical architecture, and AI platform capabilities—helping prospective or newly onboarded customers evaluate, prototype, and adopt reliable AI solutions built with an organization's APIs, models, or software platform. Sitting squarely inside the **Forward Deployed & Customer-Facing** track, this role blends high-velocity coding, architectural judgment, security literacy, and persuasive yet deeply honest technical communication.
+
+When a healthcare operations VP, legal technology director, or financial controller asks, *"Can we extract structured policy obligations from 50,000 multilingual PDFs per week while honoring VPC residency, role permissions, and mandatory human sign-off below high confidence?"*, the **AI Solutions Engineer** turns that open question into a verifiable technical architecture, builds a tailored proof of concept (PoC) on realistic sample records, measures concrete accuracy and cost numbers, and sets the eventual production deployment team up for success.
+
+## 1. Core Responsibilities of an AI Solutions Engineer
+
+- **Structured technical discovery:** Leading architectural scoping sessions with customer engineering, security, and operations teams to surface actual document formats, legacy system constraints, identity providers (SSO/RBAC), latency targets, and compliance boundaries *before* drawing architecture diagrams.
+- **Rigorous feasibility and non-AI triage:** Advising customers candidly on which sub-problems models solve reliably today, which require domain retrieval or deterministic rules, and where standard SQL, regex, or existing SaaS integrations outperform generative AI outright.
+- **High-signal Proof-of-Concept (PoC) engineering:** Rapidly building clean, repeatable PoCs backed by real customer data shapes (rather than staged cherry-picked prompts) with working APIs, basic operator review UIs, and verifiable output schemas.
+- **Designing quantitative PoC success criteria:** Defining shared evaluation scorecards before a pilot starts—measuring extraction precision/recall, citation faithfulness, p95 latency, human escalation percentage, and token unit cost—so decisions rest on empirical evidence instead of demo impressions.
+- **Security, privacy, and architecture reviews:** Explaining encryption in transit/at rest, zero-data-retention API tiers, tenant isolation, prompt injection mitigation, and audit trail guarantees clearly to customer CISOs and enterprise architects.
+- **Product feedback synthesis:** Translating recurring pre-sales blockers across multiple customer accounts into crisp, reproducible feature proposals for internal product and platform engineering teams.
+
+### Anatomy of a Technical Pilot Cycle
+
+| Stage | Stakeholder Focus | AI Solutions Engineer Output |
+| :--- | :--- | :--- |
+| **Discovery Call** | Understand workflow bottleneck, data formats, security posture, and decision authority | Written discovery brief + explicit feasibility risks and data-sample checklist |
+| **Architecture Blueprint** | Align customer IT, security, and ops teams on system boundaries and data flow | Sequence diagram, auth/VPC boundary specification, and measurable PoC scorecard |
+| **PoC Build (3–10 days)** | Demonstrate reliability on messy real-world documents and edge cases | Clean repo/containerized demo + automated eval report across representative test cases |
+| **Technical Readout & Handoff** | Present honest results, edge-case behavior, unit economics, and rollout steps | Architecture readout memo + clean technical handoff to **FDE (`00.3.1`/`00.3.2`)** or customer engineers |
+
+## 2. AI Solutions Engineer vs. Adjacent Customer Roles
+
+Organizations use similar-sounding titles across pre-sales, delivery, and post-sales teams. Knowing how **AI Solutions Engineer** differs from **Forward Deployed AI Engineer** and **Solutions Engineer** sharpens both your learning focus and job search:
+
+| Role | Primary Lifecycle Stage | Typical Build Horizon | Key Differentiating Strength |
+| :--- | :--- | :--- | :--- |
+| **AI Solutions Engineer (`00.3.6`)** | Technical validation, enterprise architecture design, multi-account PoCs | Days to 2 weeks per pilot; reusable reference templates | Rapid feasibility scoping, eval storytelling, security clarity, multi-account breadth |
+| **Forward Deployed AI Engineer (`00.3.2`)** | Deep post-decision embedding through live production launch and stabilization | Weeks to months inside specific customer workflows | Production-hardened pipelines, deep integration code, operator rollout, and support handover |
+| **Solutions Engineer (`00.3.9`)** | Pre-sales technical validation for broader SaaS/cloud/developer platforms (not exclusively AI) | Days to weeks across product APIs, SDKs, SSO, and webhooks | Broad platform API architecture, sales-cycle velocity, executive-to-developer translation |
+| **Solutions Architect (`00.3.10`)** | Enterprise-wide target architecture across multiple systems, cloud accounts, and compliance domains | Multi-quarter architecture roadmaps & governance blueprints | Cross-system topology, scaling limits, security compliance, cloud cost architecture |
+
+## 3. What Makes an AI Solutions Engineer Genuinely Credible
+
+Senior engineering buyers detect slide-deck theater within five minutes. Technical credibility in customer rooms rests on four concrete habits:
+
+1. **Demonstrating edge cases proactively:** Showing what happens when a PDF scan is blurry or a document lacks the requested answer—and how your architecture catches low confidence gracefully—earns far more executive trust than hiding behind five rehearsed prompts.
+2. **Fluency in security & compliance fundamentals (`Parts 05–06`):** Knowing how OAuth tokens, IAM least privilege, TLS, secret isolation, PII redaction, and API data-retention agreements actually work avoids weeks of stalled infosec review.
+3. **Live debugging composure:** When an API key expires, a webhook payload shifts shape, or JSON validation fails mid-workshop, diagnosing status codes and logs calmly turns an awkward glitch into live proof of engineering competence.
+4. **Honest unit-economics modeling:** Calculating realistic token volume, embedding refresh costs, and fallback latency at full customer scale (`100k docs/month`) before any contract closes prevents painful post-launch surprises.
+
+## 4. Concrete Walkthrough: Evaluating an Enterprise Claims Intake Pilot
+
+Suppose a regional insurance group evaluates an AI platform to speed up property-damage claim triage across 15,000 monthly submissions combining PDF adjuster reports, repair invoices, and email threads:
+
+1. **Discovery reality check:** During scoping, the AI Solutions Engineer discovers that 30% of incoming PDFs are multi-page scanned scans with handwritten notes, and strict internal policy forbids sending unredacted Social Security Numbers or policy bank details to external third-party logs.
+2. **Pre-pilot architecture & boundary proposal:**
+   - Local/VPC OCR preprocessing runs inside the customer's controlled perimeter, scrubbing detected PII tokens before text reaches the structured extraction model over a zero-retention enterprise endpoint.
+   - The extraction contract outputs typed fields (`claim_type`, `incident_date`, `estimated_amount`, `missing_documents[]`, `source_page_refs[]`) validated via **Pydantic**.
+   - Deterministic routing rules check policy effective dates and coverage caps in PostgreSQL—never asking the model to decide payout eligibility.
+3. **Eval-backed PoC delivery:** Within five engineering days, the Solutions Engineer ships a Dockerized **Next.js + FastAPI** evaluation workbench preloaded with 40 anonymized real claim packets, displaying extracted JSON beside highlighted PDF excerpts and an automated accuracy table (94% exact field match **on typed invoices in this illustrative scenario**, explicit `"Human Review Required"` flags on degraded handwriting).
+4. **Clean handover:** Once the customer approves production rollout, the exact PoC repo, schema definitions, and evaluation baseline transfer cleanly to the **Forward Deployed AI Engineer** and customer engineering lead to wire into production queues.
+
+## 5. Common Failure Modes in AI Solutions Engineering
+
+- **Demo-driven dishonesty:** Cherry-picking clean sample files that conceal OCR errors, multi-language confusion, or latency timeouts—guarantees pilot failure once customer staff test real files.
+- **Disconnecting PoCs from security reality:** Building a prototype with hardcoded personal API keys and zero auth, then discovering customer security blocks the architecture completely during final sign-off.
+- **Becoming an unscalable custom demo factory:** Writing bespoke throwaway scripts for every prospect instead of maintaining clean, modular, Dockerized reference starters you can configure in hours.
+- **Overcommitting custom product features:** Promising roadmap capabilities or bespoke production SLAs without aligning with core product management and delivery engineering.
+
+## 6. Readiness Check and Curriculum Path Inside This Book
+
+### Mini Self-Assessment Exercise
+
+Imagine an operations director asks you to design a **2-week technical PoC** for summarizing customer onboarding calls and syncing action items into a CRM:
+
+1. Write **five discovery questions** covering data formats, access control, failure tolerance, volume, and existing CRM APIs that you must ask *before* writing code.
+2. Define **three measurable pass/fail criteria** (one accuracy metric, one latency/UX metric, one safety/fallback rule) that determine whether the pilot succeeds.
+3. Draft a crisp **five-bullet handover checklist** explaining what documentation and code artifacts you will leave behind for the production team.
+
+### Book Curriculum Mapping
+
+- **Rapid full-stack prototyping (`Parts 02–05`):** Clean TypeScript/React/Next.js demo workbenches (`Ch 05–08`), Python/Node API backends (`Ch 10, 13–15`), PostgreSQL modeling (`Ch 11–12`), and reproducible Docker packaging (`Ch 18`).
+- **AI system fluency & verification (`Parts 06–08`):** Security & observability (`Ch 22`), LLM APIs & prompt specs (`Ch 25–26`), RAG architecture (`Ch 28`), bounded agents & MCP (`Ch 29–32`), and production AI cost/reliability (`Ch 36`).
+- **Client discovery, scoping & communication (`Section 00.8` & `Part 09`):** Consulting workflows (`Ch 39`), **Appendices A–C**, and architectural clarity honed in the **Capstone (`Ch 42`)**.
+
+## Key Takeaways
+
+- An **AI Solutions Engineer** bridges technical feasibility, customer trust, rapid PoC engineering, and honest architecture evaluation.
+- Credibility comes from hands-on full-stack prototyping speed, security fluency, quantitative eval scorecards, and transparent handling of edge cases.
+- Clean reference starters and honest scoping set downstream delivery teams up for production success rather than technical debt.
+
+## References and Further Reading
+
+- [AWS Well-Architected Framework — Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+- [OpenAI — Enterprise Privacy & Data Controls](https://openai.com/enterprise-privacy/)
+- [OWASP API Security Top 10](https://owasp.org/API-Security/)
+
+</BookNodePage>

@@ -1,0 +1,139 @@
+---
+id: "16-2-3-ssl-tls-automatic-https-and-cdns"
+title: "16.2.3 SSL/TLS, Automatic HTTPS and CDNs"
+sidebar_label: "16.2.3 SSL/TLS, Automatic HTTPS and CDNs"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-3-ssl-tls-automatic-https-and-cdns"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s2-t3">
+
+HTTPS is not a padlock sticker — it is a negotiation between two computers that have never met, agreeing on a secret a third party cannot read. This lesson explains that negotiation in eight lines, shows who issues certificates and how renewing them went from an ops chore to a solved problem (ACME), and explains where CDNs fit — and where they do not.
+
+## 1. The TLS Handshake, in Eight Lines
+
+1. **ClientHello** — browser offers: TLS versions, cipher suites, SNI (the hostname `shopcore.dev`, so the server picks the right certificate).
+2. **ServerHello + Certificate** — server sends its cert chain (leaf → intermediate → root CA).
+3. **Certificate verification** — browser checks: chain links to a trusted root in its store; hostname matches cert's SAN; not expired/revoked (via OCSP stapling or CRL).
+4. **Key exchange** — ephemeral ECDHE: both sides derive the same symmetric session key without ever transmitting it.
+5. **Finished** — encrypted handshake MACs verified; symmetric AES-GCM starts.
+6. **HTTP over TLS** — your `GET /api/products` travels inside this encrypted tunnel.
+7. **ALPN** — optional: HTTP/2 or HTTP/3 negotiated here.
+8. **Session resumption** — next visit skips most of the above via cached tickets.
+
+Defensive detail worth memorizing: certificate **validity is checked at handshake time only**. If your cert expires at 02:00, the next user after 02:00 gets a full-screen browser error. Renewal monitoring is part of production duty — or delegate it (§2).
+
+## 2. Certificates and ACME — How HTTPS Became Free
+
+**Let's Encrypt** (and ZeroSSL) issue DV certificates via the **ACME protocol** for $0. ACME proves you control the domain — via HTTP-01 (fetch a token from `/.well-known/acme-challenge/...` on port 80) or DNS-01 (a TXT record). Renewal is the same proof, unattended, every ~60–90 days.
+
+You almost never run ACME by hand anymore:
+
+| Environment | How certs happen | You configure |
+| :-- | :-- | :-- |
+| **Caddy** (VPS) | Fully automatic on first HTTPS hit; renews 30 days before expiry | Nothing — put the domain in the Caddyfile, open ports 80/443. See [Caddy docs](https://caddyserver.com/docs/quick-starts/reverse-proxy) |
+| **Vercel / Netlify** | Automatic DV cert at domain attach; auto-renewed | Add domain in dashboard; set the CNAME/A they tell you |
+| **Cloudflare** | Edge cert automatic when proxied (orange cloud); origin cert optional for the last mile | Proxy on; optionally [Full (strict)](https://developers.cloudflare.com/ssl/origin-configuration/) with a free Origin CA cert |
+| **nginx + certbot** (Ch 17) | `certbot --nginx` issues + sets renew cron/timer | See [Chapter 17](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration) |
+
+**HTTP → HTTPS redirect** is table stakes: port 80 answers with 301 to the `https://` twin. Caddy, Vercel, Netlify and Cloudflare all do it automatically; if you roll your own, do it at the edge/proxy, not per-app.
+
+## 3. Prove It: Reading a Certificate Chain
+
+```powershell
+curl -Iv https://shopcore.dev 2>&1 | Select-String "HTTP|issuer|subject|SSL|expire"
+```
+
+macOS/Linux/WSL2 equivalent:
+
+```bash
+curl -Iv https://shopcore.dev 2>&1 | grep -Ei "HTTP|issuer|subject|SSL|expire|date"
+```
+
+Expected (abbreviated):
+
+```text
+* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384
+* Server certificate:
+*  subject: CN=shopcore.dev
+*  start date: Nov  1 00:00:00 2026 GMT
+*  expire date: Jan 30 00:00:00 2027 GMT
+*  issuer: C=US; O=Let's Encrypt; CN=R12
+*  SSL certificate verify ok.
+< HTTP/2 200
+< content-type: text/html; charset=utf-8
+```
+
+Spot the chain: `subject` = your domain (leaf) → `issuer` = Let's Encrypt R12 (intermediate) → trusted root in the browser store. `verify ok` is the whole point. Also try `openssl s_client -connect shopcore.dev:443 -servername shopcore.dev` if you want the raw chain.
+
+## 4. Certificate Types, Revocation and HSTS
+
+- **DV (Domain Validated)** — the free standard (Let's Encrypt). Proves control of the domain, nothing more. Fine for 99% of sites, including ShopCore.
+- **OV (Organization Validated)** — adds a company check; a few extra hundred dollars/yr; visible in cert details.
+- **EV (Extended Validation)** — green-company-name era is over; browsers removed the UI. Pay for it only for compliance reasons, not bragging rights.
+
+**Revocation** exists because certs leak (or you mistype a domain and issue wrongly). Mechanisms: CRL (lists, bulky) and **OCSP** (real-time query; usually delivered as **staples** by the server so the browser does not phone the CA). Modern CAs and clients lean on short lifetimes (Let's Encrypt ~90 days) over revocation soup — time-limited damage is the design.
+
+**HSTS** (`Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`) tells browsers "never speak HTTP to this origin again." Deploy HSTS only after HTTPS works everywhere — otherwise you strand yourself. Caddy/Vercel/Netlify set sane HSTS at the edge; self-hosted nginx: add it once verified, and consider submission to [hstspreload.org](https://hstspreload.org) only when you are certain.
+
+## 5. Mixed Content — The Failure That Survives HTTPS
+
+HTTPS protects the HTML; it does not magically fix URLs inside it. **Mixed content** = an HTTPS page referencing `http://` subresources. Browsers block *active* mixed content (JS/CSS over HTTP) outright; *passive* content (images) is blocked or warned. Symptom in console:
+
+```text
+Mixed Content: The page at 'https://shopcore.dev/' was loaded over HTTPS,
+but requested an insecure resource 'http://shopcore.dev/assets/hero.png'.
+This content must be served over HTTPS.
+```
+
+Fix: protocol-relative or absolute-HTTPS URLs everywhere; relative paths everywhere if same-origin; audit built HTML (`Select-String "http://" dist/index.html`); if the resource is third-party and has no HTTPS, that is a hard dependency to replace, not a header to fiddle with.
+
+## 6. CDNs — What They Are, and What They Are Not
+
+A **CDN** caches your **static assets** (hashed JS/CSS/images) on edge servers near users. It does three jobs: **latency** (edge beats origin), **egress offload** (fewer bytes from your server/bill), **burst absorption** (a Fire Squash Day does not take your origin down).
+
+**Cache TTL** is the contract: `Cache-Control: public, max-age=31536000, immutable` for fingerprinted assets (they never change content), and `max-age=0, must-revalidate` or short TTLs for `index.html`. Vite's hashed filenames exist precisely to make long TTLs safe.
+
+**Invalidation** ("purge everything now") exists because mistakes happen; relying on it is a design smell — deploy new hashed filenames instead and let TTL expire naturally. Vercel/Netlify/Cloudflare purge deploys automatically on push; self-hosted CDNs (Cloudflare in front of nginx) purge from the dashboard or API.
+
+What a CDN is **not**: a database cache, an auth layer, or a substitute for fixing N+1 queries (that is [Part 06 — System Design & Production Quality](/book/part-06-system-design-and-production-quality) territory — performance work).
+
+## 7. Picking a CDN Front Door
+
+| Front door | Cache model | Purge model | Cost at portfolio scale |
+| :-- | :-- | :-- | :-- |
+| **Vercel/Netlify built-in CDN** | Automatic for deploy outputs | Automatic on new deploy | $0 |
+| **Cloudflare proxy (orange cloud)** | Cache rules; respects origin TTL | Dashboard "Purge Everything" / API | $0 |
+| **Bunny CDN / KeyCDN** | Pull zones | Instant purge, cheap storage | ~$1–5/mo at small traffic |
+| **CloudFront (AWS)** | Behaviors + TTL + signed URLs | Invalidation API (per-path; first 1,000 paths/mo often free tier) | Model-dependent; see Ch 19 |
+
+For the book's purposes: stay on the platform's built-in CDN. Add Cloudflare in front when you want aggressive caching headers or DDoS absorption — not before you can articulate the problem.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `NET::ERR_CERT_DATE_INVALID` | Cert expired | Renew: `certbot renew` / check platform auto-renew; verify clock on server |
+| `ERR_CERT_AUTHORITY_INVALID` | Cert chain incomplete or self-signed | Serve full chain (leaf + intermediate); on Cloudflare use Full (strict), not Flexible |
+| HTTP works, HTTPS `ERR_CONNECTION_REFUSED` | Port 443 blocked / no TLS listener | Security group / ufw allow 443; start Caddy/nginx; DNS A must point here |
+| Padlock, but browser says "Not secure" | Mixed content (see §5) | Fix `http://` asset URLs in code/HTML |
+| Works for `shopcore.dev`, not `www.` | `www` cert/record missing | Add `www` record + ensure cert SAN covers both (platforms do automatically at attach) |
+| Changes not visible after deploy | CDN TTL | Hard-refresh; purge; confirm hashed asset names changed in `index.html` |
+
+## 9. Practice
+
+**Guided exercise.** Run `curl -Iv https://your-deployed-site` and annotate: TLS version, issuer, expiry date, HTTP status, and two response headers. Then run the same against a site you know uses Cloudflare and compare `server:` headers — note that CDN vendors don't always identify themselves.
+
+**Independent exercise.** Build the ShopCore SPA, deliberately write `<img src="http://example.com/x.png">` (as an actual HTML tag) into a page, and observe the mixed-content console error. Fix it and confirm the error is gone.
+
+**Challenge.** With a DNS record flipped to `192.0.2.1` (reserved, unroutable), attempt an HTTPS fetch and identify exactly which step of the handshake fails. Explain why the cert could never have been issued for that IP.
+
+**Assessment checklist**
+
+- [ ] I can explain the TLS handshake in plain language and verify a chain with `curl -Iv`.
+- [ ] I know who issues my cert and when it auto-renews.
+- [ ] I know what mixed content is and where it hides in a Vite build.
+- [ ] I can state when a CDN helps and when it cannot.
+
+</BookNodePage>

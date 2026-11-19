@@ -1,0 +1,36 @@
+---
+id: "index"
+title: "Part 03: Python Development"
+sidebar_label: "Part 03 — Python Development"
+slug: "/part-03-python-development"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-03">
+
+In **Part 02**, you mastered JavaScript and TypeScript for browser UIs and Node.js applications. **Part 03 — Python Development (`40 Focused Learning Hours`)** equips you with the second core language of AI-native software engineering: Python for **backend APIs (`FastAPI`)**, **file & document automation**, **data validation (`Pydantic v2`)**, and **modern AI tooling (`Parts 07–08`)**.
+
+## Why Python + JavaScript/TypeScript Together?
+
+Modern full-stack AI engineering rarely uses just one language:
+- **TypeScript / React / Next.js** owns interactive user interfaces, web rendering, and Node.js services.
+- **Python** dominates AI SDKs, data pipelines, document parsing (`JSON`, `CSV`, `PDF`), evaluation scripts, and high-throughput typed APIs with **FastAPI + Pydantic v2**.
+
+Learning both languages cleanly—without carrying JavaScript habits blindly into Python or skipping virtual environments—lets you build cohesive multi-service systems effortlessly.
+
+## Part 03 Chapter Map (`40 Hours`)
+
+1. **[Chapter 09: Python Fundamentals (Deep) (`26h`)](/book/part-03-python-development/09-python-fundamentals-deep):** Install Python cleanly on Windows, macOS, and Linux; configure VS Code + Pylance; master object references, mutability, collections, comprehensions, generators, decorators, context managers, **all four OOP pillars**, dataclasses, type hints + Pydantic v2, `venv` + `uv`, `logging`, `pytest`, and `asyncio`.
+2. **[Chapter 10: Python for APIs, Files & Automation (`14h`)](/book/part-03-python-development/10-python-for-apis-files-and-automation):** Build validated REST APIs with **FastAPI**, inject dependencies cleanly, consume external APIs with `httpx`, process `JSON`/`CSV`/`PDF` files with `pathlib`, build reliable CLI tools, and implement exponential backoff retries.
+
+## Part 03 Exit Gate
+
+Before starting **Part 04 (`Databases, Backend & Full-Stack Development`)**, verify you can build from scratch inside an isolated environment:
+- Create an isolated virtual environment (`venv` or `uv`), declare dependencies in `pyproject.toml`, and select the right interpreter inside VS Code.
+- Explain all four OOP pillars clearly, choose between `@dataclass` and Pydantic `BaseModel`, and avoid mutable default argument bugs.
+- Ship a FastAPI service with Pydantic validation, dependency injection, `pytest` coverage (`TestClient`), and retry-safe `httpx` client integration.
+
+**Begin Chapter 09:** [09. Python Fundamentals (Deep)](/book/part-03-python-development/09-python-fundamentals-deep)
+
+</BookNodePage>

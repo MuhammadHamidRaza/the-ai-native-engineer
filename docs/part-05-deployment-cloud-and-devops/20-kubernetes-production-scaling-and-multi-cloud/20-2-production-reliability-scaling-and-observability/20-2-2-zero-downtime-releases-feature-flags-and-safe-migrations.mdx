@@ -1,0 +1,140 @@
+---
+id: "20-2-2-zero-downtime-releases-feature-flags-and-safe-migrations"
+title: "20.2.2 Zero-Downtime Releases, Feature Flags and Safe Migrations"
+sidebar_label: "20.2.2 Zero-Downtime Releases, Feature Flags and Safe Migrations"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-2-zero-downtime-releases-feature-flags-and-safe-migrations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s2-t2">
+
+The deploy that takes your site down is rarely the one with broken code — it's the one with the right code applied the wrong way: killed connections, a schema change that locked a table, a feature flipped on for everyone at once. This lesson is the discipline of changing production without anyone noticing, and shrinking the blast radius when something is wrong.
+
+## 1. Understand — Three Release Strategies, Compared Honestly
+
+| Strategy | How it works | Cost | Wins | When |
+| :-- | :-- | :-- | :-- | :-- |
+| **Rolling** | Replace pods gradually (`maxSurge: 1, maxUnavailable: 0`) | ~0 extra capacity | Simple, built into every orchestrator | Default for most services |
+| **Blue-green** | Run old (blue) and new (green) side by side; flip the traffic switch atomically | 2x capacity during cutover | Instant rollback (flip back); full smoke-test of green before exposure | Risky stateful changes, major releases |
+| **Canary** | Route 1–5% of traffic to the new version; watch metrics; promote or abort | Small extra capacity + analysis tooling | Real-user validation, smallest blast radius | High-traffic services, risky dependencies |
+
+Canary without automated analysis is just rolling with anxiety — you need **metrics** (error rate, p95, saturation) and a defined abort threshold, which is where Prometheus (20.2.3) and tools like Argo Rollouts come in. A minimal canary loop is: deploy 1 pod → wait for 2× scrape interval → compare `rate(http_requests_total{status=~"5.."})` and p95 against the stable ReplicaSet → if clean for 15 min, promote; if worse, `kubectl rollout undo` automatically. Start with rolling + good probes; graduate to canary when you have the observability to judge it.
+
+## 2. The Zero-Downtime Deploy Runbook
+
+Preconditions: readiness/liveness probes correct (20.1.2), `terminationGracePeriodSeconds` ≥ your longest request, a `preStop` sleep so endpoints are removed *before* SIGTERM, and a `/health` that reflects real readiness.
+
+```bash
+# 1. Deploy new version
+kubectl set image deployment/shopcore-api api=shopcore-api:1.1.0 -n shopcore
+# 2. Watch the rollout, not the terminal — verify what the LB sees
+kubectl rollout status deployment/shopcore-api -n shopcore
+kubectl get pods -n shopcore -w
+# 3. Smoke-test from OUTSIDE the cluster, like a user
+curl -i https://shopcore.example.com/health
+# 4. Watch error rate / p95 for 10–15 minutes before declaring victory
+```
+
+Rollback the moment smoke tests or metrics sour: `kubectl rollout undo deployment/shopcore-api -n shopcore`. If the DB migration is not backwards compatible, rollback is only half the fix — see §4. **Blue-green variant:** deploy `shopcore-api-green` alongside, smoke-test through an internal URL, flip the Service selector to `app: shopcore-api, version: green`, keep blue warm for 24h.
+
+## 3. Feature Flags — Decoupling Deploy from Release
+
+Deployment ships code; a **feature flag** decides who sees it. Flags let you merge incomplete-but-harmless work, enable dark launches, do ring/percentage rollouts, and flip kill switches — all without a revert. The discipline: flags are temporary by default; every flag needs an owner and an expiry ticket, or your codebase becomes a museum of `if (flags.x)`.
+
+**OpenFeature** ([openfeature.dev](https://openfeature.dev), CNCF-incubating, vendor-agnostic) is the standard abstraction — one SDK, pluggable backends (flagd for self-hosting; LaunchDarkly, Flagsmith, ConfigCat, etc. as providers):
+
+```js
+// npm install @openfeature/server-sdk
+const { OpenFeature } = require('@openfeature/server-sdk');
+const flagd = new FlagdProvider({ host: 'flagd', port: 8013 });
+await OpenFeature.setProviderAndWait(flagd);
+const client = OpenFeature.getClient();
+const enabled = await client.getBooleanValue('new-checkout', false, { targetingKey: user.id });
+```
+
+**LaunchDarkly** is the dominant SaaS (targeting rules, audit log, approvals) — same OpenFeature shape via its provider, per-seat pricing that scales with your org, not your traffic. **flagd** is the open-source default flagd daemon. Evaluate on: targeting granularity, audit/governance, SDK coverage, outage behavior (flag service down → serve last-known/default values, never crash).
+
+**Flag taxonomy — know which animal you have:**
+
+| Type | Purpose | Lifespan | Owner |
+| :-- | :-- | :-- | :-- |
+| **Release flag** | Dark-launch / percentage rollout of new code | Days–weeks; delete after 100% | Eng |
+| **Ops flag** | Kill switch for a dependency or expensive path | Permanent (or until subsystem stabilizes) | SRE |
+| **Experiment flag** | A/B measurement | Weeks; delete after decision | Product + data |
+| **Permission flag** | Entitlement (pro tier features) | Permanent but belongs in authz, not flags | Platform |
+
+The release/ops/experiment distinction decides your cleanup discipline: release flags are deleted ruthlessly (100% + one release), ops flags are alert-wired, experiment flags die with the experiment, and permission flags graduate out of the flag system into your authorization layer.
+
+## 4. Safe Database Migrations for Live Systems — Expand/Contract
+
+Never mutate a column in one step. The expand/contract pattern keeps old and new code paths working simultaneously:
+
+1. **Expand** — add the new column (nullable, no default backfill yet). Deploy migration. Old code ignores it.
+2. **Migrate** — new code writes *both* old and new columns (dual-write). Backfill existing rows in batches with throttling (this is I/O-heavy).
+3. **Transition reads** — flip reads to the new column behind a feature flag.
+4. **Contract** — once old reads/writes are provably zero, remove dual-write, then drop the old column in a later release.
+
+**What it looks like for real** (the `products.sku` migration, Postgres):
+
+```sql
+-- Release 1 (expand): additive, zero locks beyond a brief metadata change
+ALTER TABLE products ADD COLUMN sku text;              -- nullable, no default yet
+CREATE INDEX CONCURRENTLY products_sku_idx ON products(sku);
+-- Release 2 (dual-write): app writes both name-derived legacy code and sku;
+-- backfill in batches of 500 rows, one statement per batch, restartable:
+-- Postgres has no LIMIT on UPDATE across a set — use a keyed batch and repeat until zero rows change
+WITH batch AS (
+  SELECT id FROM products WHERE sku IS NULL ORDER BY id LIMIT 500
+)
+UPDATE products SET sku = 'SKU-' || id FROM batch WHERE products.id = batch.id;
+-- run that statement until it touches 0 rows; then verify:
+-- SELECT count(*) FROM products WHERE sku IS NULL;  -- expect 0
+
+-- Release 3 (reads flip behind flag): code reads sku when flag on
+-- Release 4 (contract): stop writing the legacy column, then:
+ALTER TABLE products ALTER COLUMN sku SET NOT NULL;    -- after verifying no nulls remain
+-- Release 5 (next major): DROP COLUMN legacy_code    -- separate release, backup first
+```
+
+Note what was never done: renaming in place, adding NOT NULL with a giant default backfill in one statement, or doing any of it inside the deploy that ships the code. That's the whole discipline — migrations are slow, boring and scripted, never heroic.
+
+Safety rules for live migrations: additive changes only in one release; never rename/drop + alter in the same migration as a deploy; `CREATE INDEX CONCURRENTLY` (Postgres) instead of blocking `CREATE INDEX`; watch lock waits (`pg_stat_activity`); every irreversible step is preceded by a verified backup — rehearse the Part 04 [`pg_dump` restore](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores) before the migration window, not after.
+
+## 4.5 The Morning-After Checklist (Every Release)
+
+1. Did the rollout finish with all pods Ready (`kubectl rollout status` exit code)?
+2. Did error rate stay flat for 15 minutes post-deploy?
+3. Did the health endpoint return 200 for a real external request (not just in-cluster)?
+4. Is the feature flag at the intended percentage, and does the kill switch work (tested)?
+5. Did the migration leave no long locks (`pg_stat_activity` back to baseline)?
+6. Is the rollback path still valid — or did this release invalidate it (non-compatible schema)?
+
+If any answer is "no", the release isn't done — it's just quiet so far.
+
+## 5. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| 502s spike during rollout | No preStop/drain — pods killed mid-request | preStop `sleep 5`; readiness gates; verify `terminationGracePeriodSeconds` |
+| Canary looks good, prod explodes at 100% | Metrics lag or unrepresentative canary cohort | Analyze full-cohort metrics; automate abort; widen canary gradually |
+| Migration locks table, API hangs | `ALTER TABLE` took exclusive lock | Batch backfills; `CONCURRENTLY`; migrate off-peak; expand/contract |
+| Flags on for everyone after "10% rollout" | Targeting rule matched all users (missing targetingKey) | Deterministic bucketing hash check; audit rule before enabling |
+| Rollback done, errors persist | Non-backwards-compatible migration already ran | Restore backup or roll forward; this is why expand/contract exists |
+
+## 6. Practice and Assessment
+
+**Guided.** Perform a rolling update of ShopCore in kind with a deliberately-bad image tag; watch `rollout status` fail; `rollout undo`; verify recovery with `curl /health`.
+
+**Independent.** Implement dual-write for a new `products.sku` column in a scratch branch: expand (migration), dual-write, backfill 1k seeded rows, flip reads, then a contract migration that drops the old column. Document each step's downtime impact.
+
+**Challenge.** Add an OpenFeature flag around the new checkout path (or a toy boolean in any service you own). Demonstrate kill-switch behavior: with flag down and service live, the old path serves; flip flag; new path serves — no deploys.
+
+**Assessment checklist**
+
+- [ ] I can choose rolling vs blue-green vs canary for a given risk profile and justify it.
+- [ ] I can write a zero-downtime runbook for any service (drain, health, rollback).
+- [ ] I can explain expand/contract and write the four-step sequence for a live migration.
+- [ ] I can ship code dark behind a flag and explain the flag lifecycle (owner, expiry, removal).
+
+</BookNodePage>

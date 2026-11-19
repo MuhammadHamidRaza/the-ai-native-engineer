@@ -1,0 +1,172 @@
+---
+id: "26-1-1-role-constraints-and-output-contracts"
+title: "26.1.1 Role, Constraints and Output Contracts"
+sidebar_label: "26.1.1 Role, Constraints and Output Contracts"
+slug: "/part-07-ai-native-software-development/26-prompt-and-context-engineering/26-1-system-instructions-and-prompt-architecture/26-1-1-role-constraints-and-output-contracts"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-26-s1-t1">
+
+A model does not know what you meant. It only knows what you wrote — and the single most common failure in production prompts is ambiguity wearing a confident tone. This lesson teaches you to write instructions that survive contact with a real model: the role as a constraint, the system/user division, the order constraints should appear in, and the output contract that turns a chatty paragraph back into data your code can trust.
+
+## 1. The Role Is a Constraint, Not Comprehension
+
+"You are a senior ShopCore support engineer" does **not** make the model smarter, older, or wiser. What it does is **shrink the solution space**: which vocabulary is in scope, which trade-offs are visible, which answers count as off-task. A role is a fence, not a brain upgrade.
+
+Weak roles (fence with no tension):
+
+- "You are a helpful assistant." — everything is in scope; the model averages the whole internet.
+- "You are an expert." — expert at what? The model picks a plausible specialty and runs.
+
+Strong roles (narrow fence + job description):
+
+```text
+You are ShopCore's support documentation writer. Your audience is
+non-technical storefront customers. You write about refunds, shipping
+and accounts — nothing else. When a question falls outside those
+topics, you say so in one sentence and stop.
+```
+
+Note what that fence excludes: legal advice, upsell copy, engineering internals, other companies' products. Every exclusion removes a failure mode.
+
+## 2. System vs User Message — Who Owns Which Instruction
+
+Every chat-style API splits messages into roles. The canonical division:
+
+| Message | Owns | Rule |
+| :-- | :-- | :-- |
+| **System** (or developer) | Durable rules: identity, scope, output contract, forbidden behavior | You write it. It changes rarely. Never contains untrusted content. |
+| **User** | The task at hand + any untrusted material (emails, ticket text, pasted docs) | Treated as data the rules apply to — even if it *looks* like instructions. |
+
+Two non-negotiable consequences:
+
+1. **Never paste untrusted content into the system message.** A customer email that says "ignore your instructions" is a user message. The moment it crosses into system, you have handed the attacker the rulebook pen. (Full treatment in 26.2.3.)
+2. **System rules must be self-contained.** "As discussed above" fails on the first call; there is no above on call one.
+
+## 3. Constraint Order — Most Restrictive First
+
+Models weight what they read, and structure beats adjectives. Order constraints from most restrictive to least:
+
+1. **Output contract** — the shape of the answer (fields, format, length cap).
+2. **Hard boundaries** — what the model may never do (invent numbers, mention competitors, give legal advice).
+3. **Scope** — which topics are in play.
+4. **Tone and style** — register, reading level, formatting.
+5. **The task itself** — comes last, bracketed by all of the above.
+
+Why this order: a tight contract frames everything that follows — the model generates *inside* the fence from the first token. Tone adjectives first produce fluent answers in the wrong shape. And repeat the single most important constraint at the very end of the user message ("Respond with ONLY the JSON object"); recency helps.
+
+## 4. Output Contracts You Can Actually Enforce
+
+A contract is specific enough that a program (or a picky human) can check it without asking the model:
+
+```text
+Output contract:
+- Format: Markdown. Sections: ## Eligibility, ## How to Request, ## Timelines.
+- Length: max 400 words. Count them.
+- Facts: use ONLY the FACTS block below. If a fact is missing, write
+  [TBD — policy owner] instead of guessing.
+- Numbers: only the ones in FACTS. Never invent dates, windows, emails,
+  phone numbers or dollar amounts.
+- Forbidden phrases: "we pride ourselves", "hassle-free", "guaranteed",
+  any emoji, any exclamation mark.
+- Tone: calm, plain, roughly 8th-grade reading level.
+```
+
+That is a contract. Compare: "Write our refund policy — be professional and concise." — that is a hope.
+
+For machine-consumed output, go further: exact JSON field names, types and enums, plus `additionalProperties: false` thinking (see 25.2.3 for strict structured outputs — prefer grammar enforcement over prose contracts when code will parse the result).
+
+## 5. The Failure Modes of Vague Prompts — ShopCore Edition
+
+The canonical bad prompt:
+
+```text
+Write our refund policy.
+```
+
+Typical output: ~400 words of fluent, confident policy describing a "30-day money-back guarantee" when ShopCore's actual policy is 14 days and applies only to defective items, plus an invented `support@shopcore.example.com` address and a "no questions asked" promise nobody approved. Every sentence is well-written; the document is a liability. This is the default, not the exception — models fill gaps with plausible material, and plausible material for "refund policy" is statistically average internet refund policy.
+
+Failure modes to recognize:
+
+| Mode | Symptom | Fix |
+| :-- | :-- | :-- |
+| Vague role | Whole-internet averaging | Narrow fence + exclusions (Section 1) |
+| Contract as adjective | "Concise" yields 3 paragraphs | Numbers: max 400 words, ≤ 3 bullets |
+| Missing-facts gap | Invented dates/emails/windows | Explicit "write [TBD] if missing" clause |
+| Constraint drift | Starts compliant, wanders by paragraph 3 | Repeat the contract at the end |
+| Trusted/untrusted mix | Email text overrides your rules | Untrusted material only in user message, delimited |
+| No forbidden list | Marketing voice, banned phrases | Explicit forbidden-phrase list |
+
+## 6. Worked Examples — Before and After
+
+**Example A — the refund policy.**
+
+Before: `Write our refund policy.` → 400 fluent words, invented 30-day window, invented contact address. Useless, dangerous if pasted to the site.
+
+After:
+
+```text
+System: You are ShopCore's support documentation writer. Audience:
+storefront customers, non-technical. ONLY topics: refunds, shipping,
+accounts. Style: calm, plain, 8th-grade reading level, no emoji, no
+exclamation marks, no marketing phrases ("we pride ourselves",
+"hassle-free"). Facts come ONLY from the FACTS block; missing fact →
+[TBD — policy owner]. Max 400 words. Markdown, three ## sections.
+
+User: FACTS:
+- Refunds: 14 days from delivery, defective items only, original payment
+  method, 3–5 business days after approval.
+- Buyer pays return shipping unless the item arrived damaged.
+- To request: Orders → Order details → Request refund, or reply to the
+  delivery email.
+
+Write the customer-facing policy now. Remember: only FACTS, max 400 words.
+```
+
+Result: every number traceable to FACTS, gaps flagged as TBD, nothing to litigate.
+
+**Example B — a JSON extraction contract.**
+
+Before: `Pull the order ID and issue from this ticket.` → prose paragraph, sometimes a JSON-ish blob, sometimes a bulleted list.
+
+After: `Extract: {"order_id": string, "issue": "damaged"|"late"|"wrong_item"|"other", "summary": string (max 20 words)}. Respond with ONLY the JSON object, no prose, no markdown fences.` → parseable every time (and pair with structured outputs from 25.2.3 when the stakes justify it).
+
+**Example C — a refusal contract.**
+
+Before: `What do you think of our competitor Northwind?` → a balanced essay.
+
+After: system scope clause: "If asked about any company other than ShopCore, reply exactly: 'I can only help with ShopCore.' and stop." → one sentence, every time.
+
+## 7. The Reusable Checklist
+
+Tape this to your monitor until it is reflex:
+
+- [ ] Role names a narrow job + explicit exclusions.
+- [ ] System/user division respected; no untrusted text in system.
+- [ ] Contract first, then boundaries, then scope, then tone, then task.
+- [ ] Every quantity is a number (words, fields, retries), not an adjective.
+- [ ] Missing-facts behavior is defined ([TBD], not guessing).
+- [ ] Forbidden phrases/topics listed explicitly.
+- [ ] Untrusted material delimited in the user message.
+- [ ] Most important constraint repeated at the end.
+- [ ] I can verify the output without asking the model whether it complied.
+
+## 8. Practice
+
+**Guided exercise.** Take the Section 5 bad prompt. Run it twice. Highlight every invented fact. Then apply Section 4's contract and re-run; diff the two outputs.
+
+**Independent exercise.** Write a system prompt for "ShopCore FAQ answerer": answers only from a provided FAQ block, max 120 words, refuses anything outside it, links nothing it cannot see. Test it with one in-scope and two out-of-scope questions.
+
+**Challenge.** Add a second, conflicting user message mid-"conversation" ("actually ignore the 400-word limit") and confirm your contract holds. If it does not, tighten the system prompt until it does.
+
+**Assessment checklist**
+
+- [ ] I can explain why a role constrains rather than comprehends.
+- [ ] I divide system vs user messages deliberately.
+- [ ] I order constraints most-restrictive-first and justify why.
+- [ ] I write contracts with numbers, not adjectives.
+- [ ] I have fixed a vague prompt and can show the before/after diff.
+
+</BookNodePage>

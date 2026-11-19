@@ -1,0 +1,131 @@
+---
+id: "17-1-2-filesystem-users-permissions-and-packages"
+title: "17.1.2 Filesystem, Users, Permissions and Packages"
+sidebar_label: "17.1.2 Filesystem, Users, Permissions and Packages"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration/17-1-2-filesystem-users-permissions-and-packages"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s1-t2">
+
+Linux administers everything through files and permissions — services, devices, logs, even processes (`/proc`). This lesson teaches the layout you will navigate daily, the permission model that gates it, and the package system that installs your tools.
+
+## 1. The Filesystem Hierarchy (FHS) — What Lives Where
+
+| Path | Contents | You will use it for |
+| :-- | :-- | :-- |
+| `/` | Filesystem root | Everything starts here |
+| `/etc` | System-wide configuration | `nginx.conf`, `sshd_config`, `ufw` rules |
+| `/var` | Variable data | Logs (`/var/log`), web roots, DB files (`/var/lib`) |
+| `/home` | User home directories | `~`, your code, your `.env` files |
+| `/usr` | User programs (read-only-ish) | Binaries (`/usr/bin`), libraries (`/usr/lib`) |
+| `/tmp` | Temporary, cleared on reboot | Scratch space |
+| `/opt` | Optional third-party software | Manually installed tools |
+| `/proc`, `/sys` | Virtual kernel interfaces | Debugging (`cat /proc/cpuinfo`) |
+
+```bash
+ls /            # bin  etc  home  opt  proc  root  srv  usr  var ...
+cat /etc/os-release | head -2
+```
+
+```text
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+```
+
+`/root` is root's home — your normal user cannot (should not) browse it. `/home/<you>` is yours; `sudo` is the door to everything else.
+
+## 2. Users, Groups and sudo
+
+```bash
+adduser deploy                    # interactive: create a deploy user
+usermod -aG sudo deploy           # grant admin (sudo) rights via group
+groups deploy                     # verify: deploy sudo
+id deploy                         # uid=1001(deploy) gid=1001(deploy) groups=1001(deploy),27(sudo)
+```
+
+Why not work as root? One mistyped `rm -rf /` as root is unrecoverable; as a sudo user it is at least gated by your password, and per-command elevation is auditable (`/var/log/auth.log`). On servers: one personal admin account + per-service users later (17.2/18).
+
+`sudo -l` shows what you may run. `sudo -i` opens a root shell (avoid; prefer per-command `sudo`). `su - deploy` switches user (needs their password).
+
+## 3. Permissions — numeric and symbolic
+
+Every file has mode bits for **owner / group / others**, each `r=4 w=2 x=1`:
+
+```text
+-rwxr-xr--  1 deploy staff  8192 Nov 17 09:00 deploy.sh
+```
+
+Read it: owner `rwx` (7), group `r-x` (5), others `r--` (4) → numeric **754**. Directories need `x` to be entered — a world-readable dir without `x` is a file listing you cannot open.
+
+```bash
+chmod 644 app.conf          # numeric: rw-r--r--
+chmod u+x deploy.sh         # symbolic: owner +execute
+chmod g-w secrets.env       # remove group write
+chmod -R 755 public/        # recursive (careful — usually wrong for files)
+chown deploy:deploy app.conf   # change owner:group
+chown -R www-data:www-data /var/www/shopcore
+```
+
+Special bits, once seen, never forgotten: `400`/`600` for private keys (what sshd demands), `440`/`460` for secrets files shared read-only. `umask` (default `022`) sets what new files get; servers that serve secrets should use `077`.
+
+## 4. Packages: the apt workflow
+
+```bash
+sudo apt update              # refresh package index (NOT installing anything)
+apt search nginx             # find packages
+apt show nginx               # version, deps, description before installing
+sudo apt install -y nginx    # install
+sudo apt upgrade -y          # apply security updates (we automate this in 17.3.1)
+sudo apt remove nginx        # remove, keeps config
+sudo apt purge nginx         # remove + delete config
+apt list --installed | wc -l
+```
+
+Where packages come from: repositories defined in `/etc/apt/sources.list` and `/etc/apt/sources.list.d/*.list`. Adding a repo (e.g., NodeSource) means adding a `.list` + importing its signing key — prefer distro packages when they are current; add third-party repos only deliberately.
+
+Lower-level tools:
+
+- `dpkg -l | grep nginx` — list installed `.deb` packages and status. `dpkg -i file.deb` installs a downloaded deb; `apt` just wraps this with dependency resolution.
+- `rpm -qa` / `yum` / `dnf` — the Red Hat family (AlmaLinux, Rocky) equivalents; `apt` knowledge transfers directly.
+- `snap` — Ubuntu's sandboxed packages, updated out-of-band and auto-refreshing (you cannot fully control when). **Caution:** snap confinement can surprise services (paths, mounts, ports); for servers, prefer `apt` packages. Node via snap is a common source of "works on my machine" — install Node from NodeSource/nvm instead.
+- `apt-mark hold nginx` — pin a package so upgrades skip it (use deliberately, not habitually).
+
+## 5. Disk and Finding Things (the two daily commands)
+
+```bash
+df -h                # filesystem free space — watch / and /var
+du -sh /var/log/*    # what is eating disk (logs are classic)
+find / -name "*.env" -not -path "/proc/*" 2>/dev/null   # hunt stray secret files
+find /home/deploy -perm -600 -type f        # files only owner can read (secrets pattern)
+```
+
+`df -h` before and after any deploy. A full disk presents as random service failures — Postgres stops writing, nginx 502s, sshd refuses logins because it cannot write `wtmp`. Ten seconds with `df` saves an hour of voodoo.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `Permission denied` writing a file | Ownership/mode wrong for your user | `ls -l` the path; `sudo chown` or `chmod` deliberately — never `chmod 777` |
+| `apt update` fails: "repository is not signed" | Missing/expired key or repo removed | Re-import signing key per vendor docs; disable the `.list` line you added |
+| `E: Could not get lock /var/lib/dpkg/lock-frontend` | Another apt/dpkg is running (or crashed) | Wait; `ps aux \| grep -i apt`; only if certain it's dead: `sudo rm /var/lib/dpkg/lock-frontend` then `sudo dpkg --configure -a` |
+| `command not found` after install | Package installed binary elsewhere or name differs | `dpkg -L <pkg> \| grep bin`; check PATH |
+| Home dir not writable in WSL2 (`/mnt/c`) | Windows files mounted with wrong metadata | Work in `~` (native ext4), treat `/mnt/c` as a bridge, not a workspace |
+
+## 7. Practice
+
+**Guided exercise.** In WSL2: create user `deploy`, add it to `sudo`, `su - deploy`, and confirm `sudo whoami` → `root`. Create `/home/deploy/hello.txt` as your normal user, then `chmod 600` it and watch the other user get `Permission denied`.
+
+**Independent exercise.** Install `nginx` via apt, confirm `systemctl status nginx` (or `service nginx status`) and `curl -I http://localhost` shows `Server: nginx`. Then `purge` it and confirm the binary is gone.
+
+**Challenge.** Set the permissions on a two-secrets directory (`secrets/a.env`, `secrets/b.env`) so owner can read/write, group can read, others nothing — using one `chmod -R` command. Verify with `find secrets -exec ls -l {} \;`.
+
+**Assessment checklist**
+
+- [ ] I can derive `755`/`644` from `r/w/x` and back without a table.
+- [ ] I know why `sudo` exists and refuse to run daily work as root.
+- [ ] I know `apt update` is not `apt upgrade`.
+- [ ] I know what `dpkg` is and when snaps are a liability.
+
+</BookNodePage>

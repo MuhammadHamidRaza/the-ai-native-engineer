@@ -1,0 +1,93 @@
+---
+id: "05-3-1-typing-api-payloads-and-runtime-validation"
+title: "05.3.1 Typing API Payloads and Runtime Validation"
+sidebar_label: "05.3.1 Typing API Payloads and Runtime Validation"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-3-type-safe-application-contracts/05-3-1-typing-api-payloads-and-runtime-validation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s3-t1">
+
+Suppose you write `const user = (await res.json()) as User;` and the external API unexpectedly renames `user.email` to `user.contactEmail`—or returns `{ error: "rate limited" }`. TypeScript compiles cleanly with zero errors, and **your app still crashes in production** because `interface User` ceased to exist the moment `tsc` emitted JavaScript.
+
+## 1. Type Erasure: What Actually Runs in Node and Browsers
+
+TypeScript interfaces and type aliases exist **only at compile time**:
+
+```typescript
+// TypeScript input:
+interface Product { id: string; priceCents: number; }
+function doublePrice(p: Product): number { return p.priceCents * 2; }
+
+// Compiled JavaScript output (what V8 actually executes):
+function doublePrice(p) { return p.priceCents * 2; }
+```
+
+Because types are erased completely, **every external boundary** (`fetch` responses, HTTP request bodies, URL query parameters, `localStorage`, `process.env`, JSON files, LLM tool outputs) arrives at runtime as **`unknown`** data.
+
+## 2. Bridging Compile Time and Runtime with Zod
+
+Install `zod` in your TypeScript project:
+
+```bash
+npm install zod
+```
+
+Define **one schema** that simultaneously validates runtime payloads *and* generates the exact TypeScript type via `z.infer`:
+
+```typescript
+import { z } from "zod";
+
+export const TaskSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(120),
+  completed: z.boolean(),
+  priority: z.enum(["low", "medium", "high"]),
+});
+
+// Single source of truth: TypeScript type derived straight from the Zod schema!
+export type Task = z.infer<typeof TaskSchema>;
+
+export function parseTaskPayload(raw: unknown): Task {
+  const result = TaskSchema.safeParse(raw);
+  if (!result.success) {
+    const details = result.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Invalid task payload: ${details}`);
+  }
+  return result.data; // Strictly typed as Task AND verified at runtime!
+}
+```
+
+## 3. Validating `fetch()` Responses End-to-End
+
+```typescript
+export async function fetchValidated<T>(
+  url: string,
+  schema: z.ZodType<T>
+): Promise<T> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} from ${url}`);
+  }
+  const raw: unknown = await response.json();
+  return schema.parse(raw);
+}
+```
+
+Notice what this guarantees: if an upstream API drops a field, changes a string to `null`, or alters an enum, `fetchValidated` fails loudly right at the network boundary with a crystal-clear schema error rather than silently rendering `NaN` or `undefined` inside your UI.
+
+## 4. Practice Exercises
+
+1. Write a Zod schema for a `UserLoginInput` (`email: z.email()`, `password: z.string().min(8)`) and test `safeParse` with both valid and invalid inputs, printing human-readable field errors.
+2. Validate `process.env` at application startup (`PORT` coerced to a positive integer, `NODE_ENV` enum `"development" | "test" | "production"`) using `z.coerce.number()`.
+
+## Mastery Checklist
+
+- [ ] Explains why `res.json() as MyType` provides zero runtime protection.
+- [ ] Derives TypeScript types with `z.infer<typeof Schema>` instead of duplicating interfaces.
+- [ ] Validates all external inputs (`API`, `env`, `forms`, `JSON`) at system boundaries.
+
+</BookNodePage>

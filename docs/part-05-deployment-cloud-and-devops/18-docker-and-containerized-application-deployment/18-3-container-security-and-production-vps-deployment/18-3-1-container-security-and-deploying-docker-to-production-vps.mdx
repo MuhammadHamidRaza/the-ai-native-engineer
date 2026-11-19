@@ -1,0 +1,180 @@
+---
+id: "18-3-1-container-security-and-deploying-docker-to-production-vps"
+title: "18.3.1 Container Security and Deploying Docker to Production VPS"
+sidebar_label: "18.3.1 Container Security and VPS Deployment"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-3-container-security-and-production-vps-deployment/18-3-1-container-security-and-deploying-docker-to-production-vps"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s3-t1">
+
+A working image is not a production image. This lesson hardens the ShopCore API image to a deployable standard, then ships the whole stack to your Chapter 17 VPS — `scp`, pull, up, firewall, nginx — exactly how a small team would.
+
+## 1. Image Hygiene — the Non-Negotiables
+
+**Run as non-root.** The official `node` images ship a `node` user (uid 1000):
+
+```dockerfile
+USER node
+```
+
+If your image must write files, `chown` the app directory in an earlier stage. Running as root means a container escape is a root shell on the host.
+
+**Minimal base images.** Prefer `-slim` or `-alpine`; every package you don't ship can't be exploited and doesn't need patching. `node:22-bookworm-slim` is the book's default; `distroless` is a valid stricter choice when you fully understand its debugging trade-offs.
+
+**No secrets in layers.** `ENV JWT_SECRET=…` or `COPY .env .` bakes secrets into every layer — `docker history` exposes them forever, even after later `RUN rm`. Use runtime injection (`-e`, `--env-file`, Compose `env_file`) and secret managers. `.dockerignore` excludes `.env` from the context.
+
+**Scan the image.** Docker Scout is built into Docker Desktop; Trivy is the open-source alternative:
+
+```bash
+docker scout quickview yourdockerhubuser/shopcore-api:1.0.0
+docker scout cves yourdockerhubuser/shopcore-api:1.0.0
+# Trivy (install: https://trivy.dev or apt):
+trivy image yourdockerhubuser/shopcore-api:1.0.0
+```
+
+Fix what you reasonably can; document accepted residual risk. Re-scan after every base-image bump.
+
+**Read-only filesystem + no privileges.** Where the app allows:
+
+```yaml
+read_only: true
+tmpfs: [/tmp]
+security_opt: ["no-new-privileges:true"]
+```
+
+**Resource limits** (Compose v2, non-swarm):
+
+```yaml
+deploy:
+  resources:
+    limits:   { cpus: "0.50", memory: 256M }
+    reservations: { memory: 128M }
+```
+
+Limits stop one leaking container from starving the VPS. Note: without Swarm/Kubernetes, `deploy.resources` is honored by `docker compose` for `up` (memory/cpu limits apply), but verify on your engine version with `docker inspect`.
+
+**Audit what you ship** before pushing the button:
+
+```bash
+docker history yourdockerhubuser/shopcore-api:1.0.0   # every layer, every command, every file add
+docker inspect yourdockerhubuser/shopcore-api:1.0.0 --format '{{.Config.User}} {{.Config.Entrypoint}}'
+docker run --rm yourdockerhubuser/shopcore-api:1.0.0 env   # no secrets, right?
+```
+
+`docker history` is the honest audit — it shows exactly what each instruction added, including the `ADD .env` someone tried to `rm` two layers later (the secret survives in the earlier layer forever).
+
+**Why root in a container is not "real root" — and why that is not enough.** A container root is uid 0 inside a namespace, isolated by cgroups/namespaces — but a kernel exploit or a sloppy `--privileged` flag collapses that boundary and you are root on the host. Running as non-root with `no-new-privileges` raises the bar from "one bug" to "multiple chained bugs." Neither replaces patching.
+
+**Secrets at runtime, not build time:** Compose `env_file`, Docker secrets, or your cloud's secret manager (AWS Secrets Manager ↔ Azure Key Vault ↔ GCP Secret Manager). The local `.env` on the VPS is acceptable for learning; rotate anything that ever touches git within minutes, not days.
+
+**Defense in depth — the five layers you now own:** (1) minimal base image, (2) non-root user + no-new-privileges, (3) read-only FS + resource limits, (4) secrets at runtime, (5) scanned dependencies. Miss any one and the others still help — that is the entire philosophy. Nothing is bulletproof; layers buy you time and blast-radius reduction.
+
+## 2. Deploy to the Chapter 17 VPS — Full Walkthrough
+
+**Where to run:** local machine for build/push; SSH on the VPS for everything else. **Billing-safety first:** a small VPS (1–2 vCPU, 2 GB) runs roughly $4–6/month; *stopped ≠ free* — attached disks and reserved IPs often still bill. Set a provider budget alert (or calendar reminder) **before** provisioning, and read your provider's current pricing page — numbers drift.
+
+### Step 1 — On your laptop: build, push, copy the compose file
+
+```bash
+docker build -t yourdockerhubuser/shopcore-api:1.0.0 .
+docker push yourdockerhubuser/shopcore-api:1.0.0
+scp docker-compose.yml .env deploy@YOUR_VPS_IP:/home/deploy/shopcore/    # non-root deploy user, see Ch.17
+```
+
+`.env` on the VPS contains production secrets (`POSTGRES_PASSWORD`, `JWT_SECRET`, `DATABASE_URL`) — created on the server or copied over SSH, never via git.
+
+### Step 2 — On the VPS (SSH in per Chapter 17): engine + firewall
+
+```bash
+# Docker engine (if not already installed there)
+# Prefer the official apt repository method shown in 18.1.1 (Docker Desktop isn't available on a headless VPS).
+# The convenience `curl -fsSL https://get.docker.com | sudo sh` script exists but downloads a
+# catch-all installer — review its contents first if you use it; the apt repo is auditable and is what we teach.
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER && newgrp docker
+
+# Firewall: SSH (restricted to your IP if you can), HTTP/HTTPS only
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+```
+
+Postgres (5432) and the API (3000) are **not** opened — nginx proxies 80/443 to the API; Postgres has no reason to hear the internet.
+
+### Step 3 — Pull and run
+
+```bash
+cd ~/shopcore
+docker compose pull
+docker compose up -d
+docker compose ps          # api up, db healthy
+curl -s http://localhost:3000/api/health
+```
+
+### Step 4 — nginx reverse proxy (from 17.2.2) + HTTPS
+
+Create `/etc/nginx/sites-available/shopcore`:
+
+```nginx
+server {
+    listen 80;
+    server_name shopcore.example.com;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/shopcore /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Then point DNS per [16.2.2](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-2-dns-records-nameservers-and-propagation) and issue certs with certbot (`sudo certbot --nginx -d shopcore.example.com`) or Caddy for automatic HTTPS.
+
+### Step 5 — Updates and rollback
+
+```bash
+# Deploy new version
+docker compose pull && docker compose up -d
+# Rollback: pin the previous tag in docker-compose.yml, then:
+docker compose up -d
+```
+
+For anything beyond one VPS, this hand-rolled flow is replaced by CI/CD (Chapter 19) and orchestration (Chapter 20).
+
+## 3. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Site unreachable but `curl localhost:3000` works on VPS | ufw or nginx wrong | `sudo ufw status verbose`; `sudo nginx -t`; check `sites-enabled` symlink |
+| `502 Bad Gateway` | API container down or wrong `proxy_pass` port | `docker compose ps`, `docker compose logs api` |
+| `docker compose pull` unauthorized | Private repo, not logged in on VPS | `docker login` on the VPS (read-only token) |
+| App writes fail as non-root | Volume owned by root | `chown`/`user:` mapping or named volume initialized with right owner |
+| Disk full on VPS | Old images/volumes | `docker system df`, prune old tags; keep the DB volume! |
+| Secrets leaked in `docker history` | Baked via `ENV`/`COPY .env` | Rebuild without secrets; rotate the leaked credentials immediately |
+
+## 4. Practice
+
+**Guided.** Add `USER node`, `read_only`, `no-new-privileges` and memory limits to the API service; rebuild; confirm the container still serves `/api/health`.
+
+**Independent.** Deploy the stack to your Ch17 VPS following Steps 1–4; browse the site over HTTPS via your domain (or the VPS IP); screenshot the health JSON.
+
+**Challenge.** Run `docker scout cves` on your image; upgrade the base image; re-scan; write a 5-line note on what changed. Then perform a rollback to the previous tag and verify.
+
+**Assessment checklist**
+
+- [ ] My image runs as non-root with a minimal base and no secrets in layers.
+- [ ] I scanned it and know where accepted-risk findings are recorded.
+- [ ] I set a provider budget alert before provisioning/keeping the VPS.
+- [ ] ufw allows only 22/80/443; Postgres and the API port are not public.
+- [ ] nginx proxies to the API and HTTPS works via certbot/Caddy.
+- [ ] I can update (`pull && up -d`) and roll back (previous tag) without downtime fear.
+
+</BookNodePage>

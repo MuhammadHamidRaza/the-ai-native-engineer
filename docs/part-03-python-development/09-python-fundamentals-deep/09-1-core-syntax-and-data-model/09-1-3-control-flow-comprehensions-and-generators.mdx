@@ -1,0 +1,119 @@
+---
+id: "09-1-3-control-flow-comprehensions-and-generators"
+title: "09.1.3 Control Flow, Comprehensions and Generators"
+sidebar_label: "09.1.3 Control Flow, Comprehensions and Generators"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-1-core-syntax-and-data-model/09-1-3-control-flow-comprehensions-and-generators"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s1-t3">
+
+Python routes execution with **conditions**, **loops**, **comprehensions**, and **generators**. This lesson covers the full range you need every day: when to branch, when to repeat, and how to stream huge files without loading them into memory.
+
+## 1. Branching — `if`, `elif`, `else`
+
+Python uses keywords instead of braces. **Indentation is the block delimiter** — an `if`/`elif`/`else` chain reads top to bottom; the first true condition wins.
+
+```python
+invoice_total_cents = 12900
+coupon_code = "SAVE10"
+if invoice_total_cents >= 20000 and coupon_code == "SAVE10":
+    discount_cents = round(invoice_total_cents * 0.15)   # 15% off $200+
+elif invoice_total_cents >= 10000 and coupon_code == "SAVE10":
+    discount_cents = round(invoice_total_cents * 0.10)   # 10% off $100–$199
+elif coupon_code:
+    print("unrecognized coupon — no discount")
+    discount_cents = 0
+else:
+    discount_cents = 0
+
+final_cents = invoice_total_cents - discount_cents
+print(f"charge: ${final_cents / 100:.2f}")
+```
+
+Rules that matter in practice:
+
+- Every block must be **indented consistently** (4 spaces; Python 3 raises `IndentationError` for mixed tabs/spaces).
+- **Boolean operators are words, not symbols**: `and`, `or`, `not` — never `&&`/`||`.
+- Conditions evaluate to truthy/falsy values: `0`, `""`, `[]`, `{}`, `None`, `False` are falsy; everything else truthy. Use that to write `if cart_items:` instead of `if len(cart_items) > 0:`.
+- Guard clauses beat nesting: prefer early `if invalid: return` over three-level `if`/`elif`/`else` towers.
+- Use `==` (equality), **never** `is` (identity) for value comparisons — `a is b` asks "same object?", `a == b` asks "same value?".
+
+```python
+def charge_cents(total_cents: int) -> int:
+    if total_cents < 0:
+        raise ValueError("total_cents must not be negative")
+    if total_cents == 0:
+        return 0
+    tax = round(total_cents * 0.08)  # 8% — round exactly once, here
+    return total_cents + tax
+
+print(charge_cents(12900), charge_cents(0))
+```
+
+**Practice now:** given `score`, print `"pass"` when `score >= 70`, `"borderline"` when it's `50–69`, `"fail"` below. Predict the output, then run it.
+
+## 2. Loops — `for`, `while`, and `range`
+
+```python
+for name in ["Ada", "Grace", "Linus"]:
+    print(name.upper())
+
+for i in range(3):
+    print(i)                # 0 1 2
+
+n = 3
+while n > 0:
+    print(n)
+    n -= 1
+```
+
+Python prefers `for item in collection` over index loops; when you also need the position, use `enumerate`; when you need pair-wise iteration over two sequences, use `zip`.
+
+## 3. Pythonic Control Flow (`enumerate` & `zip`)
+
+```python
+names = ["Ada", "Grace", "Linus"]
+scores = [98, 95, 92]
+
+for rank, (name, score) in enumerate(zip(names, scores), start=1):
+    print(f"#{rank}: {name} -> {score}")
+```
+
+## 4. Comprehensions (Readable Filtering & Mapping)
+
+Use list/dict comprehensions when concise, and fall back to explicit `for` loops whenever nesting gets dense:
+
+```python
+raw_emails = [" Ada@Example.com ", "", "grace@example.com"]
+clean_emails = [e.strip().lower() for e in raw_emails if e.strip()]
+
+lengths = {email: len(email) for email in clean_emails}
+print(clean_emails, lengths)
+```
+
+## 5. Lazy Generators (`yield`) & Streaming Files Safely
+
+A list comprehension (`[...]`) builds the **entire list in RAM immediately**. Using `yield` instead of `return` inside a function — or writing a parenthesized expression `(x for x in ...)` — creates a **generator** that produces **one item at a time on demand**:
+
+```python
+from pathlib import Path
+
+def iter_error_lines(log_path: Path):
+    with log_path.open("r", encoding="utf-8") as fh:
+        for line_num, line in enumerate(fh, start=1):
+            if "ERROR" in line:
+                yield line_num, line.strip()
+```
+
+Using `with log_path.open(..., encoding="utf-8")` guarantees the file handle closes automatically when the loop exits or raises—and keeps memory usage constant RAM even on a 5 GB log file!
+
+## Mastery Checklist
+
+- [ ] Writes `if`/`elif`/`else` chains with proper indentation and boolean keywords (`and`/`or`/`not`).
+- [ ] Uses `==` for value comparison and understands `is` vs `==`.
+- [ ] Loops with `for ... in`, `while`, `range`, `enumerate`, `zip`.
+- [ ] Streams large files line by line with `with open(...)` and `yield` generators.
+
+</BookNodePage>

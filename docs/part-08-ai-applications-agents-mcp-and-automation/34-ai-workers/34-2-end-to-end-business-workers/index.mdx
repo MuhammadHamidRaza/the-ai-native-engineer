@@ -1,0 +1,42 @@
+---
+id: "index"
+title: "34.2 End-to-End Business Workers"
+sidebar_label: "34.2 End-to-End Business Workers"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-34-s2">
+
+Specs and triggers are not a business outcome. This section builds the three ShopCore workers end-to-end — the Inbox Triage flow with policy-grounded draft replies and escalation, the AR Nudge tone ladder with stop conditions, and the weekly Research Brief with citations — then closes with the audit trail and escalation queue that make these workers safe to employ.
+
+## The Three Workers at a Glance
+
+| Worker | Trigger | Brain | Side effect (gated) |
+| :-- | :-- | :-- | :-- |
+| Inbox Triage | New support email (Gmail Trigger) | LLM classify + Ch 28 RAG draft | Draft reply → approval → send; else Linear ticket |
+| AR Nudge | Daily 08:00 cron | Template ladder L1→L4 + light personalization | Email/SMS draft → approval → send |
+| Research Brief | Weekly cron (Mon 07:00) | Multi-source retrieval + synthesis | Notion page with citations → internal review |
+
+Common skeleton for all three: **intake → enrich (RAG/DB) → decide (LLM, structured) → gate (policy/approval) → act → audit**. Build this skeleton once in n8n; each worker is a specialization of it.
+
+## The Two Topics in This Section
+
+- **[34.2.1 Inbox Triage, Support and Research Workers](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers/34-2-1-inbox-triage-support-and-research-workers)** — the full builds: node-by-node flows, prompts, RAG wiring, tone ladder, citation discipline, stop conditions, and per-worker ROI estimates.
+- **[34.2.2 Audit Trails and Escalation Queues](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers/34-2-2-audit-trails-and-escalation-queues)** — the `worker_runs` audit schema, what to log and why, retention, the human escalation queue UX (Slack buttons → Intercom/Linear), on-call rotation, and honest ROI measurement.
+
+## Why Audit Trails Are in Scope Here
+
+A worker you cannot audit is a liability with an API key. When a customer disputes a nudge ("your bot hounded me about a paid invoice") or Legal wants every AI-touched communication, the answer must be a query — not archaeology. The pattern from Chapter 36 (production telemetry) starts here, small and concrete.
+
+## Section Exit Criteria
+
+- One complete Inbox Triage run visible in: n8n Executions → draft reply in Slack → approver click → sent mail → `worker_runs` row.
+- AR Nudge refuses to touch a dispute-flagged invoice — with the skip reason visible in the log.
+- Research Brief produces a Notion page where every claim carries a URL and retrieval date.
+- Escalation queue reviewed daily; DLQ empty or triaged; you can answer "what did the workers do last Tuesday?" with one SQL query.
+
+Prerequisites: 34.1 complete, Chapter 28 (RAG) fresh, n8n instance from Chapter 33. Verified November 2026.
+
+</BookNodePage>

@@ -1,0 +1,168 @@
+---
+id: "28-2-1-hybrid-search-and-reranking"
+title: "28.2.1 Hybrid Search and Reranking"
+sidebar_label: "28.2.1 Hybrid Search and Reranking"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation/28-2-1-hybrid-search-and-reranking"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28-s2-t1">
+
+Naive semantic retrieval — one embedding, one cosine sort — fails exactly where customers are most literal: "What does **SKU-114** weigh?", "Is the **30 calendar days** window from delivery or shipment?", "Policy **4.3**". Dense vectors blur exact tokens; lexical search misses paraphrase. Production HelpBot runs **both**, fuses the rankings, and re-scores the shortlist with a cross-encoder. This lesson builds that pipeline end-to-end.
+
+## 1. Why Dense Alone Misses Exact Terms
+
+Embeddings compress meaning, not spelling. "SKU-114" and "SKU-141" are neighbors in vector space; so are "30 days" and "45 days". If a customer quotes a clause number or an order ID, cosine distance is a coin flip. BM25 (classic term-frequency/inverse-document-frequency ranking) scores exact token overlap with length normalization — it nails those queries and is blind to synonyms ("give back" vs "return"). Neither alone is sufficient; the fused result beats both.
+
+## 2. Reciprocal Rank Fusion (RRF) — the Fusion Math
+
+RRF needs no score calibration between the two retrievers — it fuses on **rank position**, not score. For each document `d`:
+
+```text
+RRF(d) = sum over retrievers r of  1 / (k + rank_r(d))
+```
+
+where `k = 60` is the standard damping constant (flattens the penalty for low ranks). Worked example, query *"how long to return opened item"* with 4 candidate chunks:
+
+| Chunk | Dense rank (score) | BM25 rank | RRF = 1/(60+d) + 1/(60+b) |
+| :-- | :-- | :-- | :-- |
+| `refund-window` (4.2) | 1 (0.91) | 4 | 1/61 + 1/64 = 0.0164 + 0.0156 = **0.0320** |
+| `refund-table` | 3 (0.87) | 1 | 1/63 + 1/61 = 0.0159 + 0.0164 = **0.0323** |
+| `return-shipping` | 2 (0.89) | 7 | 1/62 + 1/67 = 0.0161 + 0.0149 = **0.0311** |
+| `opening-item-care` | 4 (0.70) | 2 | 1/64 + 1/62 = 0.0156 + 0.0161 = **0.0317** |
+
+Note the flip: dense preferred `refund-window`, but `refund-table` wins the fusion because BM25 ranked it first (exact tokens "opened item" appear in the table). Without fusion, dense-only would have fed the prose clause and missed the 45-day unused-item exception sitting in the table.
+
+`ORDER BY` this RRF column, take the top 20, then rerank. In pgvector + a `tsvector` column, both retrievers can live in one SQL query — no second service needed for BM25:
+
+```sql
+ALTER TABLE policy_chunks
+  ADD COLUMN tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED;
+CREATE INDEX ON policy_chunks USING gin (tsv);
+```
+
+The generated column keeps the index write-safe on insert; the GIN index is what makes `plainto_tsquery` cheap at 2 a.m. during a sale.
+
+## 3. Cross-Encoder Reranking
+
+RRF fixes *candidate generation*; it does not read the query and chunk together. A **cross-encoder** does: `[CLS] query [SEP] chunk` through one transformer, emitting a relevance score. That is the most accurate (and most expensive) stage — apply it only to the fused top 20.
+
+**Verified November 2026** — Cohere's rerank API (v2, `POST /v2/rerank`) currently documents the **v5 family** (`rerank-v5.0-pro` / `rerank-v5.0-fast`, `relevant_spans` support); **`rerank-v4.0-pro` / `rerank-v4.0-fast`** (released Dec 2025) and **`rerank-v3.5`** remain hosted. For self-hosting, **`BAAI/bge-reranker-v2-m3`** (568M params, XLM-RoBERTa-large base, multilingual, Apache-2.0) is the standard open pick — quantized builds run on a laptop. Check docs.cohere.com/reference/rerank before pinning any model ID; this space moves fast.
+
+## 4. End-to-End Pipeline (TypeScript)
+
+```ts
+import OpenAI from "openai";
+import { CohereClient } from "cohere-ai";
+
+const openai = new OpenAI();
+const cohere = new CohereClient({});
+
+// Stage 1+2: hybrid retrieval + RRF (SQL sketch; $3 = query embedding JSON)
+const candidates = await pool.query(`
+  SELECT id, text, doc_id, page,
+         (1.0 / (60 + dense_rank)) + (1.0 / (60 + bm25_rank)) AS rrf
+  FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY embedding <=> $2) AS dense_rank,
+               ROW_NUMBER() OVER (ORDER BY ts_rank_cd(tsv, plainto_tsquery($1)) DESC) AS bm25_rank
+        FROM policy_chunks WHERE doc_type = 'policy') s
+  ORDER BY rrf DESC LIMIT 20`, [q, JSON.stringify(qVec)]);
+
+// Stage 3: cross-encoder rerank — verified v2 SDK signature
+const reranked = await cohere.v2.rerank({
+  model: "rerank-v4.0-fast",        // or rerank-v5.0-fast — confirm current IDs in Cohere docs
+  query: question,
+  documents: candidates.rows.map(r => r.text),
+  topN: 3,
+});
+const top = reranked.results.map(r => candidates.rows[r.index]);
+
+// Stage 4: grounded generation — Responses API, GPT-6.1 Sol (verified Nov 2026)
+const answer = await openai.responses.create({
+  model: "gpt-6.1-sol",
+  instructions: "Answer ONLY from the numbered sources. Cite [n:file#page]. If unsupported, say 'I don't know.'",
+  input: buildGroundedPrompt(question, top),
+});
+```
+
+Open-source swap for stage 3: a Python sidecar with `FlagEmbedding.FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True)` calling `compute_score(pairs, normalize=True)` — fine for batch or low QPS; adds an ops dependency. LangChain/LlamaIndex both wrap this pattern; the RRF and threshold logic is yours to own regardless of framework.
+
+## 5. Latency Budget — Plan for 300–1200 ms to First Token
+
+| Stage | Typical | Notes |
+| :-- | :-- | :-- |
+| Embed query | ~20–30 ms | One small embedding call; cache by query hash |
+| Postgres hybrid search | ~10–30 ms | Metadata filter first — never scan all vectors |
+| Rerank top-20 | ~60–120 ms | Network RTT dominates for hosted Cohere |
+| LLM, first token | ~500–1500 ms | Dominates total; `gpt-6.1-sol` streaming hides it |
+
+Measure, do not trust this table: log stage timings per request (Part 06 observability) and alert on p95. If rerank blows the budget, rerank top-10, not top-20 — recall drops little.
+
+**A concrete verification loop you can run right now.** The repository contains a complete, offline, deterministic reference of this exact pipeline at **`examples/shopcore-helpbot/`** — same chunking logic, same RRF fusion, same golden-set idea, running on hashed n-gram embeddings with zero API keys. It was executed on November 18, 2026:
+
+```text
+$ npm run ingest     # 6 policy docs -> 32 chunks -> data/index.jsonl
+$ npm run eval:helpbot
+r1_opened_item_window          expected [returns-policy]  got [returns-policy,price-adjustment-policy]  PASS
+r2_refund_timing               expected [returns-policy]  got [order-cancellation-policy,privacy-policy,shipping-policy]  MISS
+...
+Recall@3: 9/10
+Refusal:  5/5
+```
+
+`r2_refund_timing` is an honest MISS by the offline embedder ("my money back" shares no terms with the returns policy) — live embeddings are expected to pass it. Run it yourself; the point of the exercise is that **every failure is a real, reproducible failure**, not a vibe.
+
+In your project (Chapter 28.1), the same harness runs against pgvector instead of the local index. The query shape that matters — RRF fused ranking, expected top-3 doc per question, a PASS/MISS line, and a golden set committed to the repo:
+
+```sql
+-- fused search over policy_chunks: vector distance + full-text rank, RRF-merged
+SELECT doc_id,
+       1.0 / (60 + row_number() OVER (ORDER BY embedding <=> $1))
+     + 1.0 / (60 + row_number() OVER (ORDER BY ts_rank(to_tsvector('english', text), plainto_tsquery('english', $2)) DESC)) AS rrf
+FROM policy_chunks
+ORDER BY rrf DESC
+LIMIT 3;
+```
+
+Run it as `npm run eval:helpbot` with `scripts/eval-helpbot.mjs` printing one line per question and a final `Recall@3: n/m` — then wire it into CI whenever you re-chunk, re-embed, or swap the reranker. The reference implementation in this repository is the template to copy and adapt — do not hand-write a new harness from scratch.
+
+A golden set of 25–50 questions with expected top-3 docs is the cheapest reliability investment you will make this year. Track Recall@3 as a number in CI-adjacent scripts; when it regresses after a re-chunk or model change, you know exactly which knob was turned.
+
+## 6. The Degradation Ladder — When the Reranker Is Down
+
+1. Reranker 5xx/timeout → fall back to RRF order (still better than dense-only).
+2. Embedding API down → BM25 only, keyword-exact answers.
+3. Postgres vector index corrupt → full-text search on `text`, flag degraded mode in the UI.
+4. No retrieval succeeds → respond "I don't know" + contact-support CTA. **Never** let the model wing it from parametric memory on policy questions.
+
+Ladder down, log loudly, recover up. Retries with jitter on stage 2–3; no retry on stage 4 (non-idempotent user-facing stream) — fail to the refusal template instead.
+
+**Timeouts per stage, spelled out:** embed 5s (one retry), search 2s (no retry — fail to BM25), rerank 3s (one retry, then RRF order), generation 30s (no retry — refusal template + escalate). Total worst-case wall clock stays under the customer's patience and your load balancer's idle timeout. Every ladder rung emits a metric (`helpbot_degraded_stage`) so Part 05/06 alerting can page a human when rung 2 fires.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Table chunk never wins | BM25 tokenizes `|` away — fine, but numbers split | Keep Markdown tables; BM25 handles digits well |
+| RRF favors boilerplate | Intro chunks rank everywhere | Strip intros; tag `heading_path` boost for clause chunks |
+| Reranker scores all ~0.1 | Query/passage mismatch or wrong model | Sanity-check with a known-good pair; log raw scores |
+| Cohere 429 | Rate limit | Back off + jitter; fall back down the ladder |
+| pg `tsvector` NULL | Generated column not in insert | Add `tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED` |
+
+## Practice
+
+**Guided.** Implement the RRF query above on your indexed policy chunks. Print top-5 for *"refund opened item"* without and with fusion. Diff the lists.
+
+**Independent.** Add the Cohere rerank stage behind a feature flag (`HELPBOT_RERANK=1`). Measure p50/p95 added latency over 30 test queries.
+
+**Challenge.** Swap Cohere for `bge-reranker-v2-m3` in a Python sidecar. Report top-3 overlap with Cohere and your verdict: worth self-hosting for ShopCore's query volume?
+
+## Assessment Checklist
+
+- [ ] I can explain why dense retrieval fails on exact terms and BM25 on paraphrase.
+- [ ] I can compute RRF by hand for a 4-candidate example with `k = 60`.
+- [ ] I can wire `cohere.v2.rerank` (or the bge-reranker) with a feature flag and fallback.
+- [ ] I know my measured stage latencies, not blog numbers.
+- [ ] I can state the degradation ladder and what the user sees at each rung.
+
+</BookNodePage>

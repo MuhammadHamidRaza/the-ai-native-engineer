@@ -1,0 +1,112 @@
+---
+id: "00-11-5-tracking-your-progress"
+title: "00.11.5 Tracking Your Progress"
+sidebar_label: "00.11.5 Tracking Your Progress"
+slug: "/part-00-about-this-book/00-11-before-you-begin/00-11-5-tracking-your-progress"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-11-5">
+
+Inside a multi-month, **638-hour** curriculum covering 10 Parts and 42 Chapters, unrecorded progress creates deceptive discouragement. Around week eight—while wrestling with asynchronous TypeScript fetches, PostgreSQL foreign keys, or Docker environment variables—it is surprisingly easy to forget that basic command-line navigation, Git branches, and DOM manipulation felt mysterious just one month earlier. At the opposite extreme, elaborate Notion productivity boards packed with colored status pills and custom calendars quickly waste hours you should spend writing and testing software.
+
+**Tracking Your Progress** solves both problems using a **lightweight two-layer habit** taking under five minutes per session while capturing undeniable, forensic proof of technical growth.
+
+## Layer 1: Book Navigation Continuity (Orientation Only)
+
+Inside **The AI-Native Engineer** web book:
+- Rely on clean sidebar hierarchy, breadcrumbs, and previous/next navigation to maintain exact spatial orientation across **Part 00 through Part 10** and **Appendices A–E**.
+- Keep bookmarks handy for high-density lookup chapters you will revisit repeatedly mid-project (`Ch 03 Git & Debugging`, `Ch 12 PostgreSQL`, `Ch 18 Docker`, `Ch 28 RAG`, `Ch 36 Production AI`).
+
+Keep one rule crystal clear: **reading a page records exposure—never capability.** Real mastery requires Layer 2.
+
+## Layer 2: Your Plaintext Mastery Ledger (`PROGRESS.md`)
+
+Keep one lightweight Markdown ledger committed cleanly inside your curriculum root (`~/code/ai-native-engineer/PROGRESS.md`). Update it during the final 5 minutes of every chapter milestone or study session (`00.11.4`):
+
+```markdown
+# The AI-Native Engineer — Mastery Ledger
+
+## Current Active Milestone
+- **Active Part / Chapter:** Part 04 -> Ch 13 (Backend Engineering with Node.js) — started next
+- **Next Session Entry Point:** `node src/server.js` on the ShopCore API; confirm `GET /health` returns 200 before writing a single route
+- **Cumulative Focused Hours:** 68.0h / 638h  (8.0 + 8.0 + 22.0 + 30.0 logged below)
+
+## Completed Chapter & Lab Log
+| Date | Chapter / Milestone | Focused Hrs | Repo / Commit Proof | Unassisted? | Hardest Bug Diagnosed or Invariant Learned |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 2026-11-18 | Ch 01 — Systems & Web | 8.0h | notes/ch01-http-trace | Yes | Traced full DNS -> TCP -> TLS -> HTTP response lifecycle in curl |
+| 2026-11-26 | Ch 02 — Problem Solving | 8.0h | drills/ch02@a4f891 | Yes | Caught off-by-one boundary on empty array & malformed currency check |
+| 2026-12-09 | Ch 07 — React Console | 22.0h | apps/ch07-triage@c91e02 | Core Yes | Fixed infinite `useEffect` fetch triggered by unstable filter object |
+| 2027-01-15 | Ch 12 — PostgreSQL | 30.0h | labs/ch12-sql@e22d10 | Yes | Added composite `(workspace_id, created_at)` index + verified Index Scan via `EXPLAIN` |
+```
+
+Notice why that tiny table beats complex productivity apps effortlessly:
+1. **`Unassisted?` column keeps practice honest (`00.6.3`):** Seeing `"AI-copied"` appear three rows in a row immediately warns you to restore manual unassisted drills before shallow fluency compounds silently.
+2. **`Hardest Bug Diagnosed` turns pain into permanent interview material (`00.10.5`):** Months later, flipping through your own ledger gives you twenty authentic, specific engineering stories about real bugs you traced and resolved.
+3. **`Next Session Entry Point` destroys startup friction:** Opening `PROGRESS.md` tells you in five seconds exactly where your hands go next.
+
+## The 10-Minute Weekly Review Ritual
+
+Every Sunday evening (or Friday afternoon in full-time studio schedules), run a quick 10-minute audit over your week's entries using four sharp diagnostic questions:
+
+```text
+1. VERIFICATION CHECK:   Did every "finished" chapter lab actually pass its checks and
+                         survive an edge-case input without silent guesses?
+2. REPEATED FRICTION:    Did the exact same category of mistake (missing `await`, TypeScript
+                         `undefined` narrowing, broken SQL join, wrong `.venv`) hit 2+ times?
+                         --> Schedule one focused 45-min manual drill before advancing.
+3. PACE REALITY CHECK:   Are hours logging accurately as *deep uninterrupted build hours*
+                         (excluding distracted video skimming or social media)?
+4. LAUNCH BREADCRUMB:    Is Monday's concrete first file path and task written down?
+```
+
+## Avoiding Vanity Metrics While Tracking Hours
+
+Remember that **638 focused hours** is an empirical planning benchmark—not a race to pad timers. Thirty unfocused minutes glancing between chat tabs and YouTube tutorials is zero focused engineering time; record only honest, single-task learning and building minutes. Conversely, if a stubborn database migration takes 24 hours instead of the budgeted 20 hours because you thoroughly nailed indexing and testing, record the real hours calmly and celebrate genuine understanding rather than rushing incomplete code cleanly past the finish line.
+
+## Practical Exercise: Initialize Your Master Ledger Format
+
+Preview the exact `PROGRESS.md` template above and decide where it will live on your machine (`~/code/ai-native-engineer/PROGRESS.md` synced to a private or public GitHub journal repo). Customize two extra personal tracking lines at the top: (1) your **weekly hour budget** committed in `00.11.4`, and (2) your **early candidate domain** for Part 08 / Chapter 42 so domain edge cases stay on your radar throughout Parts 01–06. You will initialize and commit that exact file in **00.11.6**.
+
+## Concrete Verification Checkouts Before Marking Any Stage Complete
+
+Reading a chapter without running a capability checkout creates invisible knowledge holes. Before ticking off any macro block inside `PROGRESS.md`, verify these non-negotiable behavioral proofs:
+
+| Curriculum Gate | Observable Proof Required in Your Repository Before Advancing |
+| :--- | :--- |
+| **End of Part 01 (`26h`)** | Clean Git feature-branch merge + passing `curl`/Python HTTP status probe + written stack-trace diagnosis log |
+| **End of Part 02 (`+92h`)** | Type-safe React/Next.js interactive flow passing keyboard navigation, loading/empty/error states, and `tsc --noEmit` cleanly |
+| **End of Part 04 (`+124h`)** | Normalized PostgreSQL schema with foreign keys + authenticated endpoint passing negative `401`/`403` integration tests |
+| **End of Part 06 (`+50h`)** | Containerized `docker compose up` stack + automated GitHub Actions CI + analyzed query index improvement via `EXPLAIN` |
+| **End of Part 08 (`+128h`)** | Grounded RAG / bounded Agent / MCP pipeline passing a `20–40` case golden eval script with recorded token cost metrics |
+
+## Querying Your Own Git History for Momentum Proof
+
+Whenever week-eight fatigue whispers *"You haven't learned enough yet,"* inspect your concrete commit trail right inside your journal repository:
+
+```bash
+# Count commits & inspect recent engineering breakthroughs cleanly
+git log --oneline -n 15
+git rev-list --count HEAD
+```
+
+Seeing thirty dated commits documenting actual bugs solved, schemas normalized, and eval suites verified gives you objective, tamper-proof evidence of engineering momentum.
+
+## Monthly Progress Calibration: Three Sanity Questions
+
+Once every four weeks, read back across the last month of rows in `PROGRESS.md` and ask three honest structural checks:
+1. **Retention Check:** Pick one project or drill finished three weeks ago (`e.g., Ch 01 curl trace` or `Ch 05 Zod validator`) and explain aloud in sixty seconds *why* each component worked without re-reading the chapter—if your memory feels blurry, schedule one 30-minute refresh drill.
+2. **Scope Honesty Check:** Did your `"Verified?"` proofs actually check failure inputs (`401`/`403`/`422`) and clean-clone startups, or did any chapter get marked done on a single happy run?
+3. **Sustainability Check:** Does your cumulative hour pace match real life calmly without sleep debt? Adjust next month's weekly hour target cleanly rather than silently accumulating missed expectations.
+
+Whenever you complete a full Part (`Part 01 → Part 02`, `Part 04 → Part 05`, or `Part 08 → Part 09`), add a three-bullet retrospective summary directly beneath that month's table in `PROGRESS.md` capturing: (1) which mental model finally clicked cleanly, (2) which recurring error pattern still slows you down, and (3) the exact live link or commit hash of that Part's verified project artifact. Keeping every proof anchored in real Git history turns month-to-month progress into an undeniable engineering record.
+
+## Official Primary References
+
+- [Section 00.6.8 — Assessment and Progress Discipline](/book/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-8-assessment-and-progress)
+- [Git Basics — Viewing the Commit History (`git-scm.com`)](https://git-scm.com/book/en/v2/Git-Basics-Viewing-the-Commit-History)
+- [Part 01 Landing — Foundations (26 Hours)](/book/part-01-foundations)
+
+</BookNodePage>

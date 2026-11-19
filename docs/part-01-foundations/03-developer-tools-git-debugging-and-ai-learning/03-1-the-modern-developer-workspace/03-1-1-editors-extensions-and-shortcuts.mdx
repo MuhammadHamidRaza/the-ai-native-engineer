@@ -1,0 +1,155 @@
+---
+id: "03-1-1-editors-extensions-and-shortcuts"
+title: "03.1.1 Editors, Extensions and Shortcuts"
+sidebar_label: "03.1.1 Editors, Extensions and Shortcuts"
+slug: "/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-1-the-modern-developer-workspace/03-1-1-editors-extensions-and-shortcuts"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-03-s1-t1">
+
+Watch how dramatically differently two developers interact with the exact same **Visual Studio Code** window:
+
+Developer A clicks file icons one by one down the left Explorer tree, drags scrollbars searching blindly for where `calculateTax` was defined, edits lines with mismatched indentation, misses subtle red TypeScript squiggles buried inside unexpanded folders, and runs terminals in a separate disconnected window—losing track of whether an app runs on Windows or WSL 2 Ubuntu!
+
+Developer B keeps hands anchored comfortably on the keyboard: hits **`Ctrl/Cmd + P`**, types `cal` to jump directly into `calc.ts` in 400 milliseconds, presses **`F12` (`Go to Definition`)**, inspects a live type error inside the Problems drawer (**`Ctrl/Cmd + Shift + M`**), toggles the integrated POSIX terminal (**``Ctrl + ` ``**) running straight inside native Linux, and saves cleanly while **Prettier & ESLint** enforce consistent formatting automatically!
+
+Your **Code Editor** is not Notepad with syntax colors—it is your **live engineering cockpit** combining fast symbol navigation, static type checking (`Language Server Protocol — LSP`), interactive debugging, and Git diff inspection.
+
+## 1. Plain-English Intuition: Text Editor vs. Engineering Cockpit
+
+Notice why engineers use **Visual Studio Code (`VS Code`)** (`or tightly focused equivalents`) rather than plain text editors or heavy language-locked IDEs across full-stack + AI work:
+- **Syntax Highlighting** merely paints keywords (`function`, `return`) different colors.
+- **Language Servers (`TypeScript TSServer`, `Pylance` for Python, `ESLint`)** run continuously in background OS processes (`01.2.2`), parsing your entire repository's AST (`Abstract Syntax Tree`) so the editor understands *types, imports, dead variables, missing arguments, and cross-file references* **before you ever run the app!**
+
+## 2. How VS Code Remote Architecture Works (`Crucial on Windows 11 + WSL 2`)
+
+If you use **Windows 11 + WSL 2 Ubuntu**, understanding VS Code's **Client–Server Remote Architecture** (`code.visualstudio.com/docs/remote/wsl`) prevents the #1 setup performance disaster:
+
+```text
++-----------------------------------+       Local IPC Socket       +-----------------------------------+
+|  WINDOWS DESKTOP HOST             | <--------------------------> |  UBUNTU WSL 2 LINUX VM (`ext4`)   |
+|  - Thin VS Code UI Window         |                              |  - VS Code Server                 |
+|  - Keystrokes, fonts, themes only |   Edits files natively at    |  - ESLint / Pylance / TSServer    |
+|  - Badge MUST say: [WSL: Ubuntu]  |   full Linux filesystem I/O  |  - Integrated bash, git, node, py |
++-----------------------------------+                              +-----------------------------------+
+```
+
+**Why this matters daily (`00.11.2`):**
+1. Never open a Windows folder path (`C:\Users\...` or `/mnt/c/...`) from inside VS Code for Node/Python/Docker work! Crossing the Windows `NTFS` ↔ Linux `9P` filesystem bridge throttles `npm install`, `git status`, `pytest`, and Vite/Next.js file watchers dramatically!
+2. Instead, open your **Ubuntu WSL 2 terminal**, navigate cleanly into your Linux home folder (`cd ~/code/ai-native-engineer`), and launch **`code .`** directly from Linux! Confirm the bottom-left corner badge shows **`>< WSL: Ubuntu`**—now all extensions, terminals, `.vscode/launch.json` debuggers, and Git operations execute **natively inside fast Ubuntu `ext4`** while rendering smoothly on your Windows monitor!
+
+## 3. Essential Baseline Extensions (Lean & High-Signal Only)
+
+Avoid bloated extension packs that install 30 overlapping themes, animated rainbow brackets, and noisy inline popups competing over every keystroke! Keep a crisp, fast toolkit across **Parts 01–10**:
+
+| Extension ID | Role in Your Cockpit | Which Parts Benefit Most |
+| :--- | :--- | :--- |
+| **`ms-vscode-remote.remote-wsl`** | Bridges Windows VS Code UI seamlessly to native Ubuntu WSL 2 *(Windows users only)* | **All Parts 01–10** |
+| **`dbaeumer.vscode-eslint`** | Surfacing JavaScript/TypeScript logic bugs, unused vars & React Hook rules live as red/yellow underlines | **Parts 02, 04, 07, 10** |
+| **`esbenp.prettier-vscode`** | Automatic consistent code formatting on Save across `.ts`, `.tsx`, `.json`, `.css`, `.md` | **Parts 02–10** |
+| **`ms-python.python`** (+ **`ms-python.vscode-pylance`**) | Full Python 3 IntelliSense, `.venv` interpreter selector, type checks, and breakpoint debugging | **Parts 01, 03, 04, 08** |
+| **`bradlc.vscode-tailwindcss`** | Autocomplete + CSS class preview hover for Tailwind utilities | **Parts 02, 04, 10** |
+| **`ms-azuretools.vscode-docker`** | Syntax highlighting + live container/log inspection inside VS Code | **Parts 05, 06, 10** |
+
+**Important Part 01 Study Discipline (`00.6.3`):** While working through foundational drills in **Parts 01–04**, disable aggressive ghost-text inline AI autocomplete inside VS Code (`editor.inlineSuggest.enabled: false` or toggling off completions) so **your own eyes and brain** practice reading squiggles, navigating definitions, and catching bugs manually first!
+
+## 4. Eight High-Leverage Keyboard Shortcuts (`Cut Navigation Time 5x`)
+
+Learn just two new shortcuts per week—no need to memorize forty at once:
+
+| Shortcut (`Win / Linux`) | Shortcut (`macOS`) | Exact Action | Why Engineers Use It Constantly |
+| :--- | :--- | :--- | :--- |
+| **`Ctrl + P`** | **`Cmd + P`** | **Quick Open File** by fuzzy name | Opens `src/lib/auth.ts` in 3 keystrokes without touching Explorer mouse clicks |
+| **`Ctrl + Shift + P`** | **`Cmd + Shift + P`** | **Command Palette** | Access every VS Code command (`Select Python Interpreter`, `Restart TS Server`, `Reload Window`) |
+| **`Ctrl + Shift + F`** | **`Cmd + Shift + F`** | **Global Project Search** (regex + folder filter) | Instantly find every caller of a renamed endpoint or error message across 100 files |
+| **`F12`** | **`F12`** | **Go to Definition** | Jump straight from a function call into its exact source implementation |
+| **`Shift + F12`** | **`Shift + F12`** | **Find All References** | Audit every file using a helper *before* modifying its signature! |
+| **`Ctrl + Shift + M`** | **`Cmd + Shift + M`** | **Problems Panel** | Lists every TypeScript, ESLint, or Python error across the workspace in one queue |
+| **``Ctrl + ` ``** | **``Ctrl + ` ``** | **Toggle Integrated Terminal** | Keep shell right inside your project directory (`pwd`) without switching OS windows |
+| **`Ctrl + .`** | **`Cmd + .`** | **Quick Fix / Auto-Import** | Fix missing imports or apply deterministic refactorings cleanly |
+
+### Bonus Daily Ergonomics: Multi-Cursor, Split Editors & Formatter Hygiene
+Once those eight core shortcuts feel natural, add four effortless cockpit accelerators:
+- **`Ctrl/Cmd + D` (Select Next Occurrence):** Highlight a variable name, press `Ctrl/Cmd+D` repeatedly to grab the next 3 occurrences cleanly, and rename them simultaneously with live multi-cursor editing (or press **`F2` Rename Symbol** to rename safely across *every file* in the entire workspace!).
+- **`Ctrl/Cmd + \` (Split Editor Right):** Keep your implementation (`routes.ts`) open on the left pane and its corresponding test file (`routes.test.ts`) open side by side on the right pane—eliminating constant tab switching (`02.3.3`).
+- **`Alt + F12` (`Option + F12` macOS — Peek Definition):** Preview a helper function's implementation inline right inside your current file without losing scroll context, then press `Esc` to close immediately.
+- **Avoid Formatter Fighting (`Prettier` vs. `ESLint`):** Never install two formatters both fighting over `On Save` rules (for example Beautify + Prettier, or two Python formatters disagreeing on quote style). Use **Prettier** strictly for layout formatting (`"editor.defaultFormatter": "esbenp.prettier-vscode"`) paired with **ESLint** strictly for logic/bug rules (`Part 02`), and **Ruff** for fast Python formatting + linting (`Part 03`).
+
+## 5. Standard Workspace Configs: `.vscode/settings.json` & `.vscode/launch.json`
+
+Sharing clean team-level **`.vscode/settings.json`** (and `.vscode/extensions.json`) inside Git ensures every contributor formats identically with LF (`\n`) line endings, excludes noisy build caches from file watchers, and selects the workspace TypeScript compiler rather than stale globals (`00.11.2`):
+
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/node_modules/**": true,
+    "**/.venv/**": true,
+    "**/.next/**": true,
+    "**/dist/**": true
+  }
+}
+```
+
+And look how clean **`.vscode/launch.json`** makes interactive breakpoint debugging (`03.3.2`) instead of relying solely on scattered `print()` statements: clicking line margin creates a red breakpoint dot, and pressing `F5` pauses execution live so you inspect call stacks and heap objects interactively! *(Note: in WSL 2 Remote mode, `.vscode/launch.json` runs the debugger cleanly right inside Linux Ubuntu!)*
+
+## 6. Runnable Lab: Configure & Test Workspace Launch + Python Interpreter Selection
+
+Run this quick non-destructive sandbox exercise inside `~/code/ai-native-engineer/ch03-editor-lab`:
+
+```bash
+mkdir -p ~/code/ai-native-engineer/ch03-editor-lab/.vscode
+cd ~/code/ai-native-engineer/ch03-editor-lab
+
+cat << 'EOF' > .vscode/settings.json
+{
+  "editor.formatOnSave": true,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true
+}
+EOF
+
+printf 'def greet(name: str) -> str:\n    return f"Hello, {name}"   \n\nprint(greet("Engineer"))\n' > demo.py
+code .
+```
+
+Once VS Code opens inside `ch03-editor-lab`:
+1. Confirm bottom-left corner shows **`WSL: Ubuntu`** (on Windows 11) or clean local workspace path (macOS/Ubuntu).
+2. Press **`Ctrl/Cmd + P`** → type `demo.py` → `Enter`.
+3. Look at the extra trailing spaces on line 2 (`"   "`), press **`Ctrl/Cmd + S`**, and watch `"files.trimTrailingWhitespace": true` strip invisible trailing spaces automatically!
+4. Toggle integrated terminal (**``Ctrl + ` ``**) and run `python3 demo.py`. Clean up `~/code/ai-native-engineer/ch03-editor-lab` afterward if desired.
+
+## 7. Failure Modes & Common Pitfalls
+
+- **TypeScript or Python reporting "Cannot find module" even though `npm install` / `pip install` succeeded:** Almost always means VS Code's language server points at your global Python (`/usr/bin/python3`) instead of `.venv/bin/python`, or `TSServer` cached pre-install state! Fix in 3 seconds: **`Ctrl/Cmd + Shift + P` → `Python: Select Interpreter`** (pick `.venv`) or **`TypeScript: Restart TS Server`**!
+- **Git diffs polluted by `^M` (`CRLF` vs `LF`) entire-file changes:** Happens when Windows-side editors save `\r\n` while Linux/macOS expects `\n`. Setting `"files.eol": "\n"` inside `.vscode/settings.json` + `git config --global core.autocrlf input` eliminates phantom whole-file diffs permanently.
+- **Opening VS Code on your entire Home folder (`code ~`) instead of a single repo (`code .`):** Watching tens of thousands of unrelated files inside `~` spikes CPU usage and breaks project-relative `.vscode` settings. Always `cd` cleanly into the exact repository folder first before running `code .`!
+
+## 8. Hands-On Practice Exercises
+
+1. **Zero-Mouse Navigation Challenge:** Open your workspace folder in VS Code, hide the left sidebar completely (`Ctrl/Cmd + B`), open two files purely via `Ctrl/Cmd + P`, jump to a symbol inside one file using `Ctrl/Cmd + Shift + O` (*Go to Symbol in Editor*), and toggle the integrated terminal cleanly without touching your mouse or trackpad once.
+2. **Audit Extensions & Settings:** Open `Extensions` (`Ctrl/Cmd + Shift + X`) and audit every installed extension: remove any redundant/unused gimmick packs and confirm **ESLint, Prettier, and Python/Pylance** are active and clean.
+3. **Verify Team Settings & Split-View Workflow:** Open any implementation file alongside its test file using **`Ctrl/Cmd + \`**, highlight a repeated helper variable, rename occurrences cleanly using **`F2`**, and confirm saving strips trailing whitespace cleanly via `.vscode/settings.json`.
+
+## Key Takeaways
+
+- Treat VS Code as a **live static-analysis & debugging cockpit**, powered by background **Language Servers (`TSServer`, `Pylance`, `ESLint`)** catching defects long before runtime.
+- On Windows 11 + WSL 2, **always launch VS Code from inside Ubuntu (`~/code/...` via `code .`)** confirming the **`WSL: Ubuntu`** remote badge so file I/O, watchers, and runtimes execute natively on Linux `ext4`.
+- Mastering core keyboard shortcuts (`Ctrl/Cmd+P`, `Ctrl/Cmd+Shift+P`, `F12`, `Shift+F12`, `Ctrl/Cmd+Shift+F`, ``Ctrl+` ``) plus clean `.vscode/settings.json` defaults accelerates daily coding immediately.
+
+## Official Primary References
+
+- [Visual Studio Code — User Interface & Keyboard Shortcuts (`code.visualstudio.com/docs`)](https://code.visualstudio.com/docs/getstarted/userinterface)
+- [VS Code — Developing in WSL (`code.visualstudio.com/docs/remote/wsl`)](https://code.visualstudio.com/docs/remote/wsl)
+- [VS Code — Python Environments & Debugging (`code.visualstudio.com/docs/python/environments`)](https://code.visualstudio.com/docs/python/environments)
+
+**Next Topic:** [03.1.2 Command Line Essentials](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-1-the-modern-developer-workspace/03-1-2-command-line-essentials)
+
+</BookNodePage>

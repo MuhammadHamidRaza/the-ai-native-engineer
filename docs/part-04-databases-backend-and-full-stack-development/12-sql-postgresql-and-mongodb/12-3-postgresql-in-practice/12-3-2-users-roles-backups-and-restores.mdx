@@ -1,0 +1,127 @@
+---
+id: "12-3-2-users-roles-backups-and-restores"
+title: "12.3.2 Users, Roles, Backups and Restores"
+sidebar_label: "12.3.2 Roles & Backups"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s3-t2">
+
+Two questions decide whether a production database survives: **who is allowed to touch it?** and **can you restore it?** This lesson answers both — least-privilege application roles, and a backup you have actually restored and verified.
+
+## 1. PostgreSQL Roles, Not "Users"
+
+PostgreSQL has no "users" — only **roles**. A role with the `LOGIN` attribute behaves as a user; with `SUPERUSER` it owns the cluster. Every connection authenticates as a role.
+
+```sql
+-- See all roles from psql
+\du
+```
+
+Typical output: `postgres | Superuser, Create role, Create DB ...`. Your app should **never** connect as `postgres`.
+
+### Create a least-privilege application role
+
+```sql
+CREATE ROLE shopcore_app WITH LOGIN PASSWORD 'choose-a-long-random-password';
+GRANT CONNECT ON DATABASE shopcore TO shopcore_app;
+GRANT USAGE ON SCHEMA public TO shopcore_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO shopcore_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO shopcore_app;
+```
+
+What this does and doesn't allow:
+- **Allows** `SELECT/INSERT/UPDATE/DELETE` on ShopCore tables — everything your app needs.
+- **Forbids** `DROP TABLE`, `ALTER TABLE`, creating databases, creating roles — your app can't destroy or reshape its own schema. (Migrations run as a separate, more powerful role — or as `postgres` — never from the request path.)
+- The default-privileges clause makes **future tables** inherit the same rights automatically.
+
+Verify by connecting as the new role:
+
+```bash
+psql -U shopcore_app -h localhost -d shopcore -c "SELECT count(*) FROM orders;"
+# 3  ✔
+
+psql -U shopcore_app -h localhost -d shopcore -c "DROP TABLE orders;"
+# ERROR:  permission denied for table orders  ✔ (this is the goal!)
+```
+
+### Roles without LOGIN — Groups
+
+```sql
+CREATE ROLE reporting NOLOGIN;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO reporting;
+CREATE ROLE analyst WITH LOGIN PASSWORD '...' IN ROLE reporting;   -- belongs to group
+```
+
+`analyst` inherits read-only access via `reporting`. Same pattern for `app_admin` (DDL rights) vs `app_readonly` (SELECT only).
+
+## 2. Connection Strings and `pg_hba.conf`
+
+Every TCP login is authorized by the server's `pg_hba.conf` file (host-based auth). On the EDB installer, the file lives at `C:\Program Files\PostgreSQL\18\data\pg_hba.conf` (find it exactly with `psql -U postgres -c 'SHOW hba_file;'`).
+
+- For local learning: the installer ships `scram-sha-256` for host connections — that's why the password is required. Good default.
+- You rarely edit it on your laptop. Knowing it exists matters when a deployment says "connection refused even with the right password" — the host may not match any line.
+
+## 3. Backups That Actually Work — pg_dump and pg_restore
+
+An untested backup is a wish, not a plan. Do the whole cycle once, now:
+
+```bash
+# Custom-format (compressed, parallel-restore capable) — preferred
+pg_dump -U postgres -h localhost -F c -d shopcore -f shopcore_backup.dump
+
+# Plain SQL (human-readable — great for diffs and small DBs)
+pg_dump -U postgres -h localhost -F p -d shopcore -f shopcore_backup.sql
+
+# Schema only / data only
+pg_dump -U postgres -h localhost --schema-only -d shopcore -f shopcore_schema_only.sql
+```
+
+Restore it — this is the step everyone skips:
+
+```bash
+dropdb -U postgres -h localhost --if-exists shopcore_verify
+createdb -U postgres -h localhost shopcore_verify
+pg_restore -U postgres -h localhost -d shopcore_verify --clean --if-exists shopcore_backup.dump
+psql -U postgres -h localhost -d shopcore_verify -c "SELECT count(*) FROM products;"   -- expect 3
+psql -U postgres -h localhost -d shopcore_verify -c "SELECT SUM(qty * unit_price_cents) AS items_cents FROM order_items;"  -- expect 35100
+```
+
+Expected: `3` and `35100` (12900 + 11800 + 4500 + 5900). Write that checksum down — it becomes your personal restore verification for this dataset. If the restore fails, your backup was never valid — fix the dump command and repeat until both numbers match. Drop `shopcore_verify` when done.
+
+Automate with Windows Task Scheduler / cron:
+
+```bash
+pg_dump -U postgres -h localhost -F c -d shopcore -f "C:\backups\shopcore-$(date +%F).dump"
+```
+
+## 4. Operational Checklist for Self-Hosted Postgres
+
+- [ ] Nightly `pg_dump` to a different disk (or cloud bucket).
+- [ ] One restore rehearsal per month to a scratch DB.
+- [ ] Superuser password in a password manager — never in shell history (`history -d` or `PGPASSWORD` env var, not both).
+- [ ] App connects as `shopcore_app`, never `postgres`.
+- [ ] Port 5432 reachable only from app servers (on a real server: `ufw allow from <app-ip> to any port 5432`).
+
+If that list feels heavy: **hosted Postgres (Neon/Supabase, 12.1.4) handles backups and network security for you** — that's the entire value proposition of managed databases.
+
+## 5. Practice
+
+**Guided exercise.** Create `shopcore_app` with the exact grants above. Connect as it; try `SELECT * FROM products;` (works), then `DELETE FROM users;` (works too — DELETE is a normal app right; to forbid it, drop DELETE from the grant and reconnect), then `ALTER TABLE products ADD COLUMN x INT;` (must fail).
+
+**Independent exercise.** Full backup/restore drill: dump `shopcore`, wipe `shopcore` with `TRUNCATE users, categories, products, orders, order_items, payments RESTART IDENTITY CASCADE;`, then restore from your dump and verify row counts — you just simulated and survived a disk-loss event.
+
+**Challenge.** Design roles for ShopCore with three permission tiers: `shopcore_app` (CRUD), `shopcore_report` (SELECT only), `shopcore_admin` (everything incl. DDL). Write the complete SQL.
+
+**Assessment checklist**
+
+- [ ] I created a least-privilege role and verified it can and cannot do specific things.
+- [ ] I know why apps must never connect as `postgres`.
+- [ ] I produced and restored a `pg_dump` backup, and verified the restore.
+- [ ] I understand what `pg_hba.conf` controls and roughly where it lives.
+- [ ] I know when managed Postgres (12.1.4) beats self-hosted on ops burden.
+
+</BookNodePage>

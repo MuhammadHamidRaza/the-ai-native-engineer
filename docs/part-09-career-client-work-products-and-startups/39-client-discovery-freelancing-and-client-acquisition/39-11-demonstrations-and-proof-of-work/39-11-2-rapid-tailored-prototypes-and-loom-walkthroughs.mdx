@@ -1,0 +1,77 @@
+---
+id: "39-11-2-rapid-tailored-prototypes-and-loom-walkthroughs"
+title: "39.11.2 Rapid Tailored Prototypes and Loom Walkthroughs"
+sidebar_label: "39.11.2 Rapid Prototypes and Loom Walkthroughs"
+slug: "/part-09-career-client-work-products-and-startups/39-client-discovery-freelancing-and-client-acquisition/39-11-demonstrations-and-proof-of-work/39-11-2-rapid-tailored-prototypes-and-loom-walkthroughs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-39-s11-t2">
+
+The fastest way to a signed contract is a working artifact they can touch before you invoice. This lesson teaches you to ship a "good-enough" tailored prototype in 48-72 hours and package it as a Loom walkthrough that sells the next step.
+
+## 1. The 48-Hour Prototype Scope
+
+Pick ONE painful workflow; build the thinnest slice that proves it: RAG for 5 documents + simple UI; Stripe idempotent retry; Shopify latency fix with before/after. Exclude auth, polish, scale — demo only what's needed to believe it.
+
+## 2. The Loom Script (5-7 min)
+
+1. Hook — their problem in one sentence on screen.
+2. Before — broken/slow/manual state (screen recording of pain).
+3. After — same workflow with your prototype; narrate decisions.
+4. Metrics — show the number that moved (latency, deflection, errors).
+5. Honest limits — "not production; 2 weeks to harden"; builds trust.
+6. CTA — "if this resonates, 15-min call tomorrow" + calendar link on screen.
+
+## 3. Tooling
+
+Loom (record/edit), Vercel/Railway/Render for instant deploy, GitHub for code access (private if needed). Keep prototype reproducible: README with one-click run if possible.
+
+## 3.5 Worked Example: Brightside Dental's 45-Minute Inbox
+
+Pain: Marisol pastes billing emails into ChatGPT 40 times a morning; answers drift, tone inconsistent, ~45 min/day.
+
+**Hour 0–4: ingest.** Download the last 14 days of synthetic `frontdesk@` exports (she forwards 30 real threads with PHI redacted), build the 4-label classifier with your RAG stack from Part 08.
+**Hour 4–12: the one workflow that matters.** One screen: inbox sorted into 4 labels; click a Billing item → AI-drafted reply with the practice's refund policy quoted; approve/edit/reject.
+**Hour 12–20: the metric.** Run the 30 real billing questions through it: 24 drafted correctly, 4 needed edits, 2 rejected → **80% draft-approval rate**.
+**Hour 20–24: the Loom.**
+
+```text
+[0:00] "Marisol's Monday 8:15 — 63 messages; this one, 'double-charged for
+       my crown', sat untouched 2 days last week."
+[0:30] (Screen: inbox pre-sorted; the 6 billing threads flagged red)
+[1:30] "Click 'why was I charged twice' — the system found orders #4471 and
+       #4489, same amount, same card, 9 minutes apart. Draft cites your
+       refund policy §4.1 — feels like your front desk wrote it."
+[3:00] "Approve = one click. 45 seconds. Metrics from the 30-message test:
+       80% approved as drafted."
+[4:30] "Honest limits: no insurance EOBs yet, and one in ten drafts needs
+       your edit. Two weeks to production hardening + PII review."
+[5:30] "If this resonates, I'd like 2 weeks with your real inbox — call me
+       tomorrow 2pm?"  (calendar link on screen)
+```
+
+**Why the demo mix works, minute by minute:** pain (0:00), evidence in *their* data (0:30), value in one click (3:00), proof with numbers (3:00), credibility with limits (4:30), one specific ask (5:30). Everything else in the 48 hours — UI polish, error handling, tests — is vanity; don't spend it.
+
+### Pre-Send Checklist
+
+- [ ] Loom ≤6 minutes; their data or realistic synthetic data; zero real PHI.
+- [ ] One number visible (draft-approval rate, minutes saved, p95 latency).
+- [ ] 3-line email: what it is, what it proved, the calendar link.
+- [ ] Fallback: private repo + README so it runs on their laptop in 10 minutes.
+- [ ] One weakness stated in the Loom — every credible demo admits one.
+
+## 4. Common Failure Modes
+
+- **Over-engineering the demo** — 48h becomes 2 weeks; you lose momentum and margin.
+- **No before/after** — without contrast, it's a screen recording, not proof.
+- **Sending Loom without context** — pair with 3-line email; never drop attachments cold.
+
+## 5. Exercise
+
+Build a 48-hour prototype for one prospect's stated pain; record a Loom; send with a 3-line email; book a call.
+
+**Acceptance criteria.** Prototype covers one workflow end-to-end; Loom shows before + after with one number; email is ≤3 lines with a calendar link.
+
+</BookNodePage>

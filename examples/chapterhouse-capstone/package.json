@@ -1,0 +1,27 @@
+{
+  "name": "chapterhouse-capstone-reference",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runnable reference spine for the Part 10 capstone (Brightside Yoga reconciliation). Deterministic core first; AI triage is deliberately out of scope for this spine.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "migrate": "node src/db/migrate.js",
+    "seed": "node src/db/seed.js",
+    "test": "node --test",
+    "build": "node scripts/check.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@electric-sql/pglite-socket": "^0.2.19"
+  }
+}

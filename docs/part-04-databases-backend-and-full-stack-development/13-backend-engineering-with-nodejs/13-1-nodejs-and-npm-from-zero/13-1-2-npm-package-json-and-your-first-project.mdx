@@ -1,0 +1,168 @@
+---
+id: "13-1-2-npm-package-json-and-your-first-project"
+title: "13.1.2 npm and package.json: Your First Project"
+sidebar_label: "13.1.2 npm & package.json"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-1-nodejs-and-npm-from-zero/13-1-2-npm-package-json-and-your-first-project"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s1-t2">
+
+`npm` downloads packages; `package.json` is your project's passport — name, scripts, and every dependency, pinned. By the end of this lesson you will have a real ShopCore API folder that installs, runs and remembers its own dependencies.
+
+## 1. The Three Files npm Cares About
+
+| File | Purpose | Commit to git? |
+| :-- | :-- | :-- |
+| `package.json` | Project manifest — metadata, scripts, dependency lists | **Yes** |
+| `package-lock.json` | Exact resolved versions of the whole tree | **Yes** — guarantees reproducible installs |
+| `node_modules/` | The actual downloaded code | **No** — add to `.gitignore` |
+
+## 2. Create the ShopCore API Folder
+
+```bash
+mkdir shopcore-api
+cd shopcore-api
+npm init -y
+```
+
+`npm init -y` generates `package.json` with defaults:
+
+```json
+{
+  "name": "shopcore-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": { "test": "echo \"Error: no test specified\" && exit 1" },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
+```
+
+`-y` answers "yes" to all prompts; drop it to be asked interactively (name, version, entry point).
+
+### Switch the project to ES modules
+
+Modern Node and this book use **ES Modules** (`import`/`export`), not CommonJS (`require`):
+
+```bash
+npm pkg set type=module
+```
+
+Your `package.json` now says `"type": "module"`. All `import x from 'y'` code from here on runs natively.
+
+## 3. Install Dependencies — Exactly What Happens
+
+```bash
+npm install express
+```
+
+Output looks like:
+
+```text
+added 66 packages, and audited 67 packages in 2s
+found 0 vulnerabilities
+```
+
+What just happened:
+- `express` added to `"dependencies"` in `package.json` (as `^5.x.x`).
+- Exact versions of express and its 65 transitive dependencies pinned in `package-lock.json`.
+- Everything downloaded into `node_modules/` (~5 MB).
+
+Useful variants:
+
+```bash
+npm install --save-dev nodemon      # dev-only tool → "devDependencies"
+npm install                          # installs everything from lockfile (fresh clone)
+npm uninstall express                # removes it everywhere
+npm outdated                         # what has a newer version?
+npm audit                            # known vulnerabilities in the tree
+```
+
+**dependencies** ship to production. **devDependencies** (nodemon, TypeScript, test runners) are install-time only.
+
+## 4. Scripts — Your Project's Command Vocabulary
+
+`scripts` turns long commands into short verbs:
+
+```bash
+npm pkg set scripts.dev="node --watch src/server.js" \
+           scripts.start="node src/server.js" \
+           scripts.test="node --test"
+```
+
+`npm run dev` now starts the server with auto-reload (`--watch` restarts on file change). `npm test` runs Node's built-in runner. `npm start` is the production-ish alias (no `run` needed).
+
+Check your manifest:
+
+```bash
+cat package.json
+```
+
+Expected shape (abbreviated): `"type": "module"`, `"scripts": {"dev": ..., "start": ..., "test": ...}`, `"dependencies": {"express": "^5.x.x"}`, `"devDependencies": {"nodemon": "^3.x.x"}`.
+
+## 5. .gitignore Before the First Commit
+
+Create `.gitignore` now, before any accidental `git add .`:
+
+```text
+node_modules/
+.env
+*.log
+```
+
+`.env` holds DATABASE_URL and secrets — chapter 13.2.4 teaches it; it must never be committed. `git check-ignore .env` confirms it later.
+
+## 6. A Complete Minimal Working Project
+
+```text
+shopcore-api/
+├── .gitignore
+├── package.json
+├── package-lock.json
+├── server.js
+└── node_modules/        (never committed)
+```
+
+`server.js`:
+
+```javascript
+import express from 'express';
+const app = express();
+app.get('/', (_req, res) => res.json({ ok: true, service: 'shopcore-api' }));
+app.listen(4000, () => console.log('shopcore-api on http://localhost:4000'));
+```
+
+Run it: `npm run dev` → expected console: `shopcore-api on http://localhost:4000`. Visit http://localhost:4000 in a browser — you should see `{"ok":true,"service":"shopcore-api"}`. That is your API answering. Stop with `Ctrl+C`.
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `npm ERR! ENOENT no package.json` | You're in the wrong folder — `cd shopcore-api` |
+| `npm install` takes forever / fails | Registry reachability; try `npm config set registry https://registry.npmjs.org` |
+| `EADDRINUSE: address already in use :::4000` | Something else on 4000 — `netstat -ano \| findstr :4000` (Windows) / `lsof -i :4000` (mac/Linux); kill it or change port |
+| Install worked but `import` fails with `Cannot use import statement` | `"type": "module"` missing — `npm pkg set type=module` |
+| node_modules committed to git by accident | `git rm -r --cached node_modules`, commit, `.gitignore` already present |
+| Version conflicts / peer warnings | Read them; don't `--force`. Usually: package wants older express — use its supported version |
+
+## 8. Practice
+
+**Guided exercise.** Scaffold `shopcore-api` exactly as above, install express, write `server.js`, verify JSON in the browser, then stop the server.
+
+**Independent exercise.** Add a `/health` endpoint returning `{ "status": "ok" }` and an npm script `scripts.health` that curls it (or just visit the URL). Add `nodemon` as devDependency and use it for `npm run dev`.
+
+**Challenge.** Move `server.js` to `src/server.js`, update the scripts' paths, and explain why `main` and `scripts.dev` can disagree without erroring (they do different jobs).
+
+**Assessment checklist**
+
+- [ ] I know the purpose of package.json, package-lock.json and node_modules.
+- [ ] I created a project with `npm init -y` and set ES modules.
+- [ ] I installed dependencies and understand dependencies vs devDependencies.
+- [ ] I wrote working npm scripts (`dev`, `start`, `test`).
+- [ ] My .gitignore excludes node_modules and .env before the first commit.
+
+</BookNodePage>

@@ -1,0 +1,156 @@
+---
+id: "27-1-2-decomposing-tasks-for-coding-agents"
+title: "27.1.2 Decomposing Tasks for Coding Agents"
+sidebar_label: "27.1.2 Decomposing Tasks for Coding Agents"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-1-spec-driven-workflows/27-1-2-decomposing-tasks-for-coding-agents"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s1-t2">
+
+A good spec is necessary but not sufficient. Hand an agent a 9-part spec and it will still build the wrong 20 percent. The skill that separates agent operators from agent passengers is **decomposition**: cutting the spec into tasks small enough to verify, ordered so each builds on the last, isolated enough to run in parallel safely.
+
+## 1. Vertical Slices Beat Horizontal Layers
+
+**Horizontal slicing** (layer-by-layer):
+
+```text
+task 1: create the cart_reminders table
+task 2: write all the queries
+task 3: build the email template
+task 4: write the job
+task 5: wire the cron
+```
+
+Each task is unverifiable in isolation — task 1 alone "works" but proves nothing. The agent cannot tell done from typed. Reviews pile up at the end.
+
+**Vertical slicing** (feature path, one slice at a time):
+
+```text
+task 1: migration + down migration (provable: migrate up/down/up exits 0)
+task 2: findUnrecoveredCartsOlderThan query + unit tests
+task 3: job sends email to ONE seeded cart (provable: one Postmark test email + log line)
+task 4: skip conditions enforced (recovered, emptied, already reminded) + tests
+task 5: cron registration + idempotency on re-scan
+task 6: gate run, docs touch-up, rollback rehearsed
+```
+
+Each vertical task is a thin end-to-end path through the stack. Each is independently checkable. You always have a working branch; you are never trusting an integration that has not happened yet.
+
+## 2. The ~30-Line-Diff-per-PR Rule of Thumb
+
+There is no law, but this heuristic survives contact with reality: **if a task's expected diff exceeds roughly 30-50 lines, split it.** Below that, a human can genuinely review every changed line in minutes. Above it, review degrades to skimming, and skimming is how the seeded defects in 27.3.1 ship.
+
+This rule does two other jobs: it forces you to find the verification command per task (small tasks always have one), and it keeps the agent's own context clean — a task that fits in one screen rarely triggers compaction mid-flight.
+
+## 3. Task File Anatomy
+
+Each task is a file the agent reads whole. No scavenger hunts. Every task file contains:
+
+```markdown
+# TASK 3/6: Send one reminder for one seeded cart
+
+Spec: specs/abandoned-cart/spec.md (sections: Goals 1-2, Acceptance 1, Exit gate)
+Depends on: TASK 1 (migration), TASK 2 (query)
+Context files (read these, nothing else needed):
+  - src/jobs/queue.js
+  - src/services/mailer.js
+  - src/jobs/abandoned-cart-scan.js   (created in TASK 4? no — you create it now)
+  - src/db/queries/cart.js            (findUnrecoveredCartsOlderThan, from TASK 2)
+Acceptance criteria:
+  - Seed one logged-in customer with 2 items, cart untouched for 5h
+  - Running `node src/jobs/abandoned-cart-scan.js --once` sends exactly one email
+  - cart_reminders gains exactly one row with the right cart_id and customer_id
+  - Mailer failure path: with Postmark in test mode failing, zero rows are written
+Verification command:
+  npm test -- --grep "abandoned-cart-send" && node src/jobs/abandoned-cart-scan.js --once
+Files you may touch: src/jobs/abandoned-cart-scan.js, src/jobs/index.js
+Files you must NOT touch: src/services/mailer.js, checkout flow, any query not named above
+```
+
+Three non-negotiables in every task file: an explicit **context file list** (the agent does not wander), an **acceptance criteria block** (done is definable), and a **verification command** (done is provable). The "must NOT touch" list is what contains blast radius — write it even when it feels rude.
+
+## 4. Dependency Ordering and Parallelism
+
+Order tasks by data flow, not by file type. `migration -> query -> job -> cron -> gate` is a DAG; the agent should never see a task whose inputs do not exist yet.
+
+For parallelism, do **conflict prediction** before assigning tasks to concurrent agents:
+
+```text
+task A touches: src/db/queries/cart.js, migrations/...
+task B touches: src/jobs/abandoned-cart-scan.js
+task C touches: storefront templates (different tree)
+
+A and B: overlap on cart.js? B reads it, A edits it -> sequential.
+B and C: disjoint trees, no shared files -> parallel-safe.
+A and C: disjoint -> parallel-safe.
+```
+
+Rule of thumb: two agents editing files that import each other means merge pain and silent semantic conflicts, even with zero git conflicts. Parallelize across module trees; serialize within them. When in doubt, run tasks in sequence — time saved by parallelism is routinely lost to untangling.
+
+## 5. Worked Example: The 6 Sequenced Tasks
+
+Decomposing the 27.1.1 abandoned-cart spec:
+
+| # | Task | Files touched | Verify |
+| :-- | :-- | :-- | :-- |
+| 1 | Migration up/down for `cart_reminders` | `migrations/2026-11-20-add-cart-reminders.sql` | `npm run migrate && npm run migrate -- --down && npm run migrate` |
+| 2 | `findUnrecoveredCartsOlderThan(hours, limit)` + unit tests | `src/db/queries/cart.js`, `test/queries/cart.test.js` | `npm test -- --grep "findUnrecovered"` |
+| 3 | Job sends exactly one email per eligible cart, end to end | `src/jobs/abandoned-cart-scan.js`, `src/jobs/index.js`, `test/jobs/abandoned-cart.test.js` | seed cart, `--once`, inspect Postmark test inbox + `cart_reminders` row |
+| 4 | Skip logic: recovered, empty, already-reminded, mailer-failure writes nothing | `src/jobs/abandoned-cart-scan.js`, `test/jobs/abandoned-cart.test.js` | `npm test -- --grep "abandoned-cart-skip"` |
+| 5 | Cron registration `*/15 * * * *` + env flag `ABANDONED_CART_EMAIL` | `src/jobs/index.js`, `.env.example` | flip flag off, `--once`, observe zero sends; flip on, observe send |
+| 6 | Full gate + rollback rehearsal + PR | all of the above | `npm test`, `npm run lint`, `npm run migrate -- --down && npm run migrate` |
+
+Notice what is not a task: "update the docs." Fold doc edits into the task that changes the behavior — separate doc tasks always lie about being done.
+
+## 6. Why "Build Me a Dashboard" Fails and Six Tasks Succeed
+
+"Build me a dashboard for abandoned carts" fails on four axes simultaneously: no acceptance criteria, no files named, no verification, no boundary. The agent will produce a beautiful, wrong, untested page, and you will discover its opinions about your business model one `git revert` at a time.
+
+The same scope through six gated tasks fails gracefully at the exact step where reality disagrees with you — after task 3, say — and you re-plan the remainder with two days of work done instead of zero. Decomposition converts catastrophic failure into cheap, local failure. That is the entire economic argument.
+
+## 7. Bad Task vs Good Task: The Contrast in One Glance
+
+```markdown
+# BAD — "Task 3: build the reminder job"
+Context: the repo.        (the agent must guess what the repo means NOW)
+Acceptance: it works.     (works is not a predicate a machine can check)
+Verify: run it.           (run what? expect what output?)
+
+# GOOD — everything from Section 3, condensed
+Context files: 4 named files, nothing else needed
+Acceptance: 4 testable clauses
+Verify: one command, one expected signal
+Must NOT touch: named files
+```
+
+The good task takes longer to *write* and less time to *execute safely*. Writing tasks is real engineering work, not preamble — budget 20 percent of the task's value for writing it.
+
+**Failure modes in decomposition, seen in the wild:**
+
+| Mistake | Symptom | Fix |
+| :-- | :-- | :-- |
+| Hidden context ("you know what I mean") | Agent builds wrong thing confidently | Name every dependency; add "Files you may touch" |
+| Tasks so big the check needs prod | Nobody runs it; gate rubber-stamped | Split until the check is local and seconds-fast |
+| Ordering by file type, not data flow | Agent blocked, re-plans mid-task, drifts | Order by produces/consumes; migration before queries before jobs |
+| No must-not-touch list | "While I was here" refactors everywhere | Always list frozen files; treat violations as task failure |
+| Verification command needs prod creds | Verifier skipped; "trust me" merges | Verify against seeded fixtures, Postmark test mode, never prod |
+
+## 8. Practice
+
+**Guided exercise.** Take the ShopCore password-reset spec you wrote in 27.1.1. Split it into vertical tasks with context lists and verification commands. Peer-review the file lists for overlap.
+
+**Independent exercise.** Decompose a real feature from your current project into at most 5 tasks. Do the conflict prediction for tasks 2 and 4. State which are parallel-safe.
+
+**Challenge.** Hand your task 1 only to a fresh agent session with no other context. If it cannot complete using just the task file and its context list, your decomposition leaked. Fix the task file, not the agent.
+
+**Assessment checklist**
+
+- [ ] My slices are vertical (end-to-end), not horizontal (layer-by-layer).
+- [ ] Each task has context files, acceptance criteria, one verification command, and a must-not-touch list.
+- [ ] No task expects a diff larger than about 30-50 lines; larger ones are split.
+- [ ] I can draw the dependency DAG and name which tasks are parallel-safe.
+- [ ] A fresh agent can finish task 1 with only its task file and context list.
+
+</BookNodePage>

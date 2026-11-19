@@ -1,0 +1,28 @@
+---
+id: "index"
+title: "21.4 Distributed Systems Resilience"
+sidebar_label: "21.4 Distributed Systems Resilience"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-4-distributed-systems-resilience"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s4">
+
+**Subchapter 21.4** is the difference between "it passed CI" and "it survived Black Friday". Two lessons take the ShopCore system through the two failure questions every production engineer must answer: **where does the data live and how fresh is it** (21.4.1), and **what happens when a dependency hangs or dies mid-request** (21.4.2).
+
+## Lessons in Subchapter 21.4
+
+1. **[21.4.1 Consistency Models, Transactions and CAP Trade-offs](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-4-distributed-systems-resilience/21-4-1-consistency-models-transactions-and-cap-trade-offs):** The strong→eventual spectrum; read-your-writes, monotonic and causal consistency with ShopCore rulings; ACID vs BASE; CAP with Redis vs etcd under partition; single-node vs distributed transactions; why 2PC is rare; snapshot isolation and the write-skew stock race, fixed with row locks and atomic decrement.
+2. **[21.4.2 Timeouts, Retries, Circuit Breakers, Queues and Backpressure](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-4-distributed-systems-resilience/21-4-2-timeouts-retries-circuit-breakers-queues-and-backpressure):** p99-based timeout math; retry budgets with exponential backoff + jitter; circuit breakers in closed/open/half-open (ASCII state diagram); bulkheads; bounded queues, shedding and the degradation ladder; tooling (Polly, resilience4j, Envoy, SDK defaults); a 15-minute tabletop incident drill on ShopCore checkout.
+
+Do 21.4.1 before 21.4.2. Consistency choices decide *what must not go wrong*; resilience patterns decide *what happens when something does*. They are the same story told from two sides — and together they are the part of Chapter 21 that pays off at 3 a.m.
+
+**Exit checklist**
+
+- [ ] I can classify ShopCore's data into strongly consistent and eventually consistent, with reasons.
+- [ ] I can write the write-skew-safe stock decrement and explain why naive `SELECT` then `UPDATE` loses money.
+- [ ] I can set timeout and retry budgets for every network call in the checkout path, from the p99 numbers.
+- [ ] I can run the 15-minute checkout incident drill and narrate each step.
+
+</BookNodePage>

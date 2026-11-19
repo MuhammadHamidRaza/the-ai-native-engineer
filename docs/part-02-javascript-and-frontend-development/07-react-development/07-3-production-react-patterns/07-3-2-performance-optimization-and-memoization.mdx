@@ -1,0 +1,94 @@
+---
+id: "07-3-2-performance-optimization-and-memoization"
+title: "07.3.2 Performance Optimization and Memoization"
+sidebar_label: "07.3.2 Performance Optimization and Memoization"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-3-production-react-patterns/07-3-2-performance-optimization-and-memoization"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s3-t2">
+
+Sprinkling `useMemo` and `useCallback` blindly onto every variable adds memory overhead and complexity with almost zero speedup. Real frontend performance comes from **measuring first**, **fixing structural bottlenecks** (like state placed too high in the tree), **building optimized production bundles**, and **testing components reliably**.
+
+## 1. Structural Fixes Beat Premature Memoization
+
+Before reaching for `useMemo`:
+1. **Push state down:** If only `<SearchModal />` needs `searchQuery`, store `searchQuery` inside `<SearchModal />`, not at the root `<App />` where every keystroke re-renders the entire dashboard.
+2. **Pass JSX as `children`:** Children created in an outer component do not re-render just because an inner wrapper's local state updates.
+3. **Profile in React DevTools:** Install the React Developer Tools extension, record a **Profiler** flamegraph, and identify genuinely slow commits (`> 16ms`) before adding `memo`, `useMemo`, or `useCallback`.
+
+### When `useMemo` + `React.memo` Actually Help
+
+```tsx
+import { memo, useMemo, useState } from "react";
+
+interface RowProps { id: string; label: string; onSelect: (id: string) => void; }
+const HeavyRow = memo(function HeavyRow({ id, label, onSelect }: RowProps) {
+  return <li onClick={() => onSelect(id)}>{label}</li>;
+});
+
+export function FilterableCatalog({ items }: { items: { id: string; label: string }[] }) {
+  const [query, setQuery] = useState("");
+  const sortedFiltered = useMemo(
+    () =>
+      items
+        .filter((i) => i.label.toLowerCase().includes(query.toLowerCase()))
+        .toSorted((a, b) => a.label.localeCompare(b.label)),
+    [items, query]
+  );
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} />
+      <ul>{sortedFiltered.map((i) => <HeavyRow key={i.id} {...i} onSelect={() => {}} />)}</ul>
+    </div>
+  );
+}
+```
+
+*(Note: in the snippet above, `onSelect={() => {}}` passes a new arrow function every render, which defeats `HeavyRow`'s `memo` unless stabilized with `useCallback`!)*
+
+## 2. Production Builds (`npm run build` & `npm run preview`)
+
+Vite's `npm run dev` serves unbundled source files for instant edits—it is **not** how production performs. Always verify minified production bundles locally before shipping:
+
+```bash
+npx tsc --noEmit
+npm run build
+npm run preview
+```
+
+`npm run build` outputs minified assets into `dist/`, and `npm run preview` serves that exact `dist/` bundle locally on `http://localhost:4173/`.
+
+## 3. Component Testing with Vitest + React Testing Library
+
+Install testing tools inside your Vite project:
+
+```bash
+npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom
+```
+
+Write behavior-focused tests (click buttons, type in labeled inputs, assert visible text—never internal implementation details):
+
+```tsx
+// Counter.test.tsx
+import { render, screen, fireEvent } from "@testing-library/react";
+import { expect, test } from "vitest";
+import { Counter } from "./Counter";
+
+test("increments count when button clicked", () => {
+  render(<Counter />);
+  const btn = screen.getByRole("button", { name: /increment/i });
+  fireEvent.click(btn);
+  expect(screen.getByText(/count: 1/i)).toBeInTheDocument();
+});
+```
+
+## Mastery Checklist
+
+- [ ] Keeps state local and profiles in React DevTools before reaching for `useMemo`/`useCallback`.
+- [ ] Verifies TypeScript + production bundle cleanly with `tsc --noEmit && npm run build`.
+- [ ] Tests React components by accessible roles and visible output (`getByRole`, `getByLabelText`).
+
+</BookNodePage>

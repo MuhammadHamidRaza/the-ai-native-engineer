@@ -1,0 +1,129 @@
+---
+id: "35-1-1-supervisor-router-and-pipeline-patterns"
+title: "35.1.1 Supervisor, Router and Pipeline Patterns"
+sidebar_label: "35.1.1 Supervisor, Router and Pipeline Patterns"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies/35-1-1-supervisor-router-and-pipeline-patterns"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35-s1-t1">
+
+Five topologies cover nearly every multi-agent system you will ever ship. Learn them as shapes, with their failure modes — not as framework features. ASCII diagrams included; no magic.
+
+## 1. Supervisor (Hub-and-Spoke)
+
+```text
+              ┌─────────────────────────┐
+              │      Supervisor         │
+              │  (plan, delegate,       │
+              │   synthesize, gate)     │
+              └──────┬─────┬─────┬──────┘
+                task │     │     │ task
+                     v     v     v
+               [Refund] [Shipping] [Policy]
+               specialist specialist specialist
+```
+
+The supervisor owns the conversation, decides who works, merges results, decides when to stop. Workers are stateless-ish specialists with narrow tools. **ShopCore fit:** Postmaster-as-supervisor — refund specialist (order lookup, policy RAG, ledger), shipping specialist (carrier API), policy specialist (Ch 28 corpus). The supervisor asks, they answer, it writes the ticket.
+
+Watch for: **supervisor becoming a bottleneck and a token hog** (it re-reads every worker response into context). Mitigation: workers return structured summaries, not transcripts; supervisor holds the plan, workers hold the work.
+
+## 2. Router (Classify-Once)
+
+```text
+input --> [Router: cheap classifier] --> billing-agent
+                                     \-> support-agent
+                                     \-> escalation (human)
+```
+
+One classification call, one dispatch, done. No synthesis, no loop. Cheapest multi-agent pattern — often indistinguishable from a good if-statement with an LLM. **ShopCore fit:** inbox routing — the deterministic keyword/amount pre-filter from 33.2 feeds a lightweight router only for the ambiguous middle. Use router when specialists genuinely need disjoint tools/contexts (billing vs policy), not merely different prompts.
+
+## 3. Pipeline (Linear Stages)
+
+```text
+retrieve --> draft --> critique --> revise --> publish
+   |          |          |           |         |
+ citations  v1 text   scores     v2 text   Notion page
+```
+
+Fixed sequence, typed handoffs, inspectable artifacts at each stage. **ShopCore fit:** Research Brief — retrieval agent, drafting agent, critic (35.2.1), publisher with citations. Pipelines are the easiest to test stage-wise and the easiest to explain to Legal. When in doubt, choose pipeline.
+
+## 4. Map-Reduce (Parallel Fan-Out + Merge)
+
+```text
+            ┌-> Competitor A agent --┐
+input ----> ├-> Competitor B agent --├--> [Reducer: dedupe, resolve conflicts] --> brief
+            ├-> Competitor C agent --┤
+            └-> Competitor D agent --┘
+```
+
+For independent, homogeneous subtasks. Reducer merges: dedupes, resolves conflicts (cite both sources), writes synthesis. **ShopCore fit:** the §3 Research Brief fan-out — 6 competitor agents in parallel, one reducer. Watch for: **merge quality** — a lazy reducer invents compromise; give it an explicit conflict-resolution rule ("prefer most recent, most authoritative, mark disputes UNVERIFIED").
+
+## 5. Swarm (Cooperative Peers)
+
+```text
+ agentA <--> agentB
+   ^  \     /  ^
+   |   v   v   |
+ agentD <--> agentC      shared blackboard (state), no coordinator
+```
+
+Self-organizing peers via a shared workspace; nobody owns the outcome; emergent order (hopefully). Legitimate uses: simulation, exploration, large-scale data labeling with redundancy. For business operations: **almost never the first choice** — undebuggable, uncostable, and "it agreed with itself" feels like consensus but isn't. If you must experiment, sandbox with hard budget caps and treat outputs as untrusted.
+
+Anti-patterns to reject on sight:
+
+- **"Swarm because it emerged well in the demo."** Emergence in a demo is luck with a graph; in production it is an undebuggable liability.
+- **Supervisor that does the work itself** because "delegating is slower" — then it is one agent with extra steps and double the tokens.
+- **Pipeline with 12 stages** where three stages always disagree — not a pipeline, an argument conducted over multiple hops. Collapse to fewer stages with a critic at the end (35.2.1).
+- **Every specialist sees everything** — if the shipping specialist gets the refund corpus, you paid N× context cost with zero specialization benefit.
+
+ShopCore worked selection, all four live asks:
+
+| Ask | Pattern | Why |
+| :-- | :-- | :-- |
+| "Route each ticket to billing or support" | **Router** | One classification; no synthesis; latency-critical |
+| "Weekly brief from 6 competitors" | **Map-reduce** | Independent subtasks; merge at the end; citations attach per leg |
+| "Brief: retrieve → draft → critique → publish" | **Pipeline** | Ordered artifacts; each stage testable; easy to gate publish |
+| "Postmaster decides refunds end-to-end" | **Supervisor** | Judgment + tools across domains + human gate at money |
+
+## 6. Selection Table
+
+| Signal in the task | Pattern |
+| :-- | :-- |
+| "Decide who should handle this" | Router |
+| "Do these five independent things, then summarize" | Map-reduce |
+| "This has ordered steps with artifacts" | Pipeline |
+| "Plan across domains with judgment and review" | Supervisor |
+| "I can't predict the steps; iterate with feedback" | Supervisor (bounded) or single agent — not swarm |
+| "Many identical workers, emergent quality" | Swarm, sandboxed only |
+
+Honest guidance: if a capable single agent with the same tools scores within your tolerance on 20 labeled examples, ship it. Multi-agent is justified by **decomposition value** (different tools/permissions/contexts/incentives), never by novelty.
+
+## 7. Latency Budgets per Pattern
+
+| Pattern | Typical hops | p95 latency (mid-tier models) | Good SRE fit |
+| :-- | :-- | :-- | :-- |
+| Router | 1 LLM call | 1–3s | Ticket routing |
+| Pipeline (4 stages) | 4 sequential calls | 8–20s | Batch/weekly jobs, not chat |
+| Map-reduce (6 legs) | 1 + parallel N + 1 | 6–15s (parallel) | Brief generation, audits |
+| Supervisor (3 specialists, 2 iterations) | 5–9 calls | 15–45s | Complex cases, not bulk |
+
+If your SLA is "customer reads the reply in under 3 seconds", only router-class work qualifies. Anything needing a supervisor belongs in an async flow with a "working on it" acknowledge — which is exactly how the ShopCore Postmaster hands off to the customer thread.
+
+## 8. Practice
+
+**Guided.** Diagram the Postmaster supervisor design; annotate every edge with its message contract (from 35.1.2).
+
+**Independent.** Re-express the Research Brief as map-reduce vs pipeline; list 3 concrete failure modes of each.
+
+**Challenge.** Cost one supervisor run by hand: supervisor 1.5k in / 300 out × 5 calls + 3 specialists × (1.2k/250) × 2 calls each. At your provider's Nov-2026 prices, is it cheaper than a single long-context agent? Show the arithmetic.
+
+**Checklist**
+
+- [ ] I can name all five topologies with a ShopCore example each
+- [ ] I default to pipeline/router/supervisor and justify anything else
+- [ ] I know each pattern's signature failure mode
+- [ ] I can compute topology cost before building
+
+</BookNodePage>

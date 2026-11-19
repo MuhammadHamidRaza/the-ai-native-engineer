@@ -1,0 +1,169 @@
+---
+id: "18-1-1-docker-installation-architecture-and-first-containers"
+title: "18.1.1 Docker Installation, Architecture and First Containers"
+sidebar_label: "18.1.1 Docker Installation, Architecture and First Containers"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-1-docker-setup-images-and-multi-stage-builds/18-1-1-docker-installation-architecture-and-first-containers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s1-t1">
+
+Every deployment so far ran on *your* machine with *your* installed Node and *your* ports. Containers remove that dependency: the app ships with its runtime. This lesson installs Docker, explains the architecture, and gets you to a verified `hello-world`.
+
+## 1. What Docker Is — and Is Not
+
+A **container** is an isolated process running on the host kernel with its own filesystem, network and process namespace. A **container image** is the read-only template the container is created from. Unlike a VM, there is no guest OS — that is why images start in milliseconds and why Docker runs fine on a t3.micro.
+
+Docker is not a hypervisor, not a build tool (though it builds), and not inherently secure (18.3 covers that). The three nouns you must keep separate forever: **image** (template), **container** (running instance), **registry** (image store — Docker Hub by default).
+
+## 2. Official Software and Sources
+
+| Source | What for |
+| :-- | :-- |
+| [docker.com](https://www.docker.com/) | Product downloads, Desktop, pricing |
+| [docs.docker.com](https://docs.docker.com/) | Install, reference, Dockerfile spec |
+| [hub.docker.com](https://hub.docker.com/) | The default public registry |
+| [docs.docker.com/reference/cli/docker/](https://docs.docker.com/reference/cli/docker/) | Full CLI reference |
+
+Versions move fast. As of **November 2026**, Docker Desktop is in the 4.9x line (a security fix, 4.97.0, shipped 26 Oct 2026); treat any specific number below as "current at time of writing" and check [docs.docker.com/desktop/release-notes](https://docs.docker.com/desktop/release-notes) for yours.
+
+## 3. Install — Windows (Docker Desktop, WSL 2 backend)
+
+**Where to run:** PowerShell as Administrator on Windows 10/11.
+
+1. Enable virtualization in BIOS (usually on by default) and the WSL 2 feature:
+   ```powershell
+   wsl --install
+   ```
+2. Reboot when prompted.
+3. Download **Docker Desktop for Windows** from [docs.docker.com/desktop/setup/install/windows-install](https://docs.docker.com/desktop/setup/install/windows-install) and run the installer. Keep the default "Use WSL 2 instead of Hyper-V" option.
+4. Launch Docker Desktop; wait for the whale icon in the system tray to stop animating (engine started).
+5. Verify — here and everywhere below, "where to run" is **PowerShell, bash, or WSL2 Ubuntu — all work**:
+   ```bash
+   docker version
+   docker compose version
+   docker run --rm hello-world
+   ```
+
+Expected (abbreviated). The exact version string varies with your release — current Docker Desktop builds report the Docker Desktop 4.9x line with an Engine version in the 28.x range (as of Nov 2026). Treat the number as a snapshot, not a fixed value:
+
+```text
+Client: Docker Engine - Community
+ Version:           28.x (current Docker Desktop line)
+Server: Docker Desktop
+ Version:           28.x (current Docker Desktop line)
+Hello from Docker!
+```
+
+**Linux / WSL2 Ubuntu (the engine, no Desktop):** use Docker's official apt repo ([docs.docker.com/engine/install/ubuntu](https://docs.docker.com/engine/install/ubuntu)):
+
+```bash
+# Where to run: WSL2 Ubuntu shell or a Linux server (e.g. your Ch17 VPS)
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER   # log out and back in, or prefix with sudo
+docker run --rm hello-world
+```
+
+Other distros: follow the matching page under [docs.docker.com/engine/install](https://docs.docker.com/engine/install); never install the distro's stale `docker.io` package for this book.
+
+## 4. Architecture — Client, Daemon, Registry
+
+```text
+docker CLI  ──HTTP──▶  dockerd (daemon) ──▶  containerd ──▶  runc ──▶  container process
+      ▲                      │
+      └── images / ps / logs └──▶ pulls/pushes ──▶ registry (Docker Hub: registry-1.docker.io)
+```
+
+The CLI is a thin client; the **daemon** builds, runs and stores. That is why `hello-world` fails with "Cannot connect to the Docker daemon" when Desktop is not running. Images are pulled on first use and cached locally — check with `docker images`.
+
+Where things live on disk:
+
+```bash
+docker info | grep -i -E "docker root dir|storage driver|cgroup"
+docker system df -v        # per-image and per-volume breakdown
+```
+
+Images are stored as content-addressed layers (OverlayFS on Linux; a virtual disk image on Windows Desktop). Two images sharing a base layer store it **once** — that is why pulling `node:22-alpine` and `node:22-slim` does not double your disk. `docker inspect <image>` shows layers, env, entrypoint and exposed ports; `docker history <image>` shows what each layer did and cost.
+
+Useful inspection trio for any container:
+
+```bash
+docker inspect <name> --format '{{.State.Status}} {{.Config.Image}}'
+docker stats --no-stream       # live CPU/memory snapshot (limits land here in 18.3)
+docker top <name>              # processes inside the container
+```
+
+## 5. The `docker run` Flag Vocabulary
+
+```bash
+docker run -d --name shopcore-api -p 8080:3000 -e NODE_ENV=production --restart unless-stopped node:22-alpine
+```
+
+| Flag | Meaning |
+| :-- | :-- |
+| `-d` | Detach — run in background |
+| `--name` | Stable name instead of `nostalgic_morse` |
+| `-p 8080:3000` | Host **8080** → container **3000** (host:container) |
+| `-e KEY=value` | Inject one environment variable |
+| `--env-file .env` | Inject many (covered in 18.2.1) |
+| `--rm` | Auto-delete the container when it exits |
+| `-it` | Interactive + TTY (for shells) |
+| `--restart unless-stopped` | Restart on crash/reboot |
+| `-v name:/data` | Named volume (18.2.1) |
+
+## 6. Daily Commands You Must Know Cold
+
+```bash
+docker ps                 # running containers (docker ps -a = all, incl. exited)
+docker logs -f shopcore-api   # follow logs
+docker exec -it shopcore-api sh   # shell inside a running container
+docker stop shopcore-api && docker rm shopcore-api
+docker images             # local images and sizes
+docker rmi node:22-alpine # remove an image
+docker system df          # what Docker is using
+docker system prune       # delete stopped containers + dangling images
+docker system prune -a --volumes   # NUCLEAR: also unused images & volumes; check first!
+```
+
+Disk fills up silently — `docker system df` monthly is a habit, not an emergency response. On Docker Desktop: **Settings → Resources → Advanced** lets you move the disk image or raise the memory cap.
+
+## 7. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `Cannot connect to the Docker daemon` | Desktop not started / engine crashed | Start Docker Desktop; check tray icon; `wsl --shutdown` then restart Desktop |
+| `port is already allocated` | Host port in use | `-p 8081:3000`, or find the offender: `netstat -ano \| findstr :8080` (Win) / `sudo lsof -i :8080` (Linux) |
+| `manifest unknown` / pull fails | Wrong tag or private image | `docker login`; check the exact tag on hub.docker.com |
+| Container exits immediately | App crashed on boot | `docker logs <name>` — the exit code is the first breadcrumb |
+| `no space left on device` | Image/volume sprawl | `docker system df` then targeted `prune` |
+| Build hangs on Windows | WSL 2 VM disk full | Compact/relocate in Desktop settings; `wsl --shutdown` |
+
+## 8. Cost and Safety Notes
+
+Docker Desktop is **free for personal use, education and small businesses** (fewer than 250 employees AND under $10M annual revenue, as of late 2026); larger orgs need a paid subscription — check the current [docker.com/pricing](https://www.docker.com/pricing) page. The engine itself (docker-ce on Linux) is always free. Never expose the daemon socket (`/var/run/docker.sock`) to the internet or mount it into untrusted containers — it is root-equivalent.
+
+## 9. Practice
+
+**Guided.** Run `docker run --rm -p 8080:80 nginx:alpine`, open `http://localhost:8080`, then `docker stop` it (Ctrl-C works with `-it`, not `-d`).
+
+**Independent.** Run Postgres: `docker run -d --name shopdb -e POSTGRES_PASSWORD=devpass -p 5432:5432 postgres:17-alpine`; connect with `docker exec -it shopdb psql -U postgres`; create a table; `docker rm -f shopdb` and observe the data is gone (you will fix that in 18.2.1).
+
+**Challenge.** Start the ShopCore API image from before this chapter (if you built one) with `-p`, `--env-file`, and `--restart unless-stopped`; verify with `curl http://localhost:8080/api/health`.
+
+**Assessment checklist**
+
+- [ ] `docker run hello-world` works and I can explain daemon vs client vs registry.
+- [ ] I can read `docker ps -a` output and know what exit codes mean.
+- [ ] I know the difference between `-p 8080:3000` and `-p 3000:8080`.
+- [ ] I can `exec` into a running container and read its logs.
+- [ ] I ran `docker system df` and know what `prune -a` destroys before typing it.
+- [ ] I know Docker Desktop licensing is size-dependent and where to check it.
+
+</BookNodePage>

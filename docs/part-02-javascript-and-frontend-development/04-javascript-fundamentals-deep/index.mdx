@@ -1,0 +1,69 @@
+---
+id: "index"
+title: "Chapter 04: JavaScript Fundamentals (Deep)"
+sidebar_label: "Chapter 04: JavaScript Fundamentals (Deep)"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04">
+
+JavaScript is the only programming language built natively into every major web browser, and via **Node.js** it powers backend APIs, CLIs, and build tools across every OS. **Chapter 04 (`28 Focused Hours`)** starts from zero—installing Node.js properly and running your first script—and builds all the way to V8 execution models, closures, prototypes, immutable data flows, the event loop, `async/await`, ES modules, and automated unit testing.
+
+## Setup: Installing Node.js LTS & Running Your First Script
+
+Before writing code, install **Node.js LTS** (Long-Term Support—such as Node 22, 24, or 26 Active LTS). Never use an odd-numbered "Current" release for production learning unless testing bleeding-edge features.
+
+### Windows 10 / 11 (Primary Beginner Environment)
+
+You have two clean options on Windows:
+
+1. **Official `.msi` Installer (Simplest):** Download the **LTS** Windows Installer (`.msi`) from `https://nodejs.org`, run it with default options (keep **"Add to PATH"** checked), then **close and reopen** Windows Terminal or PowerShell.
+2. **Windows Package Manager (`winget`):** Open PowerShell and run:
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+Verify installation in a **fresh** PowerShell window:
+
+```powershell
+node -v
+npm -v
+```
+
+### WSL 2 (Ubuntu), Native Linux, or macOS
+
+- **macOS:** Download the LTS `.pkg` installer from `https://nodejs.org` or install via Homebrew (`brew install node@24`), or use `nvm` / `fnm` to manage multiple Node versions.
+- **Ubuntu / WSL 2:** Using `nvm` (Node Version Manager) avoids permission headaches with global packages:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc
+nvm install --lts
+node -v && npm -v
+```
+
+### Troubleshooting Common Installation Errors
+
+- **`node : The term 'node' is not recognized` (Windows) or `command not found`:** Your terminal was open before installation updated `PATH`. Close every terminal window (and restart VS Code) and reopen a new terminal.
+- **PowerShell `running scripts is disabled on this system` when running `npm` or `npx`:** PowerShell blocks `.ps1` shims by default under `Restricted` policy. Fix cleanly for your user account only:
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
+### Two Ways to Run JavaScript Immediately
+
+1. **Node.js Script Execution:** Create `hello.js` with `console.log("Ready:", 2 + 2);` and run `node hello.js` in your terminal.
+2. **Browser DevTools Console:** Open any page in Chrome or Edge, press `F12` (or `Ctrl+Shift+J` / `Cmd+Option+J`), click **Console**, type `2 + 2`, and press `Enter`. Browser DevTools is for interactive page experiments; Node.js runs standalone files from disk.
+
+## Chapter 04 Structure
+
+- **04.1 Language Core & Execution Model:** Variables, primitives vs. objects, coercion, control flow, execution contexts, the call stack, scope chains, hoisting, and closures.
+- **04.2 Functions, Objects & Data Structures:** First-class functions, callbacks, `this` and prototypes, reference semantics, `Array` pipelines, `Map`, `Set`, destructuring, and immutability.
+- **04.3 Asynchronous JavaScript & Modules:** Event loop, macrotasks vs. microtasks, Promises, `async/await`, `fetch`, ES modules, JSON, debugging, and `node --test`.
+
+**Begin 04.1:** [04.1 Language Core & Execution Model](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model)
+
+</BookNodePage>

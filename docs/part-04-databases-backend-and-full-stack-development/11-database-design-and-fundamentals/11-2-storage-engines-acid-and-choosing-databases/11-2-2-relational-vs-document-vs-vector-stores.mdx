@@ -1,0 +1,78 @@
+---
+id: "11-2-2-relational-vs-document-vs-vector-stores"
+title: "11.2.2 Relational vs Document vs Vector Stores"
+sidebar_label: "11.2.2 Relational vs Document vs Vector"
+slug: "/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases/11-2-2-relational-vs-document-vs-vector-stores"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-11-s2-t2">
+
+Every database engine optimizes a different data shape and access pattern. Choosing well is an engineering decision driven by **how your data is structured, how you query it, and what guarantees you need** — not by hype.
+
+## 1. The Three Families at a Glance
+
+| Family | Representative engines | Best fit | Weak fit |
+| :-- | :-- | :-- | :-- |
+| **Relational (SQL)** | **PostgreSQL 18**, MySQL, SQLite | Joins, FKs, strict schemas, multi-row ACID transactions, reporting aggregations | Arbitrary deeply-nested payloads that change per record |
+| **Document (NoSQL)** | **MongoDB**, Firestore | Self-contained JSON trees, per-item attributes that vary, rapid early schema iteration | Heavy cross-collection joins; multi-entity ledgers with strict ACID |
+| **Vector** | **pgvector** (inside PostgreSQL), Qdrant, Pinecone | High-dimensional nearest-neighbor similarity search for AI/RAG (Parts 07–08) | Exact transactional CRUD (`WHERE email = …`) |
+
+Two other families you will meet, but not in this chapter:
+
+| Family | Examples | Best fit |
+| :-- | :-- | :-- |
+| **Key-Value / Cache** | Redis, Valkey | Sub-millisecond caches, TTL counters, rate limiting, pub/sub |
+| **Search** | Meilisearch, Elasticsearch | Typo-tolerant full-text search at scale (PostgreSQL's built-in FTS covers moderate needs) |
+
+## 2. The ShopCore Test: Which Store for Which Data?
+
+Apply the test to our actual store:
+
+| ShopCore workload | Right store | Why |
+| :-- | :-- | :-- |
+| Users, orders, line items, money | **PostgreSQL** | FKs, transactions, constraints — money must never be approximate |
+| Product `specs` (color, battery, switch type) — different per category | **PostgreSQL JSONB** column (12.3.3) | Same engine, same ACID, flexible attributes |
+| Order activity log (append-only, high volume) | PostgreSQL table or MongoDB | Either works; Postgres JSONB is fine for MVP |
+| "Find products semantically similar to this description" | **pgvector** column in Postgres | Semantic search without a second database |
+| Caching hot catalog pages | Redis in front of Postgres | Read-through cache; Postgres stays source of truth |
+
+The conclusion for most products, including an MVP of ShopCore: **start with PostgreSQL as your single system of record**. It covers relational data, JSONB documents, and vectors in one ACID database — one backup strategy, one connection string, one mental model. Add specialized stores only when you can name the measured bottleneck you're solving, and prefer managed/hosted services (Neon, Supabase, Atlas) when you don't want to operate a database server yourself.
+
+## 3. Local vs Hosted — Deciding Where the Database Lives
+
+| | Local installation (your laptop) | Hosted / managed (Neon, Supabase, Atlas) |
+| :-- | :-- | :-- |
+| Setup | Install PostgreSQL / MongoDB once (Chapter 12 teaches exactly how) | Create account → cluster → copy a connection string |
+| Cost | Free | Free tier to start; paid as you grow |
+| Performance | Fastest (no network) | Network latency to the cloud region |
+| Best for | Learning, development, offline work | Deployed apps, team projects, portfolio pieces |
+| Ops burden | You manage backups, updates, ports | Provider manages them |
+
+You will practice **both** paths in Chapter 12: install PostgreSQL locally, then connect to Neon/Supabase in the browser; install MongoDB locally, then use Atlas. Neither is "the better one" — they're the same database accessed differently.
+
+## 4. Decision Rules of Thumb
+
+1. **Default to PostgreSQL.** If in doubt, Postgres handles 80% of workloads cleanly.
+2. **JSONB covers document-ish needs** until you have a measured reason for MongoDB (very high per-record attribute variance, team standards, geo-sharding).
+3. **Never split databases prematurely.** "We might need Mongo later" is not a reason to add operational burden now.
+4. **Vectors live in Postgres** via pgvector unless you exceed ~10M vectors, then consider a dedicated store.
+5. **Money and inventory are always relational + transactional.** No exceptions.
+
+## 5. Practice
+
+**Guided exercise.** For each ShopCore feature, name the right store and the reason: (a) checkout payment capture; (b) product reviews with free-text and photos; (c) real-time "customers viewing now" counter; (d) semantic search across product descriptions; (e) the product catalog shown on the storefront front page.
+
+**Independent exercise.** You inherit an app storing everything — users, orders, sessions, cache entries, search terms — in one MongoDB collection. List three concrete problems and propose the minimal re-architecture, naming which parts move to PostgreSQL and which stay.
+
+**Challenge.** Justify starting ShopCore with PostgreSQL only, including the moment you'd introduce Redis and the exact signal (metric/threshold) that would trigger it.
+
+**Assessment checklist**
+
+- [ ] I can match workloads to relational / document / vector stores with reasons, not vibes.
+- [ ] I know JSONB lets Postgres cover moderate document needs inside ACID.
+- [ ] I can explain local vs hosted databases and when each makes sense.
+- [ ] I won't add a second database without a measured, named reason.
+
+</BookNodePage>

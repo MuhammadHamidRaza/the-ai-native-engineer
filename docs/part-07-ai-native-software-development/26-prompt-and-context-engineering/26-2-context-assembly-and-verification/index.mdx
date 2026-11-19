@@ -1,0 +1,35 @@
+---
+id: "index"
+title: "26.2 Context Assembly & Verification"
+sidebar_label: "26.2 Context Assembly & Verification"
+slug: "/part-07-ai-native-software-development/26-prompt-and-context-engineering/26-2-context-assembly-and-verification"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-26-s2">
+
+Section 26.2 is everything around the prompt: **what you put in the window, what you keep out, how you prove the prompt still works, and how you stop hostile text from hijacking it.** A brilliant prompt with a stuffed, stale, injection-prone context is still a production incident.
+
+## Section Map (≈4 focused hours)
+
+- **26.2.1 Context Budgeting and Signal-to-Noise** — the token budget split (system vs docs vs history vs output reserve), the lost-in-the-middle finding (Liu et al., 2023), retrieval vs stuffing, trim → summarize → re-ask hygiene, signal-to-noise math, rolling summary / structured notes / compaction, the ShopCore "summarize this ticket thread" demo.
+- **26.2.2 Prompt Evaluation Suites and Regression Checks** — golden sets with dev/held-out splits, a tiny Node harness that diffs two prompt versions on 10+ cases, exact-match/rubric/human/judge metrics, judge bias and leakage, prompt changelogs, and a 15-minute failing-example fix walkthrough.
+- **26.2.3 Prompt Injection Fundamentals and Reusable Prompt Libraries** — direct vs indirect injection, jailbreak vs extraction vs exfiltration, OWASP LLM01:2025, six defense-in-depth layers, the $10,000 ShopCore email worked end to end, adversarial fixtures in your eval suite, and the namespaced prompt-library practice.
+
+## How to Work Through It
+
+26.2.1 first (you cannot eval what you cannot assemble), then 26.2.2 (your regression safety net), then 26.2.3 (the security layer that depends on both). Every lesson ends with a checklist — treat them as gates, not decoration. Carry one real ticket/thread from your own work through all three lessons.
+
+## Honest Prerequisites
+
+Section 26.1 complete; Chapter 25 (tokens, structured outputs, tool calling). For 26.2.2 you want Node ≥ 18 and an API key. No security background assumed — 26.2.3 builds it from zero.
+
+## Exit Criteria
+
+- [ ] You can allocate a token budget and defend every component in the window.
+- [ ] You run an eval suite on every prompt edit and read the diff.
+- [ ] You can name OWASP LLM01:2025 and show six layers standing between hostile text and an irreversible action.
+- [ ] Your prompts live in a reviewed, namespaced, owned library — not in a chat log.
+
+</BookNodePage>

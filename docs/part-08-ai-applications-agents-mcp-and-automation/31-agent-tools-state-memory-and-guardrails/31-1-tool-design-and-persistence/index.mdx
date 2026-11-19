@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "31.1 Tool Design & Persistence"
+sidebar_label: "31.1 Tool Design & Persistence"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-1-tool-design-and-persistence"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-31-s1">
+
+**Subchapter 31.1** covers the two persistence questions every agent forces on you: can a tool be safely called twice, and where does state live between calls?
+
+## Lessons in Subchapter 31.1
+
+1. **[31.1.1 Designing Idempotent Agent Tools](/book/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-1-tool-design-and-persistence/31-1-1-designing-idempotent-agent-tools):** why every agent tool that moves money, sends email or mutates rows needs an idempotency story; idempotency keys, natural keys and dedupe tables; PUT vs POST semantics; the read-before-write anti-pattern; and a fully worked `issue_refund` flow with Postgres DDL and no LLM anywhere in the test suite.
+2. **[31.1.2 Short-Term State vs Long-Term Memory](/book/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-1-tool-design-and-persistence/31-1-2-short-term-state-vs-long-term-memory):** the three kinds of state (conversation, working, persistent), what belongs in the context window vs Postgres vs vector memory, retrieve-on-demand injection, per-user namespaces with TTL and pin/forget endpoints, and the GDPR right-to-delete hook.
+
+Start with 31.1.1 — the memory store in 31.1.2 persists facts *through* tools, and those tools must tolerate retry.
+
+</BookNodePage>

@@ -1,0 +1,92 @@
+---
+id: "08-2-1-api-routes-and-server-mutations"
+title: "08.2.1 API Routes and Server Mutations"
+sidebar_label: "08.2.1 API Routes and Server Mutations"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-2-server-actions-route-handlers-and-seo/08-2-1-api-routes-and-server-mutations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08-s2-t1">
+
+Next.js gives you two server-side entry points for handling HTTP traffic and mutations: **Route Handlers (`route.ts`)** for standard REST/webhook JSON endpoints, and **Server Actions (`"use server"`)** for HTML `<form>` submissions and React UI mutations. Both execute **only on the server**—meaning API keys stay hidden from browsers—and both **must validate untrusted client input**.
+
+## 1. Environment Variable Security Rule
+
+- **`DATABASE_URL`, `STRIPE_SECRET_KEY`, `API_KEY` (no prefix):** Readable **only** in Server Components, Route Handlers, and Server Actions. Never exposed to browser JS.
+- **`NEXT_PUBLIC_APP_URL` (`NEXT_PUBLIC_` prefix):** Bundled straight into public browser JavaScript. **Never put secrets in `NEXT_PUBLIC_*`!**
+
+## 2. Route Handlers (`src/app/api/health/route.ts`)
+
+```typescript
+// src/app/api/tasks/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+
+const CreateTaskSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+});
+
+const memoryTasks: { id: string; title: string }[] = [];
+
+export async function GET() {
+  return NextResponse.json({ tasks: memoryTasks });
+}
+
+export async function POST(req: NextRequest) {
+  const raw: unknown = await req.json().catch(() => null);
+  const parsed = CreateTaskSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation failed", issues: parsed.error.issues },
+      { status: 400 }
+    );
+  }
+  const task = { id: crypto.randomUUID(), title: parsed.data.title };
+  memoryTasks.push(task);
+  return NextResponse.json({ task }, { status: 201 });
+}
+```
+
+## 3. Server Actions (`"use server"`) for Forms & Mutations
+
+Server Actions let a `<form action={createTaskAction}>` call an `async` server function directly, validate `FormData` with Zod, mutate your database, and call `revalidatePath`:
+
+```typescript
+// src/app/projects/actions.ts
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const Schema = z.object({ title: z.string().trim().min(2).max(100) });
+
+export async function createProjectAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const parsed = Schema.safeParse({ title: formData.get("title") });
+  if (!parsed.success) {
+    return { error: "Project title must be at least 2 characters." };
+  }
+
+  // Persist to database on server here...
+  revalidatePath("/projects");
+  return {};
+}
+```
+
+**Security Warning:** A Server Action is still a public HTTP `POST` endpoint under the hood! Always **re-check user authentication and permissions** AND validate every field inside every Server Action—never rely solely on client-side form validation or hidden `<input>` fields.
+
+## 4. Practice Exercises
+
+1. Add `src/app/api/health/route.ts` returning `{ ok: true, timestamp: new Date().toISOString() }` and test it with `curl http://localhost:3000/api/health`.
+2. Wire `createProjectAction` to a Client Component form using React's `useActionState` to display validation errors cleanly without page reloads.
+
+## Mastery Checklist
+
+- [ ] Keeps all secrets out of `NEXT_PUBLIC_` variables.
+- [ ] Validates every Route Handler and Server Action payload with Zod on the server.
+- [ ] Calls `revalidatePath()` after mutations so cached UI refreshes immediately.
+
+</BookNodePage>

@@ -1,0 +1,123 @@
+---
+id: "14-1-2-clone-commit-push-and-your-first-pull-request"
+title: "14.1.2 Your First Complete Loop: Clone, Branch, PR, Merge"
+sidebar_label: "14.1.2 First Pull Request"
+slug: "/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-1-git-and-github-from-zero/14-1-2-clone-commit-push-and-your-first-pull-request"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-14-s1-t2">
+
+Git's value clicks when you complete the entire loop yourself — edit, branch, commit, push, pull request, review, merge — on a real repository. Do this once slowly, then it becomes muscle memory.
+
+## 1. Clone the Repository
+
+Pick any repository you have write access to (yours, or a training repo). For practice, create an empty one on GitHub: **New repository** → name `pr-practice` → **Create repository** (do **not** add README/license/gitignore — we push from local).
+
+```bash
+git clone git@github.com:YOUR_GITHUB_USER/pr-practice.git
+cd pr-practice
+```
+
+HTTPS alternative (works without SSH): `git clone https://github.com/YOUR_GITHUB_USER/pr-practice.git`.
+
+**Why clone?** Copies the remote repo to your disk with full history and the remote named `origin`. `git remote -v` shows it.
+
+## 2. Branch — One Branch, One Purpose
+
+```bash
+git switch -c feat/hello-endpoint
+git branch        # * indicates where you are
+```
+
+**Branches are cheap pointers to commits** — they exist to isolate work. `main` stays releasable; `feat/x` holds your work in progress. Commit early, push often.
+
+## 3. Make a Change and Commit
+
+Create `README.md`:
+
+```bash
+echo "# PR Practice
+Small repo to learn the full GitHub flow." > README.md
+```
+
+```bash
+git status                  # untracked: README.md
+git add README.md
+git status                  # new file: staged
+git commit -m "feat: add README"
+```
+
+Commit message shape: `type: short imperative summary` — types used in this book: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`. (14.2.2 covers conventions deeply.)
+
+Inspect: `git log --oneline --decorate`.
+
+## 4. Push and Open the Pull Request
+
+```bash
+git push -u origin feat/hello-endpoint
+```
+
+GitHub prints a clickable link, or: repo page → **Compare & pull request** banner. Click it, then:
+
+1. **Title:** `Add README` (or leave the commit's).
+2. **Description:** a real 4-line PR:
+   - **Why:** "Repo had no intro; new contributors land here first."
+   - **What:** "Adds README.md with project purpose."
+   - **How tested:** "Rendered on github.com preview — links/markdown valid."
+   - **Notes:** —
+3. Leave as **Ready for review** (not Draft) → **Create pull request**.
+
+## 5. Review and Merge Your Own PR (Yes, Yourself)
+
+Teams require 1–2 approvals; solo repos can't. Practice the mechanics:
+
+1. **Files changed** tab → read your diff like a reviewer: does the diff contain junk (editor backups, `.env`)? — stop and fix *before* merging.
+2. **Checks** tab → CI is absent here; on real repos lint/test runs this moment.
+3. **Review changes → Approve → Submit** (on a team repo, an approver does this).
+4. **Squash and merge** → confirm. **Delete branch** when prompted.
+
+After merge: `git switch main && git pull && git branch -d feat/hello-endpoint` — clean local state. The merge commit/squash commit sits on `main`; history of the branch is preserved in the PR.
+
+## 6. The Commands You Just Used — Glossary
+
+| Command | Job |
+| :-- | :-- |
+| `git clone <url>` | Copy remote → local |
+| `git switch -c name` | Create + switch to branch |
+| `git status` | What's staged/modified/untracked |
+| `git add <file>` | Stage for commit |
+| `git commit -m ""` | Snapshot staged files |
+| `git push -u origin <branch>` | Publish branch; `-u` ties it to the remote branch |
+| `git pull` | Fetch + merge remote changes |
+| `git branch -d <name>` | Delete **merged** local branch |
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `fatal: repository '…' does not exist` | Wrong URL or no permission — check `git remote -v`; for private repos, is your SSH key/HTTPS credential set? |
+| `failed to push some refs` on fresh branch | Someone pushed to that branch name remotely — `git pull` first, or rename your branch |
+| Push asks for password forever | Switch to SSH (14.1.1 §5) or use a Personal Access Token as the password |
+| Accidentally committed `.env` | Rotate secrets immediately; `git rm --cached .env`, commit, rotate |
+| Merge conflict in README | Resolve locally (14.2.1 teaches), push again |
+| PR button grayed out | You're pushing to `main` of the same repo — branches get PRs |
+
+## 8. Practice
+
+**Guided exercise.** Do the entire loop on `pr-practice` **without looking at this page**: clone, branch, README, commit, push, PR, merge, delete branch. Document each step in one line.
+
+**Independent exercise.** Add a second file `CONTRIBUTING.md` via a second PR (`feat/contributing`), following the same flow. Notice how fast it feels the second time.
+
+**Challenge.** Intentionally create a conflict: open two branches from `main`, both edit `README.md` line 1, merge the first, rebase the second (or resolve the resulting conflict), and push. This pre-builds 14.2.1's hardest lesson.
+
+**Assessment checklist**
+
+- [ ] I completed clone → branch → commit → push → PR → merge end to end.
+- [ ] I can explain what `origin`, `-u`, `HEAD` and `main` mean.
+- [ ] I write PR descriptions with Why/What/How tested.
+- [ ] I deleted the merged branch locally and remotely.
+- [ ] I know exactly which mistakes (`.env`, direct `main` push) to never make.
+
+</BookNodePage>

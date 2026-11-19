@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "32.1 Protocol Architecture & Primitives"
+sidebar_label: "32.1 Protocol Architecture & Primitives"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-1-protocol-architecture-and-primitives"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32-s1">
+
+**Subchapter 32.1** is the mental model: why one protocol won, what the pieces are, which transport to pick, and the three primitives every server may expose.
+
+## Lessons in Subchapter 32.1
+
+1. **[32.1.1 Hosts, Clients, Servers and Transports](/book/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-1-protocol-architecture-and-primitives/32-1-1-hosts-clients-servers-and-transports):** the fragmentation MCP fixes; host vs client vs server; stdio for local and Streamable HTTP for remote (legacy SSE deprecated — retirement path); the full lifecycle of one `tools/call` in an ASCII sequence diagram; current SDKs and their versions; the registry pointer.
+2. **[32.1.2 Tools, Resources and Prompt Templates](/book/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-1-protocol-architecture-and-primitives/32-1-2-tools-resources-and-prompt-templates):** the three primitives and when to use each; resources vs tools; subscriptions; prompt templates for recurring tasks; ShopCore worked examples; a minimal Python server with `MCPServer`; debugging with MCP Inspector.
+
+Do 32.1.1 first — the primitives in 32.1.2 only make sense once you know who is allowed to talk to whom.
+
+</BookNodePage>

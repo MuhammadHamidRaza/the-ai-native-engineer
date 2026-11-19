@@ -1,0 +1,168 @@
+---
+id: "33-1-2-branching-batching-and-custom-code-nodes"
+title: "33.1.2 Branching, Batching and Custom Code Nodes"
+sidebar_label: "33.1.2 Branching, Batching and Custom Code Nodes"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes/33-1-2-branching-batching-and-custom-code-nodes"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33-s1-t2">
+
+Real workflows branch, loop and occasionally need five lines of JavaScript to say what ten nodes cannot. This lesson covers flow control (IF, Switch, Merge), batching (Split In Batches — labelled **Loop Over Items** in current releases), and the Code node — the tools that turn ShopCore's intake pipeline into a system that handles hundreds of disputes without hand-holding.
+
+## 1. Branching: IF and Switch
+
+**IF** has two outputs (`true`, `false`) and one condition group. **Switch** evaluates one value against N rules and routes to N outputs — the right home for classifier output like `auto | review | escalate`.
+
+Common mistake: string comparisons are case-sensitive and whitespace-sensitive in some contexts. Normalize first — either upstream in a Code node (`s.trim().toLowerCase()`) or with the IF node's **String** operations (`contains`, `starts with` after a lowercase via expression `{{ $json.kind.toLowerCase() }}`).
+
+```text
+AI/Classifier output ({{ $json.decision }})
+        |
+     Switch
+   /    |     \
+auto  review  escalate
+  |      |       |
+Slack  Linear  PagerDuty / human queue
+```
+
+Add a **default** output on Switch for unexpected values — an unclassified item should land somewhere visible, never silently vanish.
+
+## 2. Merging Parallel Branches
+
+**Merge** rejoins branches: modes include *Append* (concatenate item lists), *Combine by Position*, *Combine by Matching Fields* (SQL-join-ish; match on `orderId`). Use *Matching Fields* when two branches fetch different facts about the same order (Stripe dispute status + internal order record) and you need them as one item.
+
+## 3. Batching: Split In Batches (Loop Over Items)
+
+Loop Over Items processes an array in chunks — e.g. 500 overdue invoices, 25 per pass — instead of firing 500 API calls at once and eating a rate limit.
+
+```text
+Get AR invoices (Postgres) --> Loop Over Items (batch 25)
+                                    |
+                                 (loop back)
+                                    |
+                              For each batch: HTTP Request -> Postgres mark-nudged
+                                    |
+                              Done --> Slack summary
+```
+
+- Set **Batch Size** small enough to respect the slowest downstream API (25 is a sane default; AR APIs often want 10).
+- The loop exposes a "done" output that fires after the last batch — put the summary notification there, not inside the loop.
+- Feed it thousands of items at your peril: each iteration is an execution step; 10,000-row loops on Cloud plans burn your execution quota.
+
+**Item Lists** node handles list hygiene: dedupe by field, sort, limit, split out/into items. Use it *before* batching, not inside it. The **Remove Duplicates** and **Aggregate** nodes (or expressions + Item Lists) cover "one row per customer from 500 dispute events" in two clicks; reserve Code for transforms those can't express.
+
+## 4. Aggregation Patterns Worth Memorizing
+
+```text
+500 dispute events --> Remove Duplicates (by orderId) --> Aggregate (sum claimedCents by reason)
+```
+
+| Need | Node combo | Notes |
+| :-- | :-- | :-- |
+| Unique orders from many events | Remove Duplicates → keep first | "Keep first" preserves the earliest timestamp you usually want |
+| Totals per group | Aggregate (or expression `{{ $items }}` in Code) | Cap grouping keys — 10k unique keys blows memory |
+| "Top N by amount" | Sort → Limit | Always Sort before Limit; Limit without Sort is arbitrary |
+| One-of-array pick | First In List / Item Lists | Deterministic, unlike model-driven selection |
+
+If the transform starts to feel like SQL, you are already in Code-or-Postgres territory — offload aggregation to Postgres (`SELECT customer_id, SUM(claimed_cents) ... GROUP BY 1`) when the source data lives there anyway.
+
+## 5. The Code Node — Where JavaScript Lives
+
+**Code** (formerly Function/Function Item — those legacy nodes are removed; use Code) runs JavaScript (and a Python beta) inside your workflow. Two modes:
+
+| Mode | Use when |
+| :-- | :-- |
+| Run Once for All Items | Aggregation (count disputes per rep), dedupe, global transforms |
+| Run Once for Each Item | Per-item enrichment (parse one email) |
+
+Reach for Code when: regex extraction, date arithmetic, signature/HMAC verification, building a request body with computed fields, or a one-off transform no node offers. Do **not** reach for Code to duplicate node behavior you can click-through (don't reimplement Slack send in `fetch`), and never to store secrets — `process.env` works but belongs in n8n's credential store or, better, a proper secret manager injected as env vars at the container level.
+
+First the Webhook node must be configured to receive the **raw bytes**: open **Options → Raw Body** (`rawBody: true`) — without it n8n parses the body into `$json.body` and the original bytes are lost, so no HMAC computed over "the body" will match. In raw-body mode `$json.body` is empty and the payload arrives as a **binary property named `data`** (base64 in `$binary.data.data`).
+
+```javascript
+// Verify an inbound ShopCore webhook HMAC signature
+// (Webhook node → Options → Raw Body: on)
+const crypto = require('crypto'); // requires NODE_FUNCTION_ALLOW_BUILTIN=crypto on the runner
+const secret = $env.SHOPCORE_WEBHOOK_SECRET; // or keep the secret in a Crypto credential (no env access needed)
+
+const headers = $input.first().json.headers;
+const sig = headers['x-shopcore-signature'];
+// The EXACT bytes as received — never re-serialize parsed JSON:
+const raw = (await this.helpers.getBinaryDataBuffer(0, 'data')).toString('utf8');
+const expected = crypto.createHmac('sha256', secret).update(raw, 'utf8').digest('hex');
+
+const a = Buffer.from(sig ?? '', 'utf8');
+const b = Buffer.from(expected, 'utf8');
+if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  throw new Error('Bad signature');
+}
+return [{ json: { ok: true, body: JSON.parse(raw) } }];
+```
+
+Three things that bite people, verified against n8n's current behavior (November 2026):
+
+- **`$input.item.json.rawBody` does not exist.** The raw body is binary property `data` (or `$binary.data.data` for the base64 form); read it with `this.helpers.getBinaryDataBuffer(0, 'data')`. `getBinaryDataBuffer` is the supported accessor when n8n runs in filesystem/database binary mode — `$binary.data.data` holds a reference, not the content.
+- **`$env` in Code nodes is blocked by default since n8n 2.0** — either set `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` (every editor user can then read the environment) or put the secret in a **Crypto node credential** (Hmac Secret field) and compare in a Code node that never sees the secret; or use `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` only on single-person instances.
+- **`require('crypto')` needs the module allowlist** — set `NODE_FUNCTION_ALLOW_BUILTIN=crypto` on the task-runner process (the n8n container in internal mode, or the `n8nio/runners` sidecar).
+
+Signature schemes differ per provider: GitHub sends `X-Hub-Signature-256: sha256=…` over only the raw body; Stripe signs `timestamp.body` with a `t,v1` header and a 5-minute tolerance. Check your provider's docs — do not generalize from one example.
+
+`require` of built-in Node modules is allowed (with the allowlist above); arbitrary npm packages are not — treat anything beyond built-ins as unsupported and verify against the n8n docs for your version.
+
+Security notes that matter:
+
+- Code runs with the workflow's permissions, not a user's — a catastrophic regex on attacker-controlled email content is a ReDoS against your n8n instance, not just a wrong answer. Keep patterns anchored; test against 10KB inputs.
+- Never `eval()` model output inside Code. If the model must compute something, have it emit data; compute deterministically around it.
+- `return` shape must match mode: an array of items in Run Once for All Items; a single object (auto-wrapped into one item) per item in Each-Item mode. Mismatches surface as empty downstream items, not errors.
+- Debug with `console.log` — output appears in Executions under the node's console tab on self-hosted instances.
+- Keep Code nodes small and named ("Extract dispute fields", not "code 3") — they are the first place auditors and future teammates look.
+
+## 6. ShopCore in One Workflow: Full Topology
+
+```text
+Gmail Trigger
+     |
+ Code (extract orderId, amount)
+     |
+ Switch (amount > 250 ? escalate : auto-check)
+   /                            \
+IF sentiment=angry            Linear create ticket
+   |                              |
+Slack escalation              Postgres log event
+   +--------------+---------------+
+                  |
+              Loop Over Items -> weekly digest (Schedule Trigger, Mondays 08:00)
+```
+
+The dispute flow is event-driven; the digest is schedule-driven; both share the same Postgres audit table (schema in 34.2.2).
+
+## 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Switch falls through to default unexpectedly | Case/whitespace mismatch in rule value | Lowercase in expression first; use **is equal to** with trimmed strings |
+| Loop stops after first batch | The body's last node never wires back into Loop Over Items, or "done" was used instead of "loop" | The node has two outputs: **loop** (per batch → body) and **done** (after last batch → summary); wire body's final node back into the loop node's input |
+| Code node: `require is not defined` | Used in an item-mode mismatch or wrong sandbox | Use Run Once for All Items; check built-in allowlist |
+| Duplicate executions on retry | Webhook delivered twice (at-least-once) | Idempotency key: `{{ $json.headers['x-delivery-id'] }}` checked in Postgres before side effects |
+| Merge Corrupts data | Positional combine misaligned | Use Matching Fields on `orderId` |
+| Expression error mid-workflow | Upstream node renamed | Update `{{ $('OldName') }}` references — renames do not auto-rewrite |
+
+## 8. Practice
+
+**Guided.** Extend your 33.1.1 workflow: Switch on `auto|review|escalate` (feed it from a hard-coded test payload via a **Set** node), route each to a different Slack channel `#disputes-auto|#disputes-review|#disputes-escalate`.
+
+**Independent.** Build a Loop Over Items flow: Schedule Trigger (every 5 min) → Postgres `SELECT * FROM invoices WHERE due_date < CURRENT_DATE - 7 AND nudged = false LIMIT 25` → HTTP Request to your billing API → Postgres update. Confirm Executions show batches of 25.
+
+**Challenge.** Implement the HMAC verification snippet above as a gate for a Webhook Trigger feeding the Logger; reject and 401 unsigned requests.
+
+**Checklist**
+
+- [ ] I can wire IF/Switch and always set a default branch
+- [ ] I can explain what Loop Over Items does and choose a batch size deliberately
+- [ ] I know when to use Code vs a visual node, and I never store secrets in it
+- [ ] I can verify webhook signatures before trusting a payload
+- [ ] I understand at-least-once delivery and design idempotent steps
+
+</BookNodePage>

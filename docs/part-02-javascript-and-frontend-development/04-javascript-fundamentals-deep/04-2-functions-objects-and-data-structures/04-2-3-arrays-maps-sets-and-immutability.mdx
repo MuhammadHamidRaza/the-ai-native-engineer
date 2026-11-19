@@ -1,0 +1,114 @@
+---
+id: "04-2-3-arrays-maps-sets-and-immutability"
+title: "04.2.3 Arrays, Maps, Sets and Immutability"
+sidebar_label: "04.2.3 Arrays, Maps, Sets and Immutability"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-2-functions-objects-and-data-structures/04-2-3-arrays-maps-sets-and-immutability"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s2-t3">
+
+Choosing the right collection and avoiding accidental in-place mutation makes code dramatically easier to test and reason about—especially in React, where UI re-renders depend on detecting new object/array references.
+
+## 1. Non-Mutating Array Transformations
+
+Classic array methods like `.push()`, `.pop()`, `.splice()`, `.reverse()`, and `.sort()` **mutate the original array in place**. Modern JavaScript gives you non-mutating alternatives alongside `map`, `filter`, and `reduce`:
+
+| Goal | Mutating (Avoid on Shared State) | Non-Mutating (Returns New Array) |
+| :--- | :--- | :--- |
+| Add item | `arr.push(x)` | `[...arr, x]` |
+| Remove by index | `arr.splice(i, 1)` | `arr.filter((_, idx) => idx !== i)` |
+| Sort safely | `arr.sort(cmp)` | `arr.toSorted(cmp)` |
+| Reverse safely | `arr.reverse()` | `arr.toReversed()` |
+| Replace at index | `arr[i] = val` | `arr.with(i, val)` |
+
+```javascript
+// Watch out: default .sort() compares elements as STRINGS!
+const scores = [10, 2, 100, 25];
+console.log("Default sort bug:", [...scores].sort());         // [10, 100, 2, 25]
+console.log("Numeric toSorted:", scores.toSorted((a, b) => a - b)); // [2, 10, 25, 100]
+console.log("Original untouched:", scores);                   // [10, 2, 100, 25]
+```
+
+## 2. Destructuring, Rest, and Spread
+
+```javascript
+const response = {
+  status: 200,
+  user: { id: "u_9", email: "ada@example.com", role: "admin" },
+  meta: { requestId: "req_123" },
+};
+
+// Nested destructuring with default value & rest
+const {
+  user: { email, role = "member", ...otherUserFields },
+  status,
+} = response;
+
+// Immutable update pattern (essential in React state!)
+const updatedResponse = {
+  ...response,
+  user: {
+    ...response.user,
+    role: "owner",
+  },
+};
+
+console.log({ email, role, otherUserFields, status, newRole: updatedResponse.user.role });
+```
+
+## 3. `Map` vs. Plain `{}` Objects, and `Set` for Uniqueness
+
+- **Use `{}` plain objects** for fixed-shape records (`{ id, name, email }`) and JSON serialization.
+- **Use `Map`** when keys are **dynamic user-provided strings** (zero prototype key collisions), non-string keys, frequent additions/deletions, or when you need `.size` directly.
+- **Use `Set`** for deduplicating items and fast O(1) `.has(value)` membership checks instead of repeated `array.includes()` scans inside loops.
+
+```javascript
+// Grouping & counting safely with Map + Set
+const events = [
+  { userId: "u1", action: "login" },
+  { userId: "u2", action: "login" },
+  { userId: "u1", action: "export" },
+  { userId: "u1", action: "login" },
+];
+
+const actionsByUser = new Map();
+const uniqueUsers = new Set();
+
+for (const { userId, action } of events) {
+  uniqueUsers.add(userId);
+  const current = actionsByUser.get(userId) ?? [];
+  actionsByUser.set(userId, [...current, action]);
+}
+
+console.log("Unique user count:", uniqueUsers.size); // 2
+console.log("u1 actions:", actionsByUser.get("u1")); // ['login', 'export', 'login']
+```
+
+## 4. `reduce` Without Overcomplicating It
+
+Use `reduce` for genuinely folding items into a single sum or lookup table. If a plain `for...of` loop is clearer to a teammate, write the `for...of` loop!
+
+```javascript
+const cart = [
+  { sku: "BOOK", priceCents: 3500, qty: 1 },
+  { sku: "PEN", priceCents: 450, qty: 3 },
+];
+
+const totalCents = cart.reduce((sum, item) => sum + item.priceCents * item.qty, 0);
+console.log("Total cents:", totalCents); // 4850
+```
+
+## 5. Practice Exercises
+
+1. Given an array of duplicate tags `["react", "js", "react", "ts", "js"]`, return a sorted array of unique lowercase tags without mutating the original array.
+2. Given `[{ category: "ops", cost: 40 }, { category: "ai", cost: 120 }, { category: "ops", cost: 60 }]`, aggregate total cost per category into a `Map` and convert it cleanly to an array of `{ category, totalCost }` objects.
+
+## Mastery Checklist
+
+- [ ] Remembers that `.sort()` converts numbers to strings unless given `(a, b) => a - b`.
+- [ ] Uses `.toSorted()` or `[...arr]` instead of mutating shared arrays.
+- [ ] Chooses `Map`/`Set` for dynamic dictionaries and fast uniqueness checks.
+
+</BookNodePage>

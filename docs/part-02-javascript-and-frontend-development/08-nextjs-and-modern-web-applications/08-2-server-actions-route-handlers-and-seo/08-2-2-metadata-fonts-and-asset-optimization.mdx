@@ -1,0 +1,73 @@
+---
+id: "08-2-2-metadata-fonts-and-asset-optimization"
+title: "08.2.2 Metadata, Fonts and Asset Optimization"
+sidebar_label: "08.2.2 Metadata, Fonts and Asset Optimization"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-2-server-actions-route-handlers-and-seo/08-2-2-metadata-fonts-and-asset-optimization"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08-s2-t2">
+
+Slow hero images jumping down the page during load (**Cumulative Layout Shift / CLS**) and missing OpenGraph titles hurt both user experience and search visibility. Next.js bakes metadata, self-hosted fonts, and responsive image sizing directly into the framework.
+
+## 1. Static & Dynamic Metadata for SEO
+
+In any Server Component `layout.tsx` or `page.tsx`, export `metadata` (or `async generateMetadata` for dynamic database-backed pages):
+
+```tsx
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: {
+    default: "ShopCore — Example Online Storefront",
+    template: "%s | ShopCore",
+  },
+  description: "Track engineering tasks, owners, and releases cleanly.",
+  openGraph: {
+    title: "ShopCore",
+    description: "Fast project tracking built with Next.js.",
+    type: "website",
+  },
+};
+```
+
+Child pages that export `export const metadata = { title: "Pricing" }` automatically become `"Pricing | ShopCore"`.
+
+## 2. Zero-Layout-Shift Fonts with `next/font`
+
+`next/font/google` downloads fonts **at build time** and serves them from your own domain—meaning zero external Google Font network lag at runtime and zero font flash:
+
+```tsx
+// src/app/layout.tsx
+import { Plus_Jakarta_Sans } from "next/font/google";
+
+const sans = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap" });
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" className={sans.className}>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+## 3. Optimizing Images with `next/image`
+
+Always prefer `<Image />` over raw `<img>`:
+- Requires explicit `width` + `height` (or `fill` inside a `relative` sized box) so the browser reserves exact aspect-ratio space before bytes arrive (`CLS = 0`).
+- Automatically converts large PNG/JPEG assets to modern WebP/AVIF formats resized per viewport.
+- For **external** HTTPS image hosts, explicitly whitelist allowed domains in `next.config.ts` (`images.remotePatterns`) so attackers cannot abuse your image optimizer as an open proxy.
+
+## 4. Practice Exercises
+
+1. Add a title template in `src/app/layout.tsx` and custom per-page `metadata` in `/projects/page.tsx`, then inspect the rendered `<title>` and `<meta>` tags in DevTools.
+2. Add a local image in `public/logo.png` and render it with `<Image src="/logo.png" alt="ShopCore logo" width={120} height={32} priority />`.
+
+## Mastery Checklist
+
+- [ ] Configures page titles, descriptions, and OpenGraph tags cleanly via `Metadata`.
+- [ ] Loads fonts with `next/font` and prevents CLS using `next/image` dimensions.
+
+</BookNodePage>

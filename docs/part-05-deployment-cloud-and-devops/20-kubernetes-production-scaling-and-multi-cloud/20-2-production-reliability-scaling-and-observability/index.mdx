@@ -1,0 +1,33 @@
+---
+id: "index"
+title: "20.2 Production Reliability, Scaling & Observability"
+sidebar_label: "20.2 Production Reliability, Scaling & Observability"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s2">
+
+**Subchapter 20.2** is the operational heart of the chapter. Code that "works in the cluster" is not production software until you can answer three questions under pressure: how much load can it take, how do you change it without downtime, and how do you know it's healthy? This subchapter answers all three — with tools, math and runbooks, not vibes.
+
+## Lessons in Subchapter 20.2
+
+1. **[20.2.1 Scaling, Load Balancing, Caching and Database Scaling](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-1-scaling-load-balancing-caching-and-database-scaling):** Horizontal scaling math (Little's Law in practice), stateless vs sticky sessions, L4 vs L7 balancing, connection draining, why "just add servers" fails first on the database, Redis as a shared cache (with a link to Part 04), read replicas, CDN-first caching strategy, and load-testing before you scale (k6/hey).
+
+2. **[20.2.2 Zero-Downtime Releases, Feature Flags and Safe Migrations](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-2-zero-downtime-releases-feature-flags-and-safe-migrations):** Rolling vs blue-green vs canary comparison with a decision table, the zero-downtime deploy runbook, connection draining plus readiness gates, OpenFeature and LaunchDarkly for progressive delivery, and the expand/contract pattern for migrations against a live database.
+
+3. **[20.2.3 Monitoring, Logs and Alerts with Prometheus and Grafana](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-3-monitoring-logs-and-alerts-with-prometheus-and-grafana):** The scrape model, node_exporter and kube-state-metrics, installing kube-prometheus-stack in kind via Helm, port-forwarding Grafana, orientation in the default dashboards, the five alerts worth starting with (high error rate, pod restarts, disk, memory, certificate expiry), Alertmanager routing basics, and how log aggregation (Loki/ELK/cloud equivalents) fits — pointer level.
+
+4. **[20.2.4 Backups, Disaster Recovery, Incident Triage and Postmortems](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-4-backups-disaster-recovery-incident-triage-and-postmortems):** Backup ≠ disaster recovery, RPO/RTO defined and labeled (RPO/RTO), `pg_dump` plus WAL archiving (Part 04's drill) and etcd snapshots/Velero for clusters, a credential-leak runbook, incident roles (Incident Commander, communications, operations), an incident timeline template, and a blameless postmortem template.
+
+## How to Work Through Subchapter 20.2
+
+1. Read 20.2.1 before touching any scaling setting — scaling an app with a shared session store or a saturated database just fails faster and more expensively.
+2. 20.2.2's migration pattern applies to **every** schema change on a live database — even in solo projects, rehearsing it once prevents the "just rename the column" 3 a.m. page.
+3. 20.2.3 hands-on lab: budget 45–60 minutes; kube-prometheus-stack pulls several images on first install.
+4. 20.2.4 is read-and-rehearse: do the `pg_dump` restore drill from Part 04 again, and write one real postmortem for a failure you have actually had.
+
+Prerequisites for this subchapter: 20.1 complete (you can deploy and probe ShopCore in kind), Part 04's PostgreSQL backup drill ([12.3.2](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores)), and Docker running. No cloud resources are required; nothing here bills.
+
+</BookNodePage>

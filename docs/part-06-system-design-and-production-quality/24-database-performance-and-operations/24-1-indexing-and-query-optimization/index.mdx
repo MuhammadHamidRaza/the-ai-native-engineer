@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "24.1 Indexing & Query Optimization"
+sidebar_label: "24.1 Indexing & Query Optimization"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations/24-1-indexing-and-query-optimization"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24-s1">
+
+This section is the craft at the center of Postgres operations: **decide what to build (24.1.1), then read what the planner actually did (24.1.2).** The two lessons are not separable in practice — indexes are hypotheses, plans are the experiment.
+
+## What Is In This Section
+
+- **24.1.1 B-Tree, GIN and Composite Indexes** — how a B-Tree actually works (sorted 8 kB pages, three levels deep at millions of rows, the leftmost-prefix rule); composite column order via **Equality → Sort → Range** (the ESR rule from [12.2.3](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-3-indexes-and-explain-analyze), sharpened for range columns); covering indexes with `INCLUDE` and why they unlock index-only scans; partial indexes (`WHERE status = 'pending'`) for the hot warehouse screen; GIN for JSONB containment, full-text search and tag arrays; BRIN for append-mostly `orders.created_at`; index bloat and `REINDEX CONCURRENTLY`; `pg_stat_user_indexes` for finding dead weight; and when indexing is the *wrong* answer (write-heavy tables, boolean columns, tiny tables) — always verified with `EXPLAIN ANALYZE`.
+
+- **24.1.2 Reading EXPLAIN ANALYZE Plans** — the anatomy of `EXPLAIN (ANALYZE, BUFFERS)`: `Seq Scan` vs `Index Scan` vs `Bitmap Index Scan`, `Nested Loop` vs `Hash Join`, `Sort`/`Materialize`, `loops`, `Rows Removed by Filter`, actual vs estimated rows (and the row-underestimation semantics that produce catastrophic plans); four real ShopCore plans dissected before/after with typical — not guaranteed — timing characterisation; `auto_explain` for production sampling; `pg_stat_statements` for finding the query you forgot you had.
+
+## How the Two Lessons Fit
+
+```text
+  24.1.1 (build a hypothesis)              24.1.2 (test the hypothesis)
+  --------------------------              ---------------------------------
+  orders(user_id, status, created_at)  ->   EXPLAIN (ANALYZE, BUFFERS)
+  WHERE status='pending' partial index ->   Seq Scan 84 ms -> Index Scan 0.6 ms
+  GIN on products.search_tsv           ->   Bitmap Heap Scan, Buffers: shared hit=...
+            |                                        |
+            +------------ both end in proof ----------+
+                     pg_stat_user_indexes / pg_stat_statements
+```
+
+The rule that governs both: **no index ships without its plan attached.**
+
+## Exit for This Section
+
+You are done with 24.1 when the four hottest ShopCore queries each have: an index you can justify column-by-column, an `EXPLAIN (ANALYZE, BUFFERS)` before/after you captured yourself, and a `pg_stat_statements` entry showing its share of total database time dropping.
+
+</BookNodePage>

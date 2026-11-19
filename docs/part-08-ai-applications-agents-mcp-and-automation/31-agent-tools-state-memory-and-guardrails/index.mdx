@@ -1,0 +1,31 @@
+---
+id: "index"
+title: "31. Agent Tools, State, Memory & Guardrails"
+sidebar_label: "31. Agent Tools, State, Memory & Guardrails"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-31">
+
+Chapter 30 gave the Postmaster working tools. It did not make them safe. This chapter is where the ShopCore agents stop being demos and become systems you can let touch money: tools designed to be retried without double-charging, state split deliberately between context window, Postgres and memory, and guardrails that fire before the model, after the model and after the tool.
+
+**Verified November 2026:** `openai-agents` **0.25.0** on PyPI (Python >= 3.10), Pydantic **2.14.3** — the same versions Chapter 30 used. Patterns here are SDK-neutral; the OpenAI Agents SDK appears only where it matters.
+
+## Chapter 31 Structure
+
+- **31.1 Tool Design & Persistence:** idempotent tools (safe retry after an ambiguous failure), idempotency keys and natural keys, dedupe tables, read-before-write, and the three-way state split — conversation state, working state, persistent state — with a per-user memory store, TTL and a GDPR delete hook.
+- **31.2 Input & Output Guardrails:** deterministic policy checks before the LLM, between the LLM and the tool, and between the tool and the user; prompt-injection defense-in-depth (tool output is data, never instructions); permission scopes (tool-level, resource-level, time-level, approval tiers); confirmation UX; audit logs; the kill switch; and the confused-deputy worked example.
+
+## How to Work Through This Chapter
+
+1. Keep `postmaster/` from Chapter 30 open. Every lesson hardens a real file in it.
+2. 31.1.1 first — every guardrail in 31.2 assumes tools that fail safely on retry.
+3. The Postmaster policy in 31.2.2 (no auto-refund over $50, no external email over 4 recipients without approval, no bulk deletes ever) is the reference policy for Chapters 32, 35 and 36.
+
+Prerequisites: Chapters 29–30 in full, Part 04 (Postgres, the `orders`/`refunds` schema), and [26.2.3 Prompt Injection Fundamentals and Reusable Prompt Libraries](/book/part-07-ai-native-software-development/26-prompt-and-context-engineering/26-2-context-assembly-and-verification/26-2-3-prompt-injection-fundamentals-and-reusable-prompts).
+
+**Hours honesty.** Budget 6–8 focused hours. The code is short; the discipline of *when* to memorize, *what* to block and *who* may approve is the actual lesson.
+
+</BookNodePage>

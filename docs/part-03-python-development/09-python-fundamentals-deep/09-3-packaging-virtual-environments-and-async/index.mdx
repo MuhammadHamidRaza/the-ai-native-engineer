@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "09.3 Packaging, Virtual Environments & Async"
+sidebar_label: "09.3 Packaging, Virtual Environments & Async"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s3">
+
+Installing Python packages globally across your machine eventually breaks older scripts when Project A needs Pydantic v2 and Project B needs another dependency tree. Subchapter **09.3** teaches clean project isolation with **`venv` and `uv`**, structured **`logging` and `pytest`**, and concurrent I/O with **`asyncio`**.
+
+## Lessons in Subchapter 09.3
+
+1. **[09.3.1 Virtual Environments, uv and pyproject.toml](/book/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async/09-3-1-virtual-environments-uv-and-pyproject-toml):** Creating/activating `.venv` on Windows PowerShell, CMD, macOS, and Linux; `pip` + `requirements.txt` vs. modern `uv` + `pyproject.toml`; clean module imports.
+2. **[09.3.2 Exceptions, Logging and Testing with pytest](/book/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async/09-3-2-exceptions-logging-and-testing-with-pytest):** Exception handling (`try/except/else/finally`), structured `logging`, writing and running `pytest` suites with fixtures, `@pytest.mark.parametrize`, and `monkeypatch`.
+3. **[09.3.3 asyncio and Concurrent I/O](/book/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async/09-3-3-asyncio-and-concurrent-io):** `async def`/`await`, `asyncio.gather`/`TaskGroup`, I/O-bound vs. CPU-bound workloads, and avoiding blocking calls inside async coroutines.
+
+</BookNodePage>

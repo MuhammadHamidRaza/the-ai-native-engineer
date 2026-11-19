@@ -1,0 +1,76 @@
+---
+id: "10-1-3-consuming-external-rest-apis"
+title: "10.1.3 Consuming External REST APIs"
+sidebar_label: "10.1.3 Consuming External REST APIs"
+slug: "/part-03-python-development/10-python-for-apis-files-and-automation/10-1-building-apis-with-fastapi/10-1-3-consuming-external-rest-apis"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-10-s1-t3">
+
+When your Python service fetches GitHub issues, payment webhooks, or LLM endpoints, **`httpx`** is the modern replacement for legacy `requests`: it shares a clean Pythonic API while supporting both synchronous scripts and non-blocking `asyncio` (`httpx.AsyncClient`).
+
+## 1. Always Set Explicit Timeouts and Check Status Codes
+
+Install `httpx` (`pip install httpx` or `uv add httpx`). Notice two critical rules:
+1. **Always pass `timeout=...`**—a hung remote server with no timeout stalls your worker forever.
+2. **Always call `response.raise_for_status()`** so `4xx`/`5xx` HTTP errors raise `httpx.HTTPStatusError` instead of failing later when calling `.json()`.
+
+```python
+import httpx
+
+def fetch_github_repo(owner: str, repo: str) -> dict:
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    with httpx.Client(timeout=5.0, headers={"Accept": "application/vnd.github+json"}) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return {
+            "full_name": data["full_name"],
+            "stars": data["stargazers_count"],
+        }
+```
+
+## 2. Async Integration Inside FastAPI + Pagination
+
+Reuse one `httpx.AsyncClient` inside `async def` endpoints (`09.3.3`). Here is a complete, runnable cursor-less paginator — the same shape as the tested reference lab (`examples/python-async-lab/`):
+
+```python
+import httpx
+
+async def fetch_all_repos(org: str, *, per_page: int = 50, max_pages: int = 10) -> list[dict]:
+    items: list[dict] = []
+    async with httpx.AsyncClient(timeout=10.0, headers={"Accept": "application/vnd.github+json"}) as client:
+        page = 1
+        while page <= max_pages:
+            resp = await client.get(
+                f"https://api.github.com/orgs/{org}/repos",
+                params={"page": page, "per_page": per_page},
+            )
+            resp.raise_for_status()          # 4xx/5xx raise httpx.HTTPStatusError
+            batch = resp.json()              # GitHub returns a JSON array
+            if not isinstance(batch, list):
+                raise ValueError(f"expected list from API, got {type(batch).__name__}")
+            items.extend(batch)
+            if len(batch) < per_page:        # short page ⇒ last page
+                return items
+            page += 1
+        raise RuntimeError(f"pagination exceeded max_pages={max_pages} — refusing to loop forever")
+```
+
+Why this shape:
+
+- **`max_pages` cap** — a buggy or hostile upstream can keep returning full pages forever; an unbounded `while True` turns your worker into the very denial of service you are trying to read about.
+- **Short-page termination** — `len(batch) < per_page` is the honest "we're done" signal; don't infer it from counts you didn't get.
+- **One client** — connection reuse matters; a new client per page is the TCP/TLS handshake tax on every page.
+- **Response validation** — `isinstance(batch, list)` before trusting it; an error payload (`{"message": "..."}`) from a broken API is not a page of repos.
+
+Cursor-style variants (`?cursor=…` / `next_cursor` in a JSON envelope) follow the same discipline with one extra twist: the next URL is only known *after* parsing the current page — see `examples/python-async-lab/src/asyncolabs/pagination.py` for the tested version with retry + validation. For `429` handling, pair this with the bounded-retry pattern from `10.2.3`.
+
+## Mastery Checklist
+
+- [ ] Uses `httpx.Client` (scripts) or `httpx.AsyncClient` (FastAPI/asyncio) with explicit `timeout`.
+- [ ] Calls `response.raise_for_status()` and handles `httpx.RequestError` / `httpx.HTTPStatusError` explicitly.
+
+</BookNodePage>

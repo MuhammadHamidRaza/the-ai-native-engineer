@@ -1,0 +1,65 @@
+---
+id: "39-6-1-cold-email"
+title: "39.6.1 Cold Email"
+sidebar_label: "39.6.1 Cold Email"
+slug: "/part-09-career-client-work-products-and-startups/39-client-discovery-freelancing-and-client-acquisition/39-6-direct-client-hunting/39-6-1-cold-email"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-39-s6-t1">
+
+Cold email is the most-hated and most-effective outbound channel engineers refuse to learn. Done right it produces the highest-value technical contracts of any channel; done wrong, it's spam. The difference is research, relevance, and restraint.
+
+## 1. The Anatomy of an Email That Gets Replies
+
+Subject (5 words max) → who/what (1 line) → specific observation (1 line) → one low-stakes ask → signature. That's the whole email. 80–120 words max.
+
+```text
+Subject: Your checkout latency post — one question
+
+Hi Priya — I saw the postmortem on your checkout 500ms regression after the
+May deploy. The root cause (double Redis read in middleware) is the exact
+pattern I fixed at shopcore.dev with one await cache-lookup-and-memo.
+
+Not pitching — curious how you decided between middleware vs controller-level.
+
+Hamid — full-stack/AI engineer, shopcore.dev
+```
+
+Notice: **specific** (mentions their real artifact), **one ask** (curiosity, not money), **no links**, **no attachments**.
+
+## 2. The Research Layer (Before Writing Anything)
+
+- Company engineering blog / postmortems — your hook.
+- Job postings — where the pain lives ("hiring platform engineer" = scaling pain).
+- Funding/press — new money = budget and urgency.
+- Tech stack from Wappalyzer/BuiltWith — name their tools.
+
+**Never** send a message you can't personalize this way. Templated volume is detectable and burns domains.
+
+## 3. Deliverability Hygiene
+
+- Dedicated sending domain (or subdomain) with SPF/DKIM/DMARC set.
+- 20–30 sends/day per mailbox max.
+- Warm the mailbox 2 weeks before campaigns.
+- No links, no images in first-touch.
+- Honor opt-out instantly; log every unsubscribe.
+
+## 4. Follow-Up That Doesn't Nag
+
+Sequence: Day 0 → Day 4 → Day 9 → stop. Each touch adds value or brevity:
+Day 4: "Bumping in case it got buried — did the May deploy pattern change since?"
+Day 9: "No reply needed — leaving this for whenever your Q3 planning happens."
+
+## 5. KPIs
+
+20 personalized emails/day → 20–30% open, 10–15% reply → 3–5 calls/week. Below 5% reply? Rewrite the subject/hook, not more volume.
+
+## 6. Exercise
+
+Write 10 emails to 10 real companies in your niche. Run the filter: can you state the hook out loud in one sentence? If not, the email dies. Send 3, track replies, iterate.
+
+**Acceptance criteria.** Your emails: ≤120 words, one ask, zero links/attachments, personalized hook from their actual public artifact. Track open/reply rates honestly.
+
+</BookNodePage>

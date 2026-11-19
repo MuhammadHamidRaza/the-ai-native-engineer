@@ -1,0 +1,149 @@
+---
+id: "21-4-1-consistency-models-transactions-and-cap-trade-offs"
+title: "21.4.1 Consistency Models, Transactions and CAP Trade-offs"
+sidebar_label: "21.4.1 Consistency Models, Transactions and CAP Trade-offs"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-4-distributed-systems-resilience/21-4-1-consistency-models-transactions-and-cap-trade-offs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s4-t1">
+
+Every "he said the money left but I never got the order" report is a consistency bug. Consistency is not a database feature you toggle; it is a spectrum you place each fact on, with eyes open — and ShopCore needs different points on that spectrum for different facts. This lesson draws the spectrum, states the guarantees you can actually buy, and walks the two failure cases that show up in production: the write-skew stock race and the partition nobody planned for.
+
+## 1. The Spectrum — Strong to Eventual
+
+| Model | Guarantee | ShopCore fact | Why |
+| :-- | :-- | :-- | :-- |
+| Strong / linearizable | Every read sees the latest write | Payment capture record; stock reservation | Money and last-unit stock cannot be eventually true |
+| Read-your-writes | You see your own writes | Order confirmation right after checkout | Customer refresh must show their order |
+| Monotonic reads | Reads never go backwards in time | Order-status timeline | "Shipped" must not flicker back to "Processing" |
+| Causal | Cause precedes effect across sessions | order.paid → email "your order" | Not a letter before the order exists |
+| Eventual | Replicas converge, whenever | Product cache (60 s TTL); search index | Stale catalog prices are survivable; stale *money* is not |
+
+Strong consistency costs latency and availability; eventual consistency costs reasoning. Spend strong where money or stock lives; spend eventual where a stale price is merely embarrassing.
+
+## 2. ACID vs BASE in ShopCore Contexts
+
+**ACID** (Postgres, single node): a checkout transaction — INSERT `orders`, INSERT `order_items`, UPDATE `inventory` — either all happen or none; readers see pre- or post-, never half; constraints hold at commit; committed data survives crashes (with proper `wal_level` and backups, see [12.3.2](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores)). Non-negotiable for: payment capture ↔ order creation linkage, stock decrement.
+
+**BASE** (Basically Available, Soft state, Eventually consistent): the Redis catalog cache and the search index can lag, restart, evict, lie for 60 seconds — reads degrade to Postgres (slow but true). BASE is fine for reads nobody refunds money over.
+
+ShopCore ruling: **checkout is ACID; back-office and browse paths are BASE.** If a proposed design weakens either side silently, reject it in review.
+
+## 3. CAP — the Triangle, With Real Incidents
+
+Under a network partition, you choose availability (A) or consistency (C):
+
+- **Redis under partition** → AP-leaning. Sentinel/cluster may keep serving a replica whose data lags. ShopCore decision: fine for cache and rate limiting (fail-open reads), unacceptable for inventory truth — inventory claims require Postgres (CP-ish: Postgres synchronous replication or accept brief unavailability).
+- **etcd (your Kubernetes control plane) under partition** → CP. It refuses writes without quorum. Correct for config; you cannot run "eventually consistent" leader election.
+- **ShopCore API during Neon failover** → choose C for checkout (fail with 503 + `Retry-After` rather than double-charge or oversell), choose A for catalog (serve cached). CAP is per-path, not per-system.
+
+Pattern: P is not optional in distributed systems — the partition *will* happen. The engineering is deciding, per operation, which side you take and what the user sees meanwhile.
+
+## 4. Transactions — Single-Node vs Distributed
+
+Single Postgres node: full ACID, including `SELECT ... FOR UPDATE` — the tool that saves your last unit (Section 6). Across services? None of the following happen in ShopCore: XA/2PC across Stripe + PG + courier API. Reasons: no coordinator survives all participants; locks would be held across the public internet; HTTP participants don't prepare. The distributed replacement is the **saga** (21.3.3) — local transactions chained with idempotent compensations, with the outbox guaranteeing the trail. "Distributed transaction" in practice means "multi-step local transactions + reconciliation reports + alarms when they diverge".
+
+## 5. Why 2PC Is Rare in Practice
+
+- Participants must support prepare/commit — Stripe does not; there is no `PREPARE TRANSACTION 'ch_x'` in the Stripe API.
+- Coordinator is a single point of failure and a latency floor.
+- Locks held across phases multiply contention into outages.
+- Recovery after coordinator crash requires operator intervention — at 3 a.m.
+
+The 12 seconds you spend avoiding 2PC here beats any postmortem.
+
+## 6. Concurrent Stock Decrements — and the Real Write Skew
+
+Two different anomalies get confused here, and they have different fixes. Know both precisely; they both ship in real checkout systems.
+
+### 6a. Same-row concurrent decrement (the ShopCore stock race)
+
+Both transactions see `stock = 1`, both decide "enough", both decrement the **same row**:
+
+```text
+T1: BEGIN                 T2: BEGIN
+T1: SELECT stock FROM inventory WHERE sku='SKU-1001';   -- 1
+                              T2: SELECT stock FROM inventory WHERE sku='SKU-1001';   -- 1
+T1: check: 1 >= 1 → reserve  T2: check: 1 >= 1 → reserve
+T1: UPDATE inventory SET stock = stock - 1 WHERE sku='SKU-1001';
+                              T2: UPDATE inventory SET stock = stock - 1 WHERE sku='SKU-1001';
+```
+
+What Postgres actually does with that interleaving, by isolation level:
+
+- **`READ COMMITTED` (default):** T2's `UPDATE` waits for T1, then **re-evaluates the `WHERE` against the newest row version**. With `stock >= 1` in the predicate, zero rows match on the post-T1 row (`stock = 0`) → no decrement, sold-out path. Safe.
+- **`REPEATABLE READ` (snapshot) or `SERIALIZABLE`:** T2 waits, then PostgreSQL raises `ERROR: could not serialize access due to concurrent update` (SQLSTATE `40001`) — the row changed after T2's snapshot. The transaction must be **retried as a whole**; serialization failures are not locks to wait out.
+
+Either way, the fix that removes the gap entirely is a single statement (no read-then-write):
+
+```sql
+-- 1) Single-statement atomic decrement (preferred: no read-then-write gap)
+UPDATE inventory SET stock = stock - 1
+WHERE sku = 'SKU-1001' AND stock >= 1
+RETURNING stock;            -- zero rows => sold out; abort & refund
+```
+
+If you *must* inspect before deciding (e.g., branch on stock tier), take the row lock explicitly:
+
+```sql
+-- 2) Pessimistic row lock when you must inspect first
+SELECT stock FROM inventory WHERE sku = 'SKU-1001' FOR UPDATE;
+```
+
+Back-stop both with a database CHECK: `ALTER TABLE inventory ADD CONSTRAINT stock_nonneg CHECK (stock >= 0)` — the last line of defense, enforced where no application bug can bypass it. The same pattern covers refund ≤ captured and any read-check-write invariant: find them all in `docs/invariants.md`.
+
+### 6b. True write skew (disjoint rows, both commit)
+
+Write skew is the predicate-based anomaly snapshot isolation genuinely **cannot** detect: two transactions read the *same predicate*, update **different rows**, and both satisfy the invariant locally — but jointly they destroy it. The canonical form:
+
+```text
+Invariant: "every store keeps at least one active admin."
+T1: SELECT count(*) FROM admins WHERE store_id=7 AND active;  -- 2 admins ✓
+T2: SELECT count(*) FROM admins WHERE store_id=7 AND active;  -- 2 admins ✓
+T1: UPDATE admins SET active=false WHERE id=11 AND store_id=7;  -- commits
+T2: UPDATE admins SET active=false WHERE id=12 AND store_id=7;  -- commits
+-- result: 0 active admins. No error. No lock conflict. Both decremented DIFFERENT rows.
+```
+
+Note what did *not* happen: no `40001`, no blocking, no CHECK violation — because t1 and t2 wrote disjoint rows. PostgreSQL has no statement to make it notice. Fixes, in order of preference:
+
+1. **Materialize the invariant as one mutable row** (e.g., `store_admin_count`) and enforce with the same atomic-decrement pattern as 6a.
+2. **Lock the witness rows**: `SELECT ... FOR UPDATE` on both admin rows (or `pg_advisory_xact_lock(store_id)`), so the second transaction sees empty-count under the lock.
+3. **`SERIALIZABLE` isolation** — the only level that detects predicate-based skew (PostgreSQL SSI), at the cost of `40001`s you must retry.
+
+If you can atomically decrement a counter, prefer (1); if the invariant is multi-row and rare, (2); if invariants are many and you can tolerate retries, (3).
+
+## 7. Troubleshooting
+
+| Symptom | Consistency disease | Fix |
+| :-- | :-- | :-- |
+| Customer charged twice, one order | Writes not read-your-writes scoped | Same-transaction order+charge linkage; idempotency key |
+| `stock` went negative | Same-row concurrent decrement (§6a) | Atomic decrement + CHECK (6a) |
+| Store with zero active admins | True write skew — disjoint rows (§6b) | Witness-row lock / `pg_advisory_xact_lock` / `SERIALIZABLE` (6b) |
+| Order status flips shipped→processing | Replica lag / non-monotonic reads | Read own writes from primary or session stickiness |
+| Double refund after retry | Distributed compensation non-idempotent | `refund_total <= paid` aggregate invariant + provider idempotency |
+| Catalog shows sold-out item as available | BASE cache window accepted | Add `stock > 0` badge hint + atomic check at checkout (cache is advisory only) |
+
+## 8. Practice
+
+**Guided exercise.** Reproduce both — locally, two `psql` sessions each:
+
+1. *Same-row race:* `BEGIN ISOLATION LEVEL REPEATABLE READ`, both `SELECT stock FROM inventory WHERE sku='SKU-1001'`, both `UPDATE ... SET stock = stock - 1`. Under `READ COMMITTED`, the second `UPDATE` re-evaluates the `WHERE` and matches zero rows (sold out). Under `REPEATABLE READ`, the second raises `ERROR: could not serialize access due to concurrent update` (`SQLSTATE 40001`) — retry the whole transaction and it succeeds. Then apply fix (1) and rerun — no `40001`s, no negatives.
+2. *True write skew:* seed two active admins (`BEGIN ISOLATION LEVEL REPEATABLE READ`), both `SELECT count(*) FROM admins WHERE store_id=7 AND active;` (both see 2), each `UPDATE admins SET active=false WHERE id = <different admin>;` — **both COMMIT, zero admins remain, no error raised**. Then fix it with `pg_advisory_xact_lock(store_id)` in both transactions and rerun — the second sees 1 admin and refuses.
+
+**Independent exercise.** Classify every ShopCore table from [15.1.2](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-1-foundations-and-data-layer/15-1-2-database-design-and-migrations) into strong vs eventual consistency, with a one-line justification each. Add the result to `docs/consistency.md`.
+
+**Challenge.** Design the reconciler for "Stripe captured but no order row": query window, join strategy, resolution action (auto-refund vs manual queue), alert threshold, and the metric that proves it (reconciliation gap rate under 1 in 10,000).
+
+**Assessment checklist**
+
+- [ ] I can place each ShopCore read/write on the spectrum and defend it.
+- [ ] I can explain read-your-writes, monotonic and causal consistency with examples.
+- [ ] I can state what CAP gives/takes under Redis, etcd and Neon partitions — per path.
+- [ ] I can write the same-row concurrent-decrement repro (and what 40001 means under REPEATABLE READ), and the atomic-decrement fix.
+- [ ] I can write the true write-skew repro (disjoint rows, both commit), and the counter/lock/SERIALIZABLE fixes.
+- [ ] I can say why 2PC is not an option for ShopCore, and what replaces it.
+
+</BookNodePage>

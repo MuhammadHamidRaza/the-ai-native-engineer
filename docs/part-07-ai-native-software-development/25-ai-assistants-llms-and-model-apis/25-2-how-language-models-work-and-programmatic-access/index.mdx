@@ -1,0 +1,56 @@
+---
+id: "index"
+title: "25.2 How LLMs Work & Programmatic Access"
+sidebar_label: "25.2 How LLMs Work & Programmatic Access"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-2-how-language-models-work-and-programmatic-access"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s2">
+
+Section 25.1 made you fluent in the *products*. This section makes you fluent in the **machine** — because the moment you stop pasting into a chat window and start calling an API from your own code (or paying for tokens), the marketing language runs out and the engineering begins.
+
+Everything here is provider-agnostic thinking with OpenAI, Anthropic and Google concretely at hand. You will know what a token is, why a long context costs and degrades, how to spend fewer tokens for the same intelligence, how to make a model emit machine-readable JSON that never lies about its shape, and how to stream output and give the model tools it can actually use.
+
+## What This Section Covers
+
+- **25.2.1 Tokens, Context Windows and Sampling** — what a token is, how to count them (tiktoken + a live API call with `usage`), context windows in 2026, attention cost, temperature / top_p / seed, and a glossary you will actually use.
+- **25.2.2 Model Capabilities, Latency and Cost Trade-offs** — the capability ↔ cost ↔ latency triangle; frontier vs mid vs small tiers; time-to-first-token vs total latency; API access shape and real curl examples; prompt caching and Batch API (50% off, indicative); fine-tune vs prompt vs RAG.
+- **25.2.3 Structured Outputs and JSON Schemas** — schema enforcement on OpenAI, Anthropic and Gemini; why some enforce server-side and some don't; TypeScript types from schema with zod; the retry-on-invalid-output pattern; when schemas beat prose.
+- **25.2.4 Streaming, Tool Calling and Multimodal Inputs** — server-sent events (SSE); the tool-calling loop (model → your code → result → final answer); a complete TypeScript example against a current, officially documented API; image input; audio/video pointers; honest limitations.
+
+## Learning Outcomes
+
+By the end of this section you will be able to:
+
+- Explain tokens and context windows accurately enough to predict API cost and truncation behavior.
+- Estimate the cost of an API call before running it, and halve it with caching, batch or a smaller model.
+- Pick a model tier by workload instead of by leaderboard.
+- Make an API call return JSON that passes a zod schema on the first try — and recover cleanly when it doesn't.
+- Build a streaming chat UI skeleton and a working tool-calling loop you understand line by line.
+- Read an API reference and port this knowledge to whichever provider your stack uses.
+
+## How Much of This Is "Real" vs Illustrative
+
+Every endpoint, header and field shown here was checked against official documentation in **November 2026**: OpenAI's Responses API (the recommended primitive; Chat Completions still supported), Anthropic's Messages API, and Google's Gemini API (aistudio.google.com/docs). Where a name or price could change, it is annotated inline or linked to the official page. No field names were invented. Where a claim could not be verified, it is written as **CLAIM TO VERIFY** — and you should treat it that way.
+
+## Hours and Prerequisites
+
+Budget 8–9 hours (Chapter 25 total is 16). You need Node.js ≥ 18 and npm installed (Part 01 territory), a code editor, and at least one API key — OpenAI, Anthropic or Google all offer free or low-cost ways in (Gemini's free tier is genuinely free for Flash-class models; OpenAI and Anthropic sell prepaid credits). No ML theory is required beyond high-school algebra and honesty about what you don't know.
+
+Windows-first: the shell examples work on Windows PowerShell and on bash/zsh/WSL2; where they differ, both are shown. API responses depend on your account's model access — if a model ID 404s for you, your project may not have it enabled; check the provider's model list rather than assuming the docs owe you access.
+
+## What You Will Be Able to Do on Day 1
+
+- Cost out a chatbot feature for your product before writing code, within 2× accuracy.
+- Wire `POST /v1/responses` (or the equivalent) from Node with curl or fetch and read `usage` off the response.
+- Force JSON output that zod can validate, with a retry wrapper you trust.
+- Stream tokens to a terminal and see them appear as they are generated.
+- Give the model a `get_weather`-style tool and watch the three-message tool-calling loop work.
+
+## A Warning About Model Names
+
+Model SKUs in this section were accurate in November 2026 and will age. Examples use `gpt-6-astra`, `claude-sonnet-5-5` / `claude-opus-5-5`, and `gemini-3.8-flash` / `gemini-4-argon` as current flagships/efficient frontier at writing time. When in doubt, never guess — open the provider's model list (developers.openai.com/api/docs/models, platform.claude.com/docs/en/models/overview, aistudio.google.com/docs/models) and pick the current name.
+
+</BookNodePage>

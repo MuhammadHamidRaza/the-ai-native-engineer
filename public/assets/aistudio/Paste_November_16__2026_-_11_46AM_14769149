@@ -1,0 +1,2010 @@
+# MASTER PROMPT — COMPLETE CURRICULUM AUDIT, REPAIR, EXPANSION & REBUILD
+## The AI-Native Engineer — Think. Build. Solve. Ship.
+### Parts 00, 01, 02, 03, 04 and 05
+
+You are acting as a senior computer science educator, university-level curriculum designer, senior full-stack engineer, Python engineer, database architect, DevOps engineer, technical author, and strict educational quality auditor.
+
+Your responsibility is to audit, correct, improve, expand, and reconstruct the existing content of Parts 00 through 05 of this book.
+
+This is NOT a request to simply add more words.
+
+The existing content has serious educational problems. Some pages have headings that promise to teach a topic but do not actually teach it. Some pages repeat generic explanations and identical code examples under different titles. Important beginner instructions, software installation steps, environment configuration, project creation, execution commands, expected outputs, and troubleshooting instructions are missing.
+
+The book must become a genuinely complete learning resource that takes an absolute beginner from zero knowledge to the ability to independently build, test, deploy, debug, and maintain real software.
+
+A beginner must never finish reading a lesson and wonder:
+
+- Where do I download this software?
+- Which version should I install?
+- How do I install it on Windows?
+- How do I check whether it installed correctly?
+- Which terminal should I open?
+- Which directory should I use?
+- What command should I run?
+- Which files should I create?
+- What code should go inside each file?
+- How do I start the application?
+- How do I open it in my browser?
+- What output should I see?
+- What if I get an error?
+- How do I verify that it actually works?
+- What should I learn or build next?
+
+The book must answer these questions wherever they are relevant.
+
+---
+
+# 1. FIRST: INSPECT THE REAL PROJECT BEFORE EDITING
+
+Do not start writing immediately.
+
+First inspect the actual repository and understand its structure.
+
+Mandatory inspection:
+
+1. Open `src/data/bookData.ts`.
+2. Identify the actual canonical curriculum structure.
+3. Inspect the Docusaurus configuration and sidebar/navigation system.
+4. Inspect all existing MDX files for Parts 00–05.
+5. Inspect the current page count, filenames, IDs, slugs, front matter, links, and directory hierarchy.
+6. Inspect the current content of every page.
+7. Identify duplicate content, missing explanations, incorrect examples, shallow pages, broken links, missing prerequisites, and missing practical instructions.
+8. Check how the book currently renders code blocks, admonitions, diagrams, tables, exercises, and navigation.
+
+IMPORTANT:
+
+`src/data/bookData.ts` and the actual repository structure are the sources of truth for the current curriculum.
+
+The curriculum supplied in this prompt is a reference for identifying expected coverage, not permission to blindly overwrite the repository's canonical structure.
+
+There have been multiple descriptions of the Part 00 curriculum. Compare them against the actual source files and canonical data. Do not silently remove valid existing topics.
+
+Do not invent chapter titles, page IDs, URLs, or file paths.
+
+Preserve existing valid content and improve it.
+
+---
+
+# 2. THE MAIN EDUCATIONAL STANDARD
+
+Write for two types of learners:
+
+**Learner A — Absolute Beginner**
+
+Someone who has never programmed before, has never installed Python or Node.js, has never opened a terminal, and does not know what a project folder, package manager, runtime, database, server, or deployment means.
+
+**Learner B — Developing Engineer**
+
+Someone who understands programming basics but needs professional-level implementation, architecture, testing, security, performance, and deployment skills.
+
+Every relevant technical topic must support both learners.
+
+Use a layered teaching approach:
+
+1. Explain the concept in easy language.
+2. Explain why it exists and what problem it solves.
+3. Explain how it works internally.
+4. Show a small beginner example.
+5. Explain the example line by line.
+6. Show how to create the actual project and files.
+7. Show how to run it.
+8. Show expected output.
+9. Show common errors and how to fix them.
+10. Build a realistic professional example.
+11. Explain testing and verification.
+12. Explain security, performance, and engineering trade-offs where relevant.
+13. Give exercises and a practical assignment.
+14. Provide a mastery checklist.
+
+Never assume a beginner already knows a prerequisite that has not been taught.
+
+When a concept depends on another concept, explain the prerequisite or link to its actual earlier lesson.
+
+Do not replace explanations with phrases such as:
+
+- Understand the concept.
+- Learn the fundamentals.
+- Use industry best practices.
+- Implement production-ready code.
+- Write comprehensive tests.
+- Configure your environment.
+
+Explain exactly how to do these things.
+
+---
+
+# 3. NON-NEGOTIABLE CONTENT QUALITY RULES
+
+## Rule A — Teach the actual subject
+
+If a page is titled "Classes, Dataclasses and Inheritance", it must genuinely teach:
+
+- What a class is.
+- Why classes exist.
+- How objects are created.
+- Constructors and `__init__`.
+- Instance attributes and class attributes.
+- Instance methods, class methods, and static methods.
+- Encapsulation.
+- Inheritance.
+- Method overriding.
+- Polymorphism.
+- Abstraction.
+- Abstract base classes.
+- Composition versus inheritance.
+- Dataclasses.
+- When to use each approach.
+- Complete executable examples.
+- Testing and common mistakes.
+
+Do not write a generic `ProductionEngine` example and pretend it teaches every topic.
+
+## Rule B — No copy-paste repetition
+
+Every topic must have examples appropriate to its own subject.
+
+For example:
+
+- Functions lesson: functions, parameters, return values, scope, closures, decorators, context managers.
+- Classes lesson: objects, constructors, inheritance, polymorphism, abstraction, composition, dataclasses.
+- Type hints lesson: annotations, unions, generics, protocols, type narrowing, Pydantic validation.
+
+Do not repeat the same example under different headings just to increase word count.
+
+You may reuse a continuing project when it helps learning, but each lesson must introduce and explain a new concept.
+
+## Rule C — No false production claims
+
+Never label a tiny demonstration "enterprise-grade", "production-ready", or "complete" when it is not.
+
+Clearly distinguish:
+
+- Beginner demonstration.
+- Learning exercise.
+- Realistic application example.
+- Production-oriented implementation.
+
+Explain what is still missing before a demonstration could safely be used in production.
+
+## Rule D — Correctness before length
+
+Do not invent APIs, flags, package names, commands, configuration properties, framework behavior, or version numbers.
+
+Research official documentation and verify current stable syntax.
+
+Clearly identify stable, experimental, deprecated, and framework-specific features.
+
+Do not blindly teach old tutorials or outdated commands.
+
+## Rule E — Do not omit the practical steps
+
+A learner must be able to reproduce the lesson on a real computer.
+
+Include installation, configuration, execution, verification, and troubleshooting wherever applicable.
+
+---
+
+# 4. CREATE A COMPLETE BEGINNER DEVELOPMENT ENVIRONMENT GUIDE
+
+The learner should not need to search elsewhere just to begin programming.
+
+Part 00 and Part 01 must establish the development environment, while the relevant technology lessons must explain their own installations and project setups in greater detail.
+
+Assume Windows 10/11 as the primary beginner environment. Where appropriate, include macOS and Linux alternatives.
+
+Cover:
+
+## Computer and operating system basics
+
+- Minimum hardware and storage considerations.
+- Checking Windows version and system architecture.
+- Understanding files, extensions, folders, paths, and permissions.
+- Installing software safely.
+- Understanding installers and PATH.
+- Restarting terminals after environment changes.
+- Understanding administrator permissions.
+- Installing and using Windows Terminal or PowerShell.
+- Basic command-line navigation.
+- Creating, renaming, moving, and deleting project folders.
+- Understanding absolute and relative paths.
+
+## Code editor
+
+Teach:
+
+- Downloading Visual Studio Code from its official website.
+- Installing it on Windows.
+- Opening a project folder.
+- Creating and saving files.
+- Installing extensions.
+- Integrated terminal.
+- Selecting interpreters.
+- Formatting code.
+- Debugging.
+- Using the editor safely.
+
+Explain which extensions are useful and which are optional.
+
+## Git and GitHub
+
+Teach the complete process:
+
+- Download and install Git.
+- Verify installation.
+- Configure username and email.
+- Create a local repository.
+- Stage files.
+- Commit changes.
+- Create a GitHub account.
+- Create a remote repository.
+- Connect local and remote repositories.
+- Push and pull.
+- Clone a repository.
+- Use branches.
+- Resolve merge conflicts.
+- Use `.gitignore`.
+- Avoid committing secrets.
+- Create a useful README.
+
+Include the actual commands and explain each command.
+
+---
+
+# 5. PART 00 — COMPLETE LEARNING FOUNDATION
+
+Audit every existing Part 00 page.
+
+Do not assume that an introductory chapter is complete just because it contains a learning roadmap.
+
+A beginner needs an actual onboarding experience.
+
+Check that the existing content sufficiently explains:
+
+- What this book teaches.
+- Who should study it.
+- Required prerequisites.
+- How the entire curriculum fits together.
+- How to study technical lessons.
+- How to read and run code examples.
+- How to practice without copying blindly.
+- How to use AI responsibly.
+- How to verify AI-generated answers.
+- How to debug.
+- How to build a portfolio.
+- How to track progress.
+- How to approach projects.
+- How to estimate time and manage learning.
+
+Add missing explanations or pages when necessary.
+
+The development environment section must be genuinely useful.
+
+Explain the difference between:
+
+- Operating system.
+- Terminal.
+- Shell.
+- Code editor.
+- Runtime.
+- Compiler.
+- Interpreter.
+- Package manager.
+- Framework.
+- Library.
+- Local development server.
+- Hosting.
+- Cloud service.
+
+A beginner should understand how these pieces work together.
+
+Include a complete first-day setup checklist and a small first programming exercise.
+
+Do not make Part 00 unnecessarily theoretical. It must prepare the learner to begin Part 01 successfully.
+
+---
+
+# 6. PART 01 — FOUNDATIONS
+
+Audit Chapters 01–03.
+
+The current topics are:
+
+Chapter 01 — How Computers, Software & the Internet Work
+
+Chapter 02 — Critical Thinking & Problem Solving
+
+Chapter 03 — Developer Tools, Git, Debugging & AI Learning
+
+Ensure that every topic is explained from first principles.
+
+Check for missing beginner knowledge, including:
+
+- CPU, RAM, storage, GPU, and motherboard.
+- Bits, bytes, binary, decimal, hexadecimal.
+- How files are stored.
+- Processes and threads at an introductory level.
+- Operating system responsibilities.
+- Environment variables and PATH.
+- Terminals and shells.
+- Networking fundamentals.
+- IP addresses and ports.
+- DNS.
+- HTTP requests and responses.
+- HTTPS and TLS at a conceptual level.
+- Browsers and servers.
+- URLs and domains.
+- JSON and data exchange.
+- Basic command-line workflows.
+- Git repository lifecycle.
+- Git branches and collaboration.
+- Debugging and error messages.
+
+Do not introduce advanced details without explaining their foundations.
+
+For networking examples, show actual request/response structures and practical commands such as `ping`, `ipconfig`, and appropriate DNS inspection commands where supported.
+
+Teach how to read errors rather than simply saying "debug your code".
+
+---
+
+# 7. PART 02 — JAVASCRIPT & FRONTEND DEVELOPMENT
+
+This part must take the learner from basic programming knowledge to building working modern frontend applications.
+
+Audit every page of Chapters 04–08.
+
+## Chapter 04 — JavaScript Fundamentals
+
+Ensure coverage of:
+
+- Installing Node.js using the official recommended method.
+- Understanding Node.js and npm.
+- Verifying `node` and `npm`.
+- Running the first JavaScript file.
+- Using the browser console.
+- Using Node.js for scripts.
+- Variables and data types.
+- Operators and type coercion.
+- Conditions and loops.
+- Functions and scope.
+- Closures.
+- Objects and prototypes.
+- Arrays and modern collection types.
+- Destructuring and spread/rest.
+- Error handling.
+- Modules.
+- Promises.
+- Async/await.
+- Event loop.
+- Microtasks and macrotasks.
+- Fetch API.
+- JSON.
+- Debugging.
+- Testing basics.
+
+Include runnable examples and output.
+
+## Chapter 05 — TypeScript
+
+Teach:
+
+- Why TypeScript exists.
+- Installing and using TypeScript.
+- Creating a project.
+- `tsconfig.json`.
+- Compiling TypeScript.
+- Running the compiled JavaScript.
+- Type inference.
+- Primitive and complex types.
+- Interfaces.
+- Type aliases.
+- Union and intersection types.
+- Narrowing.
+- Type guards.
+- Generics.
+- Utility types.
+- Strict mode.
+- Typing API responses.
+- Runtime validation.
+- TypeScript limitations.
+
+Explain clearly that TypeScript types are generally erased during compilation and do not automatically validate incoming runtime data.
+
+Use actual examples.
+
+## Chapter 06 — HTML, CSS & Browser Development
+
+Teach:
+
+- HTML document creation.
+- Semantic elements.
+- Forms.
+- Inputs.
+- Buttons.
+- Tables.
+- Accessibility.
+- CSS installation is not required for plain CSS, but show how to create and connect stylesheets.
+- Selectors.
+- Specificity.
+- Box model.
+- Flexbox.
+- Grid.
+- Responsive design.
+- Media queries.
+- CSS variables.
+- Modern CSS features.
+- DOM.
+- Events.
+- Event delegation.
+- Browser storage.
+- Fetch.
+- DevTools.
+- Accessibility testing.
+
+Build a complete responsive page from files created step by step.
+
+## Chapter 07 — React Development
+
+THIS IS A CRITICAL AREA.
+
+Do not assume a beginner knows how to install React.
+
+Teach the complete process:
+
+1. What React is and why it exists.
+2. What problem React solves.
+3. What Node.js is and why React development needs a JavaScript runtime/tooling.
+4. How to download and install Node.js.
+5. How to verify installation.
+6. What npm is.
+7. What Vite is.
+8. How to create a React project using the current recommended stable setup.
+9. How to choose JavaScript or TypeScript.
+10. How to enter the project folder.
+11. How to install dependencies.
+12. How to start the development server.
+13. How to open the application in a browser.
+14. How to stop the server.
+15. How to restart the project later.
+16. How to create components.
+17. How to import and export components.
+18. How to use JSX.
+19. How props work.
+20. How state works.
+21. How events work.
+22. How hooks work.
+23. How effects work.
+24. How lists and keys work.
+25. How forms work.
+26. How to fetch API data.
+27. How to manage loading, error, and empty states.
+28. How to structure a React project.
+29. How to test components.
+30. How to build for production.
+31. How to preview a production build.
+32. How to troubleshoot common React errors.
+
+Include complete project structure and file-by-file code.
+
+Explain every important command.
+
+Do not simply show a component snippet and expect the learner to know where it belongs.
+
+Cover modern React practices using current official React documentation.
+
+Explain when a library is needed and when React itself is sufficient.
+
+## Chapter 08 — Next.js & Modern Web Applications
+
+THIS IS ANOTHER CRITICAL AREA.
+
+A beginner must learn how to create and run a Next.js application from zero.
+
+Include:
+
+- What Next.js is.
+- Why it exists.
+- React versus Next.js.
+- Node.js requirements.
+- Installing and verifying Node.js.
+- Creating a Next.js project using the current official recommended setup.
+- Understanding the setup options.
+- Choosing TypeScript or JavaScript.
+- App Router.
+- Tailwind CSS choices where applicable.
+- Project folder structure.
+- `package.json`.
+- `next.config` and other relevant configuration.
+- Installing dependencies.
+- Starting the development server.
+- Opening the app in a browser.
+- Stopping and restarting the server.
+- Creating routes.
+- Layouts.
+- Pages.
+- Navigation.
+- Server Components.
+- Client Components.
+- The `"use client"` directive.
+- Server-side rendering.
+- Static generation.
+- Streaming.
+- Caching.
+- Route Handlers.
+- Server Actions.
+- Forms and mutations.
+- Metadata and SEO.
+- Environment variables.
+- Production builds.
+- Starting the production server.
+- Debugging.
+- Deployment considerations.
+
+Explain every command and show actual project files.
+
+Do not confuse React development setup with Next.js development setup.
+
+Explain what runs in the browser and what runs on the server.
+
+---
+
+# 8. PART 03 — PYTHON DEVELOPMENT
+
+This part currently has serious educational problems and requires a particularly strict audit.
+
+The existing sample pages demonstrate the problem:
+
+- `09.2.1 Functions, Decorators and Context Managers`
+- `09.2.2 Classes, Dataclasses and Inheritance`
+- `09.2.3 Type Annotations and Pydantic Models`
+
+These pages contain similar generic `ProductionEngine` examples, repeated memory explanations, and generic claims. Their actual topics are not adequately taught.
+
+DO NOT preserve this pattern.
+
+Rewrite weak content with genuinely topic-specific instruction.
+
+## Chapter 09 — Python Fundamentals
+
+### A. Python installation and first project
+
+A beginner must learn:
+
+1. What Python is.
+2. What Python is used for.
+3. Python versus JavaScript.
+4. Python interpreter versus a Python script.
+5. How to download Python from the official website.
+6. Which current stable version to choose.
+7. What the Windows installation options mean.
+8. How PATH works.
+9. How to verify Python installation.
+10. How to use `python`, `py`, and the appropriate platform-specific commands.
+11. How to check the Python version.
+12. How to install and use VS Code's Python extension.
+13. How to create a `.py` file.
+14. How to run it.
+15. How to read output.
+16. How to identify and fix common installation errors.
+17. How to select a Python interpreter in VS Code.
+
+Also explain the relevant macOS and Linux differences.
+
+Never assume Python is already installed.
+
+### B. Python language fundamentals
+
+Teach properly:
+
+- Syntax and indentation.
+- Comments.
+- Variables.
+- Primitive data types.
+- Numeric operations.
+- Strings and formatting.
+- Boolean values.
+- None.
+- Input and output.
+- Conditions.
+- Loops.
+- Functions.
+- Lists.
+- Tuples.
+- Dictionaries.
+- Sets.
+- Slicing.
+- Comprehensions.
+- Iterators.
+- Generators.
+- Mutability.
+- References.
+- Scope.
+- Exceptions.
+- File handling.
+- Modules and imports.
+
+Every topic must have small executable examples and expected output.
+
+### C. Python OOP — ALL FOUR PILLARS ARE MANDATORY
+
+The four pillars must be taught correctly and explicitly:
+
+1. Encapsulation.
+2. Abstraction.
+3. Inheritance.
+4. Polymorphism.
+
+Do not omit any of them.
+
+Teach:
+
+- Why object-oriented programming exists.
+- Classes and objects.
+- Attributes and methods.
+- Constructors.
+- Instance attributes and class attributes.
+- Instance methods.
+- Class methods.
+- Static methods.
+- Encapsulation and Python conventions.
+- Properties and controlled access.
+- Abstraction.
+- Abstract base classes.
+- Inheritance.
+- Single and multiple inheritance where appropriate.
+- Method overriding.
+- Method resolution order.
+- Polymorphism.
+- Duck typing.
+- Composition versus inheritance.
+- Dataclasses.
+- Special methods.
+- When OOP is useful.
+- When functions or simpler data structures are better.
+
+For every pillar:
+
+- Explain the concept in simple language.
+- Explain why it exists.
+- Show a small example.
+- Explain the code line by line.
+- Show the output.
+- Show a realistic example.
+- Show common mistakes.
+- Give practice exercises.
+
+Create a comparison table for the four pillars.
+
+Do not claim that using classes alone means all four pillars have been implemented.
+
+### D. Functions, decorators and context managers
+
+Teach separately and deeply:
+
+- Function definition.
+- Parameters.
+- Positional and keyword arguments.
+- Default arguments.
+- `*args` and `**kwargs`.
+- Return values.
+- Scope.
+- Closures.
+- Lambda functions.
+- Higher-order functions.
+- Decorators.
+- `functools.wraps`.
+- Context managers.
+- `with` statement.
+- Implementing context managers using classes.
+- Implementing context managers using `contextlib`.
+
+Show actual examples, such as timing a function, logging calls, and safely managing a file.
+
+Do not mix all three subjects into one unexplained example.
+
+### E. Python typing and Pydantic
+
+Teach:
+
+- Type annotations.
+- Built-in types.
+- Optional values and unions.
+- Collection types.
+- Generics.
+- Type aliases.
+- Literal types.
+- TypedDict where useful.
+- Protocols.
+- Callable.
+- Type narrowing.
+- Static type checking.
+- Pyright or mypy.
+- What type hints do and do not guarantee.
+- Pydantic's purpose.
+- Pydantic models.
+- Field validation.
+- Required and optional fields.
+- Constraints.
+- Nested models.
+- Serialization.
+- Deserialization.
+- Validation errors.
+- Pydantic versus ordinary dataclasses.
+- Using Pydantic for API input.
+
+Provide complete executable examples.
+
+### F. Python packaging and environments
+
+Teach:
+
+- Why virtual environments exist.
+- Creating a project folder.
+- Creating a virtual environment.
+- Activating it on Windows PowerShell.
+- Activating it on Command Prompt where appropriate.
+- Activating it on macOS/Linux.
+- Deactivating it.
+- Installing packages with pip.
+- Understanding `requirements.txt`.
+- Understanding `pyproject.toml`.
+- Using `uv`.
+- Installing `uv` using its official current installation instructions.
+- Creating and syncing a project.
+- Dependency management.
+- Lockfiles.
+- Reproducible environments.
+- Project organization.
+- Imports and package structure.
+
+Do not just write `uv init` or `pip install`. Explain where and why to run each command.
+
+### G. Testing, logging and async
+
+Teach:
+
+- Exceptions and exception handling.
+- Custom exceptions.
+- Logging levels.
+- Configuring logging.
+- Unit testing.
+- pytest installation.
+- Writing the first test.
+- Running tests.
+- Test discovery.
+- Assertions.
+- Fixtures.
+- Parameterized tests.
+- Mocking basics.
+- Async functions.
+- Await.
+- Event loop.
+- Tasks.
+- Concurrent I/O.
+- When asyncio is useful.
+- When it is not useful.
+- Common async mistakes.
+
+Show actual commands and output.
+
+## Chapter 10 — Python for APIs, Files & Automation
+
+Teach FastAPI from zero:
+
+- What an API is.
+- HTTP fundamentals.
+- Installing FastAPI using the current recommended method.
+- Creating a virtual environment.
+- Installing required packages.
+- Creating the application file.
+- Running the development server using the current official recommended approach.
+- Opening API documentation.
+- GET and POST.
+- Path and query parameters.
+- Request bodies.
+- Pydantic validation.
+- Response models.
+- Error responses.
+- Dependency injection.
+- Background tasks.
+- Calling external APIs.
+- Authentication foundations.
+- Testing API endpoints.
+- Environment variables.
+- CORS where appropriate.
+- Production considerations.
+
+Also teach:
+
+- JSON.
+- CSV.
+- PDF processing.
+- File paths.
+- File reading and writing.
+- CLI tools.
+- Scheduling.
+- Retries.
+- Timeouts.
+- Error handling.
+- Logging.
+
+Build at least one complete, runnable automation project.
+
+---
+
+# 9. PART 04 — DATABASES, BACKEND & FULL-STACK DEVELOPMENT
+
+This part must transform a learner into someone who can design data systems and build complete backend-connected applications.
+
+Do not treat this part as a collection of definitions.
+
+## Chapter 11 — Database Design & Fundamentals
+
+Teach:
+
+- What data is.
+- What a database is.
+- Why databases exist.
+- Database versus file storage.
+- Relational and non-relational databases.
+- Tables, rows, and columns.
+- Records and documents.
+- Primary keys.
+- Foreign keys.
+- Unique constraints.
+- Relationships.
+- One-to-one.
+- One-to-many.
+- Many-to-many.
+- ER diagrams.
+- Cardinality.
+- Normalization.
+- Denormalization.
+- Indexes.
+- Transactions.
+- ACID.
+- Isolation.
+- Consistency.
+- Durability.
+- Database selection trade-offs.
+- Relational versus document databases.
+- Vector databases and their actual use cases.
+
+Use a consistent real-world example, such as an e-commerce application.
+
+Teach the learner to design a database before writing queries.
+
+## Chapter 12 — SQL, PostgreSQL & MongoDB
+
+### SQL
+
+Teach from zero:
+
+- What SQL is.
+- Installing or accessing PostgreSQL.
+- Database tools such as `psql` and a GUI client.
+- Creating a database.
+- Connecting to a database.
+- Creating tables.
+- Inserting data.
+- Selecting data.
+- Filtering.
+- Sorting.
+- Updating.
+- Deleting.
+- Constraints.
+- Joins.
+- Aggregations.
+- Grouping.
+- Subqueries.
+- CTEs.
+- Window functions.
+- Transactions.
+- Indexes.
+- Query plans and `EXPLAIN`.
+- Common SQL errors.
+
+Every query must use a known schema and sample data so the learner can run it.
+
+### PostgreSQL
+
+Teach:
+
+- Installation or managed database setup.
+- Local versus hosted PostgreSQL.
+- Users and roles.
+- Schemas.
+- Tables.
+- Constraints.
+- Migrations.
+- Backups.
+- Restore.
+- JSONB.
+- Full-text search.
+- pgvector.
+- Connection strings.
+- Connection pooling.
+- Security.
+- Practical database integration.
+
+Explain the distinction between installing PostgreSQL locally and using a hosted PostgreSQL provider.
+
+### MongoDB
+
+Teach:
+
+- What MongoDB is.
+- Installing or using MongoDB Atlas.
+- Local versus hosted MongoDB.
+- Creating a database and collection.
+- Documents.
+- CRUD.
+- Embedded versus referenced documents.
+- Data modeling.
+- Aggregation pipelines.
+- Indexes.
+- Schema validation.
+- Backups.
+- Authentication.
+- Connection strings.
+- Connecting from Node.js.
+- Common mistakes.
+
+Compare PostgreSQL and MongoDB with practical decision examples.
+
+Do not suggest that one database is always better.
+
+## Chapter 13 — Backend Engineering with Node.js
+
+Start with installation:
+
+- What Node.js is.
+- How to download and install it.
+- Selecting the appropriate current LTS release.
+- Verifying Node and npm.
+- Understanding npm and package scripts.
+- Creating a backend project.
+- Understanding `package.json`.
+- Installing dependencies.
+- Running a Node.js server.
+- Development versus production execution.
+
+Then teach:
+
+- HTTP.
+- REST.
+- Resource design.
+- Methods and status codes.
+- Express or another framework only with a clear explanation of the selected framework and why.
+- Routing.
+- Middleware.
+- Request validation.
+- Error handling.
+- Authentication.
+- Password hashing.
+- Sessions.
+- JWT.
+- Authorization.
+- RBAC.
+- OAuth.
+- Cookies.
+- CORS.
+- CSRF.
+- Rate limiting.
+- Queues.
+- Background jobs.
+- Idempotency.
+- Webhooks.
+- File uploads.
+- API documentation.
+- Testing.
+- Logging.
+- Security.
+
+Explain authentication and authorization as different concepts.
+
+Provide complete API examples, not disconnected snippets.
+
+## Chapter 14 — Git Teamwork, Testing & Code Review
+
+Teach realistic collaboration:
+
+- Branching.
+- Feature branches.
+- Pull requests.
+- Merge versus rebase.
+- Merge conflicts.
+- Commit conventions.
+- Code review.
+- Unit tests.
+- Integration tests.
+- End-to-end tests.
+- Test environments.
+- CI checks.
+- Linting.
+- Formatting.
+- Release hygiene.
+- Versioning.
+
+Explain what happens in an actual team workflow from task assignment to merged code.
+
+## Chapter 15 — Complete Full-Stack Application
+
+This chapter must be a practical capstone, not just an architecture description.
+
+Build a complete application using technologies already taught.
+
+Choose a coherent example such as a task management system, inventory application, or e-commerce application.
+
+Teach the whole development lifecycle:
+
+1. Requirements.
+2. User stories.
+3. Scope.
+4. Data model.
+5. Architecture.
+6. Frontend project setup.
+7. Backend project setup.
+8. Database setup.
+9. Environment configuration.
+10. API contracts.
+11. Authentication.
+12. Authorization.
+13. Frontend integration.
+14. Forms and validation.
+15. Loading states.
+16. Error states.
+17. Database operations.
+18. Testing.
+19. Security review.
+20. Performance review.
+21. Pre-production checklist.
+
+For every phase, show the exact files, code, commands, expected results, and verification steps.
+
+A learner should be able to build the project by following the chapter.
+
+Do not silently skip code or say "implement the remaining features yourself".
+
+---
+
+# 10. PART 05 — DEPLOYMENT, CLOUD & DEVOPS
+
+This part must teach the learner how to take an application from a local computer and make it available to real users on the internet.
+
+A beginner must understand what they are paying for, what they are configuring, and what happens when they deploy.
+
+Do not assume the learner already understands Linux, SSH, domains, DNS, Docker, cloud servers, or deployment.
+
+## Chapter 16 — Linux, Servers & Networking
+
+Teach:
+
+- What a server is.
+- Local computer versus remote server.
+- What Linux is.
+- Linux distributions.
+- Choosing an appropriate beginner environment.
+- Installing or accessing Linux using a safe beginner approach.
+- Windows WSL2 where appropriate.
+- Connecting to a remote Linux server.
+- SSH.
+- SSH keys.
+- Users and groups.
+- Filesystem.
+- Directories.
+- Permissions.
+- Ownership.
+- Processes.
+- Services.
+- systemd.
+- Logs.
+- Package installation.
+- Updates.
+- Environment variables.
+- Networking.
+- Ports.
+- Firewalls.
+- UFW where applicable.
+- SSH hardening.
+- Nginx.
+- Caddy.
+- Reverse proxies.
+- Troubleshooting.
+
+Every command must state:
+
+- Where to run it.
+- Whether it requires administrator or root privileges.
+- What it does.
+- What output or result to expect.
+- How to verify success.
+- How to recover from common errors.
+
+Never give dangerous server commands without explaining their consequences.
+
+## Chapter 17 — Domains, DNS, HTTPS & Hosting
+
+Teach the complete domain-to-website process.
+
+Explain:
+
+- What a domain is.
+- What a registrar is.
+- Domain registration.
+- Annual renewal.
+- Hosting versus deployment.
+- Domain cost versus hosting cost.
+- What the customer pays for.
+- Shared hosting.
+- VPS.
+- PaaS.
+- Serverless.
+- Static hosting.
+- Managed hosting.
+- DNS.
+- A records.
+- AAAA records.
+- CNAME.
+- TXT.
+- MX.
+- Nameservers.
+- DNS propagation.
+- TTL.
+- Subdomains.
+- Connecting a domain to hosting.
+- HTTPS.
+- TLS.
+- Certificates.
+- Automatic certificate renewal.
+- CDN.
+- Caching.
+- Static assets.
+- Bandwidth.
+- Storage.
+- Usage limits.
+- Pricing and unexpected costs.
+
+Give a complete practical example:
+
+A person owns a domain and wants to publish a website.
+
+Explain the process from purchasing the domain to configuring DNS, connecting hosting, enabling HTTPS, and verifying the live website.
+
+Include a realistic cost comparison framework, but do not invent current provider prices. Research and date any provider pricing included in the book.
+
+Make it clear that a domain registration and website hosting are separate services, although some providers bundle them.
+
+## Chapter 18 — Docker & Containerization
+
+Teach from zero:
+
+- What a container is.
+- Why containers exist.
+- Virtual machines versus containers.
+- Docker Engine.
+- Docker Desktop.
+- Installing Docker on Windows.
+- WSL2 requirements where applicable.
+- Verifying Docker installation.
+- Images.
+- Containers.
+- Dockerfiles.
+- Layers.
+- Build cache.
+- Ports.
+- Volumes.
+- Networks.
+- Environment variables.
+- `.dockerignore`.
+- Multi-stage builds.
+- Docker Compose.
+- Multiple services.
+- Container logs.
+- Container troubleshooting.
+- Image security.
+- Non-root users.
+- Secrets.
+- Health checks.
+- Resource limits.
+
+Show complete working examples.
+
+Build a multi-service development stack containing an application and database.
+
+Explain how to start, stop, inspect, rebuild, and clean up containers.
+
+Never ask beginners to copy commands without explaining what those commands do.
+
+## Chapter 19 — CI/CD & Cloud Fundamentals
+
+Teach:
+
+- What CI means.
+- What CD means.
+- Why automation exists.
+- GitHub Actions.
+- Workflow files.
+- Triggers.
+- Jobs.
+- Steps.
+- Runners.
+- Environment variables.
+- Secrets.
+- Build artifacts.
+- Automated tests.
+- Linting.
+- Deployment pipelines.
+- Cloud compute.
+- Virtual machines.
+- Object storage.
+- Managed databases.
+- IAM.
+- Permissions.
+- Networking.
+- Regions.
+- Availability zones.
+- Infrastructure as Code.
+- Cost management.
+- Monitoring.
+
+Include an actual GitHub Actions workflow that the learner can use and explain every important line.
+
+Do not expose real API keys or secrets.
+
+Explain the difference between storing a secret in a local `.env` file and configuring it securely in a CI/CD platform.
+
+## Chapter 20 — Production Deployment & Operations
+
+This chapter must show the actual deployment process.
+
+Include:
+
+- Preparing an application for production.
+- Environment separation.
+- Production environment variables.
+- Building the application.
+- Database provisioning.
+- Database migrations.
+- Deployment options.
+- VPS deployment.
+- Managed platform deployment.
+- Docker-based deployment.
+- Reverse proxy configuration.
+- Domain connection.
+- HTTPS.
+- Process management.
+- Logs.
+- Health checks.
+- Backups.
+- Restore testing.
+- Monitoring.
+- Alerts.
+- Rollbacks.
+- Zero-downtime concepts.
+- Feature flags.
+- Safe database migrations.
+- Incident response.
+- Runbooks.
+- Postmortems.
+- Disaster recovery.
+
+Build at least one complete deployment walkthrough from local development to a publicly accessible application.
+
+Show:
+
+1. What the learner needs before starting.
+2. Which accounts are needed.
+3. Which services may cost money.
+4. How to create or obtain a server.
+5. How to connect through SSH.
+6. How to install required software.
+7. How to upload or clone the application.
+8. How to configure environment variables.
+9. How to configure the database.
+10. How to run migrations.
+11. How to start the application.
+12. How to configure the reverse proxy.
+13. How to connect a domain.
+14. How to enable HTTPS.
+15. How to verify the website.
+16. How to inspect logs.
+17. How to restart after a failure.
+18. How to update the application.
+19. How to roll back.
+20. How to back up and restore.
+
+Provide a second deployment path using a managed hosting platform so learners understand that VPS is not the only option.
+
+Do not pretend that every hosting provider uses the same deployment procedure.
+
+---
+
+# 11. ADD MISSING CURRICULUM TOPICS WHEN NECESSARY
+
+Do not restrict yourself to the existing page list if an essential beginner or professional topic is genuinely missing.
+
+However, do not add random technologies simply to make the book larger.
+
+Conduct a coverage audit for Parts 00–05.
+
+Check for these important gaps:
+
+## Programming foundations
+
+- Problem-solving fundamentals.
+- Algorithms and basic complexity.
+- Data structures.
+- Debugging.
+- Reading documentation.
+- Testing.
+- Error handling.
+- Security awareness.
+- Working with files and folders.
+
+## JavaScript and frontend
+
+- npm and package scripts.
+- Browser developer tools.
+- Forms and validation.
+- Accessibility.
+- Responsive design.
+- State management choices.
+- API integration.
+- Environment variables.
+- Build tools.
+- Production builds.
+
+## Python
+
+- Python installation.
+- Interpreter selection.
+- Virtual environments.
+- Dependency management.
+- Four OOP pillars.
+- Testing.
+- Debugging.
+- Type checking.
+- Async I/O.
+- API development.
+- Project packaging.
+
+## Databases
+
+- Database installation and access.
+- Database clients.
+- SQL fundamentals.
+- Relationships.
+- Indexes.
+- Transactions.
+- Migrations.
+- Backups.
+- Restore.
+- Security.
+- Connection pooling.
+- ORM concepts where appropriate.
+- Database integration from applications.
+
+## Backend
+
+- HTTP fundamentals.
+- REST.
+- Validation.
+- Authentication.
+- Authorization.
+- Password hashing.
+- Sessions and cookies.
+- Security.
+- CORS.
+- CSRF.
+- Rate limiting.
+- Webhooks.
+- Background jobs.
+- Logging.
+- API testing.
+
+## DevOps and deployment
+
+- Linux installation or access.
+- SSH.
+- Firewall.
+- Domain purchase and renewal.
+- DNS configuration.
+- Hosting selection.
+- Cost management.
+- HTTPS.
+- Reverse proxy.
+- Docker installation.
+- Docker Compose.
+- CI/CD.
+- Secrets.
+- Monitoring.
+- Backups.
+- Rollback.
+- Disaster recovery.
+
+If a missing subject is essential, add it to the correct chapter or create a suitable new section/page.
+
+Do not force unrelated material into an existing page.
+
+If adding pages requires updating the canonical curriculum, update `src/data/bookData.ts` and the corresponding navigation in a controlled, consistent manner.
+
+Preserve the original learning journey and numbering wherever possible. If a structural change is necessary, document why and update every affected reference consistently.
+
+Do not leave orphan pages.
+
+---
+
+# 12. COMPLETE INSTALLATION AND EXECUTION STANDARD
+
+For every major technology that a learner must use, provide a practical getting-started guide.
+
+At minimum, this applies to:
+
+- Visual Studio Code.
+- Git.
+- Python.
+- pip.
+- uv.
+- Node.js.
+- npm.
+- TypeScript.
+- React.
+- Vite.
+- Next.js.
+- PostgreSQL.
+- MongoDB.
+- FastAPI.
+- Node.js backend framework selected by the curriculum.
+- Docker.
+- Docker Compose.
+- Linux/WSL2 where applicable.
+- Required database clients and command-line tools.
+
+For each relevant installation, include:
+
+**1. Purpose**
+
+What is this software and why do we need it?
+
+**2. Official download**
+
+Provide the verified official download/documentation link.
+
+**3. Version**
+
+Explain the currently recommended stable or LTS version, based on official documentation at the time of writing.
+
+**4. Installation**
+
+Give exact steps for the primary Windows environment.
+
+**5. Alternative systems**
+
+Provide macOS/Linux differences where meaningful.
+
+**6. Verification**
+
+Show exact version or diagnostic commands.
+
+**7. First project**
+
+Create a working example.
+
+**8. Execution**
+
+Explain exactly how to run it.
+
+**9. Expected output**
+
+Show what success looks like.
+
+**10. Troubleshooting**
+
+Show common errors and solutions.
+
+**11. Next step**
+
+Explain how this tool is used in the next lessons.
+
+Important: Do not repeat a full installation guide unnecessarily on every page. Create a complete canonical setup lesson, then link back to it. However, every practical lesson must still state its prerequisites and exact commands needed to run that lesson.
+
+---
+
+# 13. CODE EXAMPLE STANDARD
+
+Every substantial code example must be educationally complete.
+
+Use this format wherever appropriate:
+
+### Objective
+What will we build?
+
+### Prerequisites
+What must already be installed or understood?
+
+### Project setup
+Which commands should be run, and from which directory?
+
+### Project structure
+Show the real file tree.
+
+### Code
+Show complete code for every required file.
+
+### Explanation
+Explain important lines and concepts.
+
+### Run
+Give the exact command.
+
+### Expected result
+Show actual expected output or behavior.
+
+### Verify
+Explain how to confirm it works.
+
+### Test
+Show how to test success and failure cases.
+
+### Troubleshoot
+Explain common errors and fixes.
+
+### Improve
+Show how a professional engineer might improve it.
+
+Do not use:
+
+- `...` in place of essential code.
+- "Add your remaining logic here."
+- "Implement this yourself" for a required teaching step.
+- Missing imports.
+- Missing configuration.
+- Unexplained environment variables.
+- Unexplained package installation.
+- Fake outputs.
+- Incomplete file structures.
+
+Use placeholders only when the learner genuinely needs to supply their own secret, domain, account, or personal configuration. Clearly explain how to obtain it and where it belongs.
+
+Never expose real credentials.
+
+---
+
+# 14. TECHNOLOGY FRESHNESS AND OFFICIAL RESEARCH
+
+Research the current official documentation before writing or revising technical instructions.
+
+Prioritize official sources:
+
+- Python official documentation.
+- Python Packaging User Guide.
+- Node.js official documentation.
+- npm documentation.
+- MDN.
+- ECMAScript specifications where relevant.
+- TypeScript official documentation.
+- React official documentation.
+- Vite official documentation.
+- Next.js official documentation.
+- FastAPI documentation.
+- Pydantic documentation.
+- PostgreSQL documentation.
+- MongoDB documentation.
+- Git documentation.
+- GitHub documentation.
+- Docker documentation.
+- Linux distribution documentation.
+- Nginx documentation.
+- Caddy documentation.
+- Cloud provider official documentation.
+
+For any third-party provider or product, use its official documentation.
+
+Requirements:
+
+- Verify installation instructions.
+- Verify command syntax.
+- Verify compatibility.
+- Verify configuration names.
+- Verify framework recommendations.
+- Verify version-sensitive behavior.
+- Identify deprecated approaches.
+- Identify experimental features.
+- Use stable approaches for the main learning path.
+
+Do not make the book depend on an arbitrary old version.
+
+If a technology changes, make the lesson explain how to check the currently supported version.
+
+Include a small "Documentation and Version Check" note in relevant setup pages.
+
+Do not include unsupported claims such as "latest" without verification.
+
+---
+
+# 15. PROFESSIONAL TEXTBOOK STRUCTURE FOR EVERY PAGE
+
+Every topic page must have a structure appropriate to its subject.
+
+Do not mechanically force every heading into every page, but use this teaching framework:
+
+1. Topic introduction.
+2. Learning outcomes.
+3. Why this concept exists.
+4. Prerequisites.
+5. First-principles explanation.
+6. Mental model.
+7. Internal mechanics.
+8. Syntax and terminology.
+9. Beginner examples.
+10. Line-by-line explanation.
+11. Complete practical implementation.
+12. Project structure where applicable.
+13. Commands and execution.
+14. Expected outputs.
+15. Common mistakes.
+16. Troubleshooting.
+17. Testing and verification.
+18. Security considerations where relevant.
+19. Performance considerations where relevant.
+20. Real-world engineering use cases.
+21. Alternatives and trade-offs.
+22. Exercises.
+23. Challenge task.
+24. Key takeaways.
+25. Mastery checklist.
+26. Further reading.
+
+For complex topics, split material into additional pages rather than making one confusing, overloaded page.
+
+---
+
+# 16. PRACTICE MUST BE PART OF THE CURRICULUM
+
+A learner should not just read the book.
+
+Add appropriate exercises at multiple levels:
+
+- Concept check.
+- Small coding exercise.
+- Debugging exercise.
+- Practical implementation.
+- Real-world challenge.
+- Mini project.
+- Chapter project.
+- Part-level project.
+
+Every exercise must include:
+
+- Clear problem statement.
+- Required input and expected output.
+- Constraints.
+- Acceptance criteria.
+- Hints where appropriate.
+- A solution or solution guide in an appropriate location.
+- Verification criteria.
+
+Do not provide only vague exercises such as "Build an application".
+
+Explain what the learner must build and how success will be measured.
+
+Do not reveal the full solution immediately when an exercise is designed for independent practice. Place solutions in a clearly identified section or separate solution page where appropriate.
+
+---
+
+# 17. QUALITY AUDIT — CHECK EVERY SINGLE PAGE
+
+Do not judge quality from total word count or average words per page.
+
+Audit every page individually.
+
+For every page, check:
+
+| Quality dimension | Required standard |
+|---|---|
+| Accuracy | Technically correct and verified |
+| Relevance | Actually teaches its title |
+| Completeness | Covers all essential subtopics |
+| Beginner accessibility | Prerequisites are explained |
+| Practicality | Learner can reproduce the work |
+| Installation | Included where necessary |
+| Execution | Exact commands and steps |
+| Examples | Complete and topic-specific |
+| Explanation | Important code explained |
+| Output | Expected result included |
+| Troubleshooting | Common errors addressed |
+| Testing | Verification method provided |
+| Professional depth | Real engineering context |
+| Freshness | Current stable approaches |
+| Originality | No unnecessary repeated content |
+| Navigation | Links and prerequisites correct |
+
+Classify each page:
+
+- FAIL — Incorrect, misleading, missing core material, or not teaching its title.
+- SHALLOW — Mostly definitions, generic claims, or incomplete snippets.
+- DEVELOPING — Useful content but important practical or conceptual gaps remain.
+- STRONG — Correct and useful but could still improve.
+- DEEP — Complete, accurate, practical, and appropriate for its learning level.
+
+Final target: ZERO FAIL pages and ZERO SHALLOW pages.
+
+Do not mark a page DEEP merely because it contains many words.
+
+---
+
+# 18. AUDIT THE EXAMPLE PROBLEMS DIRECTLY
+
+Use the provided examples as regression tests.
+
+Specifically inspect and correct the content of:
+
+- `09.2.1 Functions, Decorators and Context Managers`
+- `09.2.2 Classes, Dataclasses and Inheritance`
+- `09.2.3 Type Annotations and Pydantic Models`
+
+Verify that:
+
+1. The three pages do not repeat the same generic implementation.
+2. Each page teaches its own actual subject.
+3. The OOP four pillars are all covered.
+4. Decorators are explained and demonstrated.
+5. Context managers are explained and demonstrated.
+6. Dataclasses are actually implemented.
+7. Pydantic models are actually implemented.
+8. Type annotations are explained accurately.
+9. Examples are executable.
+10. Installation and setup prerequisites are provided or linked.
+11. Every command and important output is explained.
+12. Exercises test the actual lesson.
+
+Use these pages as a test case for the quality of the entire book.
+
+---
+
+# 19. DUCOSaurus AND MDX SAFETY
+
+Preserve the existing Docusaurus project architecture.
+
+Requirements:
+
+- Preserve existing valid routes and URLs.
+- Preserve front matter and metadata.
+- Preserve valid IDs.
+- Preserve previous/next navigation.
+- Preserve the book's visual identity.
+- Preserve all unrelated parts.
+- Use valid MDX syntax.
+- Escape JSX-sensitive characters correctly.
+- Do not introduce malformed JSX.
+- Do not use unsupported components.
+- Do not break code blocks.
+- Do not break tables.
+- Do not break diagrams.
+- Ensure internal links resolve.
+- Ensure images and assets resolve.
+- Ensure all new pages appear in the correct navigation.
+- Keep code examples readable on mobile and desktop.
+
+Do not modify unrelated configuration merely to avoid fixing a content problem.
+
+---
+
+# 20. EXECUTION PLAN — WORK IN CONTROLLED PHASES
+
+Do not attempt a reckless rewrite of hundreds of pages in one operation.
+
+Use this process:
+
+## Phase 1 — Repository audit
+
+Inspect all relevant files and generate an audit report.
+
+Identify:
+
+- Actual page inventory.
+- Actual chapter inventory.
+- Existing page count.
+- Duplicate content.
+- Incorrect content.
+- Missing topics.
+- Missing setup instructions.
+- Broken links.
+- Structural problems.
+- Priority order.
+
+## Phase 2 — Curriculum coverage map
+
+Create a coverage matrix mapping every existing page to:
+
+- Required knowledge.
+- Beginner prerequisites.
+- Practical skills.
+- Installation requirements.
+- Expected implementation.
+- Missing topics.
+
+Identify where new pages are genuinely necessary.
+
+## Phase 3 — Repair foundations
+
+Start with Part 00 and Part 01.
+
+A learner must be able to understand the computer, set up the workspace, use a terminal, work with Git, and solve basic problems before proceeding.
+
+## Phase 4 — Repair JavaScript and frontend
+
+Rebuild weak lessons in Part 02.
+
+Prioritize actual installation and execution workflows for Node.js, React, and Next.js.
+
+## Phase 5 — Repair Python
+
+Rebuild Part 03 with special attention to the OOP four pillars, environment setup, packaging, functions, decorators, context managers, typing, Pydantic, testing, and FastAPI.
+
+## Phase 6 — Repair databases and backend
+
+Rebuild Part 04 with practical SQL, PostgreSQL, MongoDB, Node.js APIs, security, testing, and a complete full-stack application.
+
+## Phase 7 — Repair deployment and DevOps
+
+Rebuild Part 05 with real Linux, SSH, domain, DNS, HTTPS, Docker, CI/CD, cloud, and deployment workflows.
+
+## Phase 8 — Cross-part consistency
+
+Check that:
+
+- Part 01 prepares learners for Part 02.
+- Part 02 prepares learners for Parts 03 and 04.
+- Part 03 supports the Python backend and future AI engineering work.
+- Part 04 prepares applications for Part 05.
+- Part 05 actually deploys applications built earlier.
+- No important prerequisite is introduced without explanation.
+- No topic is unnecessarily repeated.
+- Terminology is consistent across all parts.
+
+## Phase 9 — Final quality verification
+
+Run actual available checks:
+
+- MDX compilation.
+- Lint.
+- Type checks where relevant.
+- Production build.
+- Internal link checks.
+- Route verification.
+- Code example checks where practical.
+- Installation command verification.
+- Configuration validation.
+
+Manage memory and system resources. Do not run multiple resource-heavy builds unnecessarily.
+
+If a check fails, investigate and fix it. Do not report a check as passed unless it actually passed.
+
+---
+
+# 21. WORD COUNT AND PAGE DEPTH
+
+Do not optimize for word count.
+
+However, the current content has been too shallow, so substantial expansion is expected.
+
+Use the following as planning guidance, not a mechanical requirement:
+
+- Part landing pages: 1,500–3,000 words where justified.
+- Chapter landing pages: 1,500–3,000 words where justified.
+- Subchapter landing pages: 800–1,500 words where justified.
+- Standard topic pages: often 1,500–2,500 words.
+- Complex topic pages: often 2,500–4,000+ words.
+- Installation and practical labs: enough detail to reproduce every step.
+
+Some focused pages may be shorter if the subject genuinely requires less.
+
+Never pad a page to meet a word target.
+
+A 1,000-word complete lesson is better than a 3,000-word repetitive lesson.
+
+But a complex topic must not be reduced to a few paragraphs.
+
+---
+
+# 22. FINAL ACCEPTANCE CRITERIA
+
+The project is NOT complete until all of the following are satisfied:
+
+- Every existing page in Parts 00–05 has been inspected.
+- Every weak page has been repaired.
+- Every misleading explanation has been corrected.
+- Every topic is actually taught.
+- Repetitive generic examples have been removed or replaced.
+- The Python OOP four pillars are fully taught.
+- Python installation is covered.
+- Node.js installation is covered.
+- React installation and execution are covered.
+- Next.js installation and execution are covered.
+- Database installation or access is covered.
+- PostgreSQL and MongoDB are practically taught.
+- Backend applications can be built by following the book.
+- Docker installation and usage are taught.
+- Linux and server workflows are taught.
+- Domain, DNS, HTTPS, and hosting are practically explained.
+- A complete application can be deployed by following the book.
+- Exercises and verification steps exist.
+- The canonical curriculum and navigation are consistent.
+- All relevant internal links work.
+- No page is classified FAIL or SHALLOW.
+- Actual build and lint results are reported honestly.
+
+---
+
+# 23. FINAL REPORT — BE HONEST AND SPECIFIC
+
+At the end, provide a report containing:
+
+1. Original number of pages.
+2. Final number of pages.
+3. Number of pages reviewed.
+4. Number of pages rewritten.
+5. Number of pages improved.
+6. Number of genuinely new pages added.
+7. Number of pages left unchanged and why.
+8. Number of duplicate-content problems removed.
+9. Number of installation guides completed.
+10. Number of practical projects added or improved.
+11. Number of broken links fixed.
+12. Final quality classification counts.
+13. Build result.
+14. Lint result.
+15. MDX result.
+16. Route verification result.
+17. Any remaining limitations.
+18. A chapter-by-chapter summary of what was improved.
+
+Also provide a list of the most important additions and corrections.
+
+Do not claim all pages were audited if only a sample was inspected.
+
+Do not claim the production build passed if it was not completed.
+
+Do not report estimated numbers as verified numbers.
+
+---
+
+# 24. MOST IMPORTANT INSTRUCTION
+
+Think like a teacher who is responsible for a complete beginner's education.
+
+Imagine a learner opens this book with:
+
+- A Windows laptop.
+- No programming experience.
+- No Python installation.
+- No Node.js installation.
+- No Git installation.
+- No database.
+- No cloud account.
+- No understanding of terminals.
+- No previous deployment experience.
+
+The learner must be able to follow the book, install the necessary tools, understand the concepts, create projects, run the code, debug errors, test applications, connect databases, and eventually deploy a working application.
+
+Do not assume knowledge that the learner has not been taught.
+
+Do not write content merely to fill pages.
+
+Do not repeat generic introductions.
+
+Do not use identical examples for unrelated topics.
+
+Do not skip practical instructions.
+
+Do not omit important concepts because they are difficult.
+
+Do not prioritize appearing advanced over being understandable.
+
+Teach the subject completely, from zero to professional practice.
+
+**The goal is not to create a book that looks deep. The goal is to create a book that actually teaches deeply.**
+
+Start with the repository audit. Show the audit findings and coverage plan, then proceed to repair the actual project files in controlled phases. Continue until Parts 00–05 meet the acceptance criteria. Do not stop after producing a report or a plan.

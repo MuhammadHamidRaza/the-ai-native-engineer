@@ -1,0 +1,118 @@
+---
+id: "38-1-1-resumes-github-profiles-and-engineering-portfolios"
+title: "38.1.1 Resumes, GitHub Profiles and Engineering Portfolios"
+sidebar_label: "38.1.1 Resumes, GitHub and Portfolios"
+slug: "/part-09-career-client-work-products-and-startups/38-jobs-and-career-development/38-1-positioning-proof-and-applications/38-1-1-resumes-github-profiles-and-engineering-portfolios"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-38-s1-t1">
+
+Hiring engineers rarely fail because they lack skill — they fail because nobody who can hire them can tell they have it. Your resume, GitHub, and portfolio are a 90-second proof system. This lesson builds one that passes engineering screens at ShopCore-scale companies and small startups alike.
+
+## 1. The Resume — Structure That Passes Engineering Screens
+
+Target **one page** (two max after 8+ years). Reverse chronological, no summary paragraph, no "objective" — those are noise. The layout that survives ATS (applicant tracking systems) *and* human recruiters:
+
+```text
+Hamid Raza — [City] — hamid@example.com — github.com/hamid — linkedin.com/in/hamid
+Backend / AI-Native Engineer — TypeScript, Python, PostgreSQL, LLMs
+
+EXPERIENCE
+Full-Stack Contractor, shopcore.dev (2025–now)
+- Built subscription billing service (Stripe + Postgres) end-to-end: schema,
+  idempotent webhooks, admin dashboard; reduced churn analysis time 6h → 20min
+- Led migration of monolith API to Fastify + PostgreSQL; p95 latency 480ms → 90ms
+- Shipped HelpBot (RAG over 6 policy docs) with citation-grounded answers and
+  a 92% refusal-correctness rate on a 45-question golden eval suite
+
+SIDE PROJECTS (only if none of the above exists)
+AI Code Review CLI — 340★, 12 releases, used by 40+ teams
+
+EDUCATION & CERTS
+BSc Computer Science — University (2019) · AWS CCP · None required otherwise
+```
+
+### The bullet formula that works
+
+**Did X (metric) by doing Y (technical action) using Z (specific tooling), with result W (business/throughput/latency number).** Every bullet carries a number or a concrete deliverable. If it can't carry one, it isn't a bullet — it's filler, and filler gets skimmed.
+
+### What engineering screeners actually grep for
+
+| Signal | Where they look |
+| :-- | :-- |
+| Production experience with the stack | Your bullet verbs + named systems |
+| Can you own a feature end-to-end | One bullet spanning design → deploy → monitor |
+| Team/collaboration maturity | "reviewed N PRs", "paired with PM on spec" |
+| AI-era fluency (2026 bar) | One bullet showing you ship AI features with guardrails |
+
+## 2. The GitHub Profile — Your Real Resume
+
+Recruiters spend 30–60 seconds on your GitHub. Optimize it:
+
+- **Profile README.md** (the `username/username` repo): 4–6 lines — who you are, what you build, current focus, one link to your best project. No 15-badge walls.
+- **Pinned repositories (6)**: your two strongest products (with READMEs that include setup, architecture diagram, and screenshots), one contribution or fork with measurable reviews, one learning-in-public repo (notes/blog).
+- **Clean contribution graph is a myth** — irrelevant; nobody hires on green squares. But **public, merged PRs to real repos** (even docs) signal you can work in someone else's codebase.
+- **Hygiene**: no hardcoded secrets in public repos, `.env` in `.gitignore`, no dead repos with "test" commits. A single leaked key in a public repo disqualifies you at most companies.
+
+### The pinned-repo README skeleton (this is what gets read)
+
+```markdown
+# ShopCore HelpBot
+RAG assistant answering ShopCore's policy docs with citations + refusals.
+
+## Problem
+Customers ask refund/warranty questions; agents answer from memory → wrong answers.
+
+## Architecture
+PDF policies → chunker → pgvector embeddings → hybrid search (RRF) → LLM → citation-checked answer; out-of-scope → refusal template.
+
+## Results
+Recall@3 = 0.86 on a 45-question golden set; refusal correctness 92%; p95 latency 1.1s.
+
+## Run it
+`cp .env.example .env && npm ci && npm run ingest && npm test` — all green.
+```
+
+Numbers in the README are what make a stranger trust it. If you can't put numbers there because you never measured, measure now — that's the entire job.
+
+## 3. The Engineering Portfolio — One Scrolling Page
+
+A portfolio (personal site or Notion) recruiters actually finish has exactly five sections:
+
+1. **One-line positioning** — "AI-native engineer who ships full-stack products and measures them."
+2. **Selected work (3 items)** — each: problem, your role, stack, measurable outcome, link to repo/demo.
+3. **Writing (2–3 posts)** — deep dives you authored (system design, postmortem, tutorial). Proves you can think and communicate.
+4. **Recommendation quotes** — 1–2 lines from PM/peer/mentor with initials and context. One genuine quote outweighs five generic compliments.
+5. **Contact** — email + calendar link. Make it one click.
+
+## 4. Positioning Yourself by Track
+
+| Track | Lead with |
+| :-- | :-- |
+| Backend/full-stack | System design, data modeling, reliability (Parts 04–06) |
+| AI engineer | Evaluation discipline, agent guardrails, RAG (Parts 07–08) |
+| DevOps/infra | Zero-downtime deploys, observability, cost (Part 05) |
+| Frontend | UX depth, accessibility, performance budgets (Part 02) |
+
+One axis deep reads as hireable; fifteen technologies name-dropped reads as junior.
+
+## 5. ATS Tips That Actually Matter
+
+- Mirror the job description's nouns *honestly* — if the JD says "PostgreSQL", say "PostgreSQL", not "relational databases".
+- No columns, text boxes, or images for load-bearing content (ATS parsers still choke in 2026).
+- Export PDF from Word/LaTeX, never as a photo of paper.
+- File name: `HamidRaza-Resume.pdf`, not `resume_final_v3.pdf`.
+
+## 6. Exercise
+
+Produce three artifacts and have one engineer critique them:
+
+1. Your one-page resume with ≥4 quantified bullets.
+2. Your GitHub profile README + six pinned repos with measurable READMEs.
+3. Your portfolio page with one selected project documented end-to-end.
+
+**Acceptance criteria.** An engineer gives you: (a) one thing they'd interview you on immediately, (b) one unclear claim they'd ask about, (c) a pass/no-pass call on each artifact. Fix everything they flag before you apply anywhere.
+
+</BookNodePage>

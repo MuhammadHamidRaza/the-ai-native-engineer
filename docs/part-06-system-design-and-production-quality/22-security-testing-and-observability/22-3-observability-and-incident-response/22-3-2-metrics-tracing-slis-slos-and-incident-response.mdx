@@ -1,0 +1,108 @@
+---
+id: "22-3-2-metrics-tracing-slis-slos-and-incident-response"
+title: "22.3.2 Metrics, Tracing, SLIs, SLOs and Incident Response"
+sidebar_label: "22.3.2 Metrics, Tracing, SLIs, SLOs and Incident Response"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-3-observability-and-incident-response/22-3-2-metrics-tracing-slis-slos-and-incident-response"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s3-t2">
+
+You cannot fix what you cannot see — and metrics are not the dashboard; they are the decision system. This lesson gives ShopCore its observability spine: RED and USE, latency histograms that tell the truth, one defined SLI with real error-budget math, a distributed trace through one checkout, symptom-based alerting, and the human process — incident command and the blameless postmortem — that turns a bad Tuesday into a stronger system.
+
+## 1. RED and USE — the Two Question Families
+
+**RED** (per request path — for services): **R**ate (requests/s), **E**rrors (% of 5xx + declared client faults), **D**uration (latency distribution). ShopCore checkout RED: `rate(http_requests_total{route="/v1/orders",method="POST"}[5m])`, `rate(http_requests_total{...,status=~"5.."}[5m]) / rate(http_requests_total{...}[5m])`, and `histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{route="/v1/orders"}[5m])) by (le))`.
+
+**USE** (per resource — for infra): **U**tilization (CPU %, DB connections in use), **S**aturation (run-queue depth, pool wait time), **E**rrors (device/controller errors). Postgres: saturation = `pg_stat_activity` waiting count; Redis: `used_memory/maxmemory` + evicted_keys rate. RED tells you users hurt; USE tells you which organ is failing.
+
+## 2. Latency Histograms — Why Averages Lie and p99 Decides
+
+An average checkout latency of 120 ms can hide 1% of users at 9 seconds. Histograms bucket every observation; `histogram_quantile` reconstructs p50/p95/p99. ShopCore alerting thresholds: p99 > **300 ms** (NFR-001, 21.2.1) for checkout server time; page when p99 sustains > 300 ms for 5 minutes, ticket when p95 drifts > 200 ms (early warning). Prometheus buckets must be tuned (`le` at 25ms…5s) or the p99 estimate is fiction.
+
+## 3. SLI Definition and Error-Budget Math for ShopCore Checkout
+
+**SLI** (what good looks like, measurable): fraction of eligible requests that (a) return non-5xx **and** (b) complete within 300 ms. Availability for the month = good requests ÷ total eligible requests.
+
+**SLO**: 99.9% per 30-day month → error budget **43.2 minutes** (43200 min × 0.001). 99.95% → 21.6 min; 99% → 7.2 h.
+
+| Budget state | Meaning | Allowed action |
+| :-- | :-- | :-- |
+| > 50% remaining | healthy | ship features |
+| 10–50% | caution | reliability fixes prioritized over features |
+| under 10% | burning | deploy freeze except reliability work |
+| 0% | breached | postmortem mandatory; exec visibility |
+
+Burn-rate alerting (fast + slow windows): page when the 5-minute burn rate would exhaust the monthly budget in under 2 days (fast) **and** the 1-hour window confirms. One window alone pages at 2 a.m. over nothing; both windows together page when it's real.
+
+## 4. OpenTelemetry — One Trace Through Checkout
+
+A trace is a tree of spans; each span is one timed operation. ShopCore instrumentation (Node: `@opentelemetry/sdk-node` + `pino` correlation):
+
+```js
+// Checkout path emits, automatically or via spans:
+// POST /v1/orders                       (server span)
+//   pg: INSERT orders                   (db span, 12 ms)
+//   pg: UPDATE inventory                (db span, 8 ms)
+//   pg: INSERT outbox                   (db span, 3 ms)
+//   http: POST api.stripe.com/charges   (client span, 410 ms)
+//   http: POST ship.internal/quotes     (client span, 180 ms)
+```
+
+`traceparent` propagates to outbound HTTP automatically with the SDK's instrumentations — one W3C header carries trace-id/span-id across every hop including the queue relay (inject/extract on the outbox row). View in Grafana Tempo/Jaeger: click order id → see DB spans at 2 ms each and Stripe at 1.4 s — the p99 outlier is *visible*, not suspected. Sampling: 10% baseline + 100% of error traces (tail sampling) so failures are never dropped.
+
+## 5. Alerting Philosophy — Symptoms Page, Causes Ticket
+
+Symptom alerts (page): error-budget burn, checkout p99 SLO, hard down. Cause alerts (ticket/channel, never page): CPU 85%, pool 70%, disk 80%, single pod restart. Cause paging trains responders to ack-and-ignore. Example routing in PagerDuty/Opsgenie: `severity:page` → primary on-call (IC rotation, any senior engineer); `severity:ticket` → #eng-alerts with SLA "next business day". Every page must have: a summary line, the SLO link, the runbook URL, and the dashboard link — an alert without a runbook is a staffing leak.
+
+## 6. Incident Response — Roles and Timeline
+
+- **Incident Commander (IC):** owns decisions; does NOT debug; keeps the channel calm, assigns tasks, calls severity.
+- **Comms lead:** status page + customer/support wording; updates every 15 min minimum.
+- **Operations:** engineers hands-on; one driver, others watch (two sets of eyes on every command).
+- Lifecycle: detect → declare (severity) → mitigate (stop the bleeding: rung-2 flag, breaker open) → resolve (verify recovery) → learn (postmortem within 48h).
+
+**Partial ShopCore outage — 2026-11-12, 16:07–16:41.** Stripe latency ↑ → breaker opens → catalog fine, checkout paused (rung 2). 214 carts parked, **zero** duplicate charges (idempotency keys held; 3 retried requests replayed stored responses — 201s, no double capture). Resolution: Stripe recovered 16:33; canary 1% → 25% → 100% by 16:41; support contacted all 214 customers with the order-completion link. Impact: 27 minutes of checkout unavailability (62.5% of the 43.2-minute monthly budget), no data loss, no charge errors.
+
+## 7. Blameless Postmortem Template (fills in 30 min)
+
+```text
+INCIDENT 2026-11-12-stripe-slow — severity 2 — IC R. Duarte — 48h review
+1. Summary (2 sentences).            2. Impact: users, money, budget burned (43.2 min budget → 27 consumed).
+3. Timeline (all times UTC; every decision + timestamp).  4. Root cause AND contributing conditions (retry jitter
+   misconfigured to 0 for carrier calls; no rung-2 auto-flip).  5. What went well / poorly / lucky.
+6. Action items: owner + date — (a) breaker config to 50%/20req; (b) auto-flip rung 2 on Stripe 3× p99 for 5 min;
+   (c) run the 21.4.2 drill semi-annually instead of annually.  Blameless: the retry config was reviewed and
+   approved — the *system* let it through, the *system* is being fixed.
+```
+
+Blamelessness is the point: if postmortems punish honesty, the next incident will be reported as "all clear" — your early-warning system dies.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| p99 metric flat but users scream | Server-time SLI excludes client wait | Add client-side RUM or header timing; split SLI |
+| SLO always green, errors rising | SLI defined on wrong events (healthz included) | Re-define SLI on /v1/orders only; backtest 30 days |
+| Trace shows Stripe spans, no DB | DB instrumentation missing | Register `pg` instrumentation; verify `traceparent` on queue |
+| PagerDuty fires at 03:12 nightly | Cause alert (backup cron saturation) paged | Convert to ticket; review alert taxonomy quarterly |
+| Postmortem action items rot | No owner/date follow-through | Review open items at every architecture review (21.2.2) |
+
+## 9. Practice
+
+**Guided exercise.** Stand up Prometheus metrics in ShopCore (prom-client): request duration histogram, error counter, in-flight gauge for PG pool. Verify `histogram_quantile(0.99, ...)` in the PromQL console.
+
+**Independent exercise.** Define the checkout SLI as a PromQL ratio; backtest last 30 days from your access logs; compute actual availability and budget consumed. Report honestly.
+
+**Challenge.** Run the Section 6 incident as a live tabletop (with 21.4.2's roles), then write the postmortem using Section 7's template. Present it at review; get two action items with owners and dates.
+
+**Assessment checklist**
+
+- [ ] I can name RED and USE and apply each to checkout and to Postgres.
+- [ ] I can derive the 43.2-minute error budget and compute burn rates.
+- [ ] I can produce a trace showing DB spans and the Stripe span with timings.
+- [ ] I can route symptom vs cause alerts correctly and say why.
+- [ ] I have filled the postmortem template once, end to end, for a rehearsed outage.
+
+</BookNodePage>

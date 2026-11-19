@@ -1,0 +1,75 @@
+---
+id: "07-2-2-useeffect-and-synchronizing-external-systems"
+title: "07.2.2 useEffect and Synchronizing External Systems"
+sidebar_label: "07.2.2 useEffect and Synchronizing External Systems"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects/07-2-2-useeffect-and-synchronizing-external-systems"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s2-t2">
+
+`useEffect` is the most overused hook in React. It is **not** a lifecycle callback for transforming props (`07.2.1`) or handling button clicks (put that in `onClick`). **`useEffect` exists solely to synchronize a component with an external system outside React**—browser timers, window listeners, WebSockets, or `fetch()` calls—and cleanly disconnect when dependencies change or the component unmounts.
+
+## 1. Anatomy of an Effect + Cleanup
+
+```tsx
+import { useEffect, useState } from "react";
+
+export function LiveSearch({ query }: { query: string }) {
+  const [results, setResults] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function load() {
+      try {
+        setError(null);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: { items: string[] } = await res.json();
+        setResults(data.items);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Search failed");
+      }
+    }
+
+    load();
+    return () => controller.abort(); // Cleanup cancels stale in-flight request!
+  }, [query]);
+
+  if (error) return <p role="alert">{error}</p>;
+  return <ul>{results.map((r) => <li key={r}>{r}</li>)}</ul>;
+}
+```
+
+**Why `controller.abort()` is critical:** Without cleanup, typing `"re"` then `"react"` triggers two network requests. If the slower `"re"` response arrives *after* `"react"`, it overwrites newer results (**race condition**). `AbortController` cancels the superseded `"re"` request automatically!
+
+## 2. Dependency Array Truths & Infinite Loop Traps
+
+- `[]` (empty array): Runs once on mount, cleans up on unmount.
+- `[query, page]`: Re-runs cleanup + effect whenever `query` or `page` changes (`Object.is`).
+- **Infinite loop trap:** Never create a brand-new object/array inside render (`const opts = { page };`) and put `opts` in `[opts]` while calling `setState` inside the effect—every render makes a new `opts` reference, re-triggering the effect forever! Pass primitive values (`[page]`) instead, and never lie to `react-hooks/exhaustive-deps`.
+
+## 3. Practice Exercises
+
+1. Write a `useWindowOnline()` effect subscribing to browser `"online"` and `"offline"` window events and returning a cleanup that calls `window.removeEventListener`.
+2. Verify in `<StrictMode>` dev mode that an effect starting `setInterval` clears its interval properly when cleaned up.
+
+## Mastery Checklist
+
+- [ ] Uses `useEffect` only for external synchronization—not derived values or event handlers.
+- [ ] Cancels stale `fetch()` calls and clears timers/listeners in the cleanup function.
+- [ ] Keeps dependency arrays honest using primitive dependencies instead of fresh inline objects.
+
+</BookNodePage>

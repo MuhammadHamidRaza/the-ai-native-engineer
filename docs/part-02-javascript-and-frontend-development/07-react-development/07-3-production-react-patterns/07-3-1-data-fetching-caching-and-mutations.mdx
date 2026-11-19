@@ -1,0 +1,94 @@
+---
+id: "07-3-1-data-fetching-caching-and-mutations"
+title: "07.3.1 Data Fetching, Caching and Mutations"
+sidebar_label: "07.3.1 Data Fetching, Caching and Mutations"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-3-production-react-patterns/07-3-1-data-fetching-caching-and-mutations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s3-t1">
+
+Beginners test React features on instant mock arrays, then deploy to production where requests take 600ms, fail with HTTP `503`, or return `[]`. Every data-backed view must handle **four explicit states** cleanly: **Loading**, **Error** (with retry), **Empty**, and **Success**.
+
+## 1. Modeling All Four UI States Explicitly
+
+Pair your discriminated union (`05.3.2`) with `AbortController` (`07.2.2`) so stale responses never overwrite new data:
+
+```tsx
+import { useEffect, useState } from "react";
+
+interface Issue { id: string; title: string; }
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "success"; items: Issue[] };
+
+export function IssuesPanel({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading" });
+
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/issues`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Failed to load issues (HTTP ${res.status})`);
+        return (await res.json()) as Issue[];
+      })
+      .then((items) => setState({ status: "success", items }))
+      .catch((err) => {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setState({
+          status: "error",
+          message: err instanceof Error ? err.message : "Network error",
+        });
+      });
+
+    return () => controller.abort();
+  }, [projectId, reloadTick]);
+
+  if (state.status === "loading") return <p aria-busy="true">Loading issues...</p>;
+  if (state.status === "error") {
+    return (
+      <div role="alert">
+        <p>{state.message}</p>
+        <button type="button" onClick={() => setReloadTick((n) => n + 1)}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (state.items.length === 0) return <p>No issues in this project yet.</p>;
+
+  return (
+    <ul>
+      {state.items.map((issue) => <li key={issue.id}>{issue.title}</li>)}
+    </ul>
+  );
+}
+```
+
+## 2. Handling Mutations & In-Flight Submission State
+
+Always track `isSubmitting` during `POST`/`PATCH`/`DELETE` calls so double-clicking "Save" cannot create duplicate database records—and disable the submit button while `isSubmitting` is `true`.
+
+## 3. Why Apps Adopt TanStack Query (or Server Components)
+
+Hand-writing `useEffect` works for learning, yet lacks automatic request deduplication across sibling components, stale-while-revalidate background caching, focus refetching, and cache invalidation after mutations. In client-heavy SPAs, libraries like **TanStack Query** replace dozens of lines of boilerplate with declarative `useQuery` + `useMutation`; in **Next.js (`Chapter 08`)**, Server Components fetch data directly on the server before HTML reaches the browser.
+
+## 4. Practice Exercises
+
+1. Add a `createIssue` form above `IssuesPanel` that disables its submit button while saving and triggers `setReloadTick((n) => n + 1)` on success.
+2. Simulate an offline network error in Chrome DevTools (**Network -> Offline**) and verify the Error state + Retry button recover cleanly when back online.
+
+## Mastery Checklist
+
+- [ ] Renders distinct Loading, Error (with Retry), Empty, and Success UI states.
+- [ ] Disables mutation submit buttons during in-flight requests to prevent duplicates.
+
+</BookNodePage>

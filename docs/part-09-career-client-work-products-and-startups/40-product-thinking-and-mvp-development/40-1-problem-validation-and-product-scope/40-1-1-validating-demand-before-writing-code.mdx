@@ -1,0 +1,109 @@
+---
+id: "40-1-1-validating-demand-before-writing-code"
+title: "40.1.1 Validating Demand Before Writing Code"
+sidebar_label: "40.1.1 Validating Demand Before Writing Code"
+slug: "/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-1-problem-validation-and-product-scope/40-1-1-validating-demand-before-writing-code"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-40-s1-t1">
+
+Most failed products solve problems nobody will pay for. This lesson teaches you to validate demand **before** writing a line of code — cheaply, quickly, and honestly. You will practice on one realistic product used throughout Chapters 40 and 41: **CareQueue — AI triage and draft replies for a dental practice's shared `frontdesk@` inbox** (appointments, insurance questions, "where is my bill", cancellations).
+
+## 1. The Validation Hierarchy (Cheapest to Most Expensive)
+
+1. **Desk research** — Google Trends, job postings, Reddit/LinkedIn complaints, G2/Trustpilot reviews, competitor pricing pages. Free; 1–2 hours.
+2. **Problem interviews** — 15–20 minute calls with 5–10 target buyers. Free.
+3. **Landing page + waitlist** — one page with one pain and one CTA ("Join the early pilot"). ~$10.
+4. **Pre-orders / LOIs / paid pilot** — "I'll pay $X/month when it launches" in writing, or a **paid pilot deposit**. The only signal that can't be faked.
+
+Only when levels 1–4 point the same direction do you build. Most founders stop at level 1 and call it conviction.
+
+## 2. The Mom Test — Interview Without Leading the Witness
+
+"Mom Test" questions ask about **past behavior**, never about the future:
+
+| Bad (leading) | Good (Mom Test) |
+| :-- | :-- |
+| "Would you use an app that triages your inbox?" | "Tell me about the last time the front desk inbox overwhelmed you. What happened?" |
+| "Would you pay for this?" | "What did your last missed billing question cost the practice? What have you tried?" |
+| "Would this save you time?" | "Walk me through yesterday's 9am–noon at the front desk. Where do messages pile up?" |
+| "Do you think this is a good idea?" | "What have you already done to fix this? What did it cost and why did it fail?" |
+
+**Rule of thumb:** if your question contains "would you", it's fishing for compliments, not evidence.
+
+### A Real Interview Transcript (Annotated)
+
+> **You:** Walk me through a normal morning at the front desk.
+> **Dana (office manager, 3-chair practice):** Okay so 8:15 I open the inbox — overnight there are 60–80 messages. Half are appointment confirmations, a quarter "where is my bill", a few cancellations.
+> **You:** What happens to the billing ones?
+> **Dana:** I answer them myself or forward to billing. The slow ones sit 2–3 days. Patients call angry. Two of them last month threatened to leave.
+> **You:** What have you tried?
+> **Dana:** Canned replies in Outlook, a part-time VA for six months — he missed the insurance detail every time, so we fired him.
+> **You:** How do you know it's a billing question before opening it?
+> **Dana:** I don't — I open everything. That's the hour lost.
+> **You:** If you could fix one thing tomorrow, what is it?
+> **Dana:** Sort the inbox for me. Tell me "these three are billing, these ten are confirmations, these two need a human" — and draft the billing ones so I just approve.
+
+**What the transcript tells you:** a named pain (60–80 messages/day, hour/day lost), an attempted solution that failed (VA, canned replies), an explicit value statement ("sort the inbox; draft billing; approve"), and a measurable outcome (calls about bills disappear, Angry patients leave). **Zero hypotheticals were needed.** The buyer described the product; you never pitched.
+
+## 3. The Validation Scorecard
+
+| Signal | Strong | Weak / no-signal |
+| :-- | :-- | :-- |
+| Unprompted pain mentions ("60–80 messages/day") | ≥3 of 10 interviews | 0–1 |
+| Past attempt to fix it (VA, canned replies) | ≥2 of 10 | 0 |
+| Willingness to pay today (deposit/LOI/pilot) | ≥2 verbal yeses with numbers | "Maybe when it launches" |
+| Cost of the status quo in their own words | dollars/time named ("an hour a day, 2 angry calls/week") | "it's just annoying" |
+| Urgency | "we need this this quarter" | "someday maybe" |
+
+**Build verdict:** ≥7/10 interviews show strong signals **and** ≥2 verbal paying yeses. Anything less: re-scope the problem or kill it. Killing a bad idea at $0 is a win, not a failure.
+
+## 4. Competitor Research — Who Else Would the Buyer Choose?
+
+For CareQueue, the real alternatives are: (a) nothing (they just drown), (b) a VA/part-timer, (c) frontdesk software's built-in rules (Dentrix/Denticon email routing), (d) shared-inbox tools with AI (Front, Google Gemini in Workspace), (e) generic AI (paste each email into ChatGPT by hand).
+
+Your desk research should answer in one table: **for each alternative — price, what the buyer complains about in reviews, and the gap you fill.** For CareQueue, the gap is "built-in rules can't read insurance language; Front isn't trained on dental billing; VAs make exactly the errors described above." That gap sentence is your positioning raw material — it becomes the § 41.1.1 one-liner.
+
+## 5. Fake-Door and Beta Signals
+
+Two cheap, honest demand tests:
+
+1. **Landing page + waitlist:** one page, one pain ("Billing questions eating your front desk?"), one CTA. 50 visitors from a niche community (dental practice managers on LinkedIn/Facebook groups) → ≥5 email signups = signal. Fewer = the pain or the page is wrong.
+2. **Paid pilot letter of intent:** send the 10 interviewed practices a one-page pilot offer ("$150/mo, three months, cancel anytime, I install and train it myself"). **Two signed LOIs or one $150 deposit** outweighs every enthusiastic "love this idea" you heard.
+
+Only after at least one paid signal do you write code.
+
+## 6. Common Failure Modes
+
+- **Confirmation bias** — you interviewed your friend who runs a dental office; friends validate founders, customers validate products. Interview strangers.
+- **Asking friends/family** — same disease, different arm. Discount their answers or skip them.
+- **Vanity metrics** — "40 people liked my landing page" means nothing; "2 people wired $150" means something.
+- **Solutions before problems** — "we're building with GPT-4o" answers no validation question. Problem first, stack never in the pitch.
+- **One loud interview** — a single vivid complaint is not a pattern; look for 3+ repeats across independent practices.
+
+## 7. Exercise
+
+Run the full validation for CareQueue (or your own candidate product):
+
+1. Write 10 target practices down (real name, city, practice size) — from Google Maps and the ADA directory.
+2. Send 10 cold emails using the 39.6.1 pattern; aim for 5 booked 15-minute calls.
+3. Run the calls with Mom Test questions only (no pitch!). Take verbatim notes.
+4. Score each call with the § 3 table.
+5. Write a one-page verdict: **build / iterate / abandon**, with the three strongest quotes, your competitor table, and your waitlist/LOI result.
+
+**Acceptance criteria.**
+- [ ] ≥5 completed interviews with verbatim quotes (not paraphrases)
+- [ ] Scorecard applied to each; totals summed honestly
+- [ ] Competitor table with ≥3 alternatives and their review-level complaints
+- [ ] At least one quantitative demand signal (waitlist ≥5 signups **or** ≥1 written pilot LOI/deposit)
+- [ ] Verdict stated as one sentence a skeptical engineer can attack
+
+## 8. Where This Leads
+
+If your verdict is "build", carry the winning quotes and the competitor table into **40.1.2**, where you scope the MVP around the single most painful step (for CareQueue: the billing-question triage). If it is "iterate", re-target and repeat § 7 in one week. If "abandon", pick the next candidate — you saved yourself 3 months of building nobody asked for.
+
+**Next:** [40.1.2 Defining the Minimum Viable Product](/book/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-1-problem-validation-and-product-scope/40-1-2-defining-the-minimum-viable-product)
+
+</BookNodePage>

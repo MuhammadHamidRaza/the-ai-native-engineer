@@ -1,0 +1,149 @@
+---
+id: "32-2-2-auth-sandboxing-and-enterprise-integrations"
+title: "32.2.2 Auth, Sandboxing and Enterprise Integrations"
+sidebar_label: "32.2.2 Auth, Sandboxing and Enterprise Integrations"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-2-building-and-securing-mcp-servers/32-2-2-auth-sandboxing-and-enterprise-integrations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32-s2-t2">
+
+Most MCP tutorials end with "and it works in Claude Desktop." That is the dangerous part. An MCP server is a new attack surface pointed at your Postgres and your Stripe keys, installed with one JSON snippet, often with **no authentication at all** — the spec marks authorization optional and many community servers ship without it. This page does not. Everything here was checked against the `2026-07-28` spec and the Python SDK `mcp` 2.3.0 (November 2026); when the spec moves, re-verify before you ship.
+
+## 1. What the Spec Actually Requires (HTTP Transports)
+
+The MCP authorization spec (normative for HTTP-based transports) is built on **OAuth 2.1** (`draft-ietf-oauth-v2-1-13` — yes, a draft; that is what the spec cites) plus a fixed cast of RFCs:
+
+- **Authorization servers MUST implement OAuth 2.1** with appropriate security for confidential and public clients — PKCE is mandatory in OAuth 2.1 for public clients (which MCP desktop/IDE clients are).
+- **MCP servers MUST implement RFC 9728 Protected Resource Metadata** and clients MUST use it for authorization-server discovery. The SDK publishes `/.well-known/oauth-protected-resource[/mcp]` for you from `AuthSettings` — do not hand-write it.
+- **MCP clients MUST send the `resource` parameter** (RFC 8707) in authorization and token requests — tokens are minted *for your server*, not for "the world".
+- **MCP servers MUST validate token audience** — reject tokens not issued for you; invalid/expired → `401`.
+- **Issuer validation** (RFC 9207) on the client callback; **DCR (RFC 7591) is deprecated** in favor of Client ID Metadata Documents (pre-registration and CIMD are the preferred paths).
+- Scope challenges: `403 insufficient_scope` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="…", resource_metadata="…"` for step-up; clients re-authorize with the union of prior + challenged scopes.
+- stdio servers take no `Authorization` header — credentials come from the environment; the boundary is the spawning process. Never expose stdio servers over a network socket.
+
+**Audience restriction is the control that matters most.** A token minted for `https://mcp.shopcore.internal/mcp` must be worthless at `https://other-mcp.example.com/mcp`. If your IdP cannot bind tokens to a resource/audience (custom API identifiers are fine — then check `aud` in your verifier instead of `validate_token_resource`), you have no audience restriction and you have a confused-deputy machine (see 31.2.2).
+
+## 2. Scopes Per Tool — Least Privilege on the Wire
+
+Map scopes to *tools*, not to "the server":
+
+| Scope | Tools | Typical client |
+| :-- | :-- | :-- |
+| `read:orders` | `lookup_order` | All support agents |
+| `read:policy` | `refund_policy_lookup`, `policy/*` resources | All agents |
+| `write:refunds` | `issue_refund` (still tier-gated per call) | Refund specialist only |
+| `write:disputes` | `open_dispute_ticket` | Refund specialist only |
+| `export:data` | `export_orders_csv` | Human-triggered only |
+| `admin:*` | kill switch, config | **Never granted to any agent** |
+
+Enforcement order: token scope check (cheap, at the door) → per-call approval tier (31.2.2) → business invariants in code. Scopes gate *capability*; tiers gate *individual actions*; invariants are the last word.
+
+## 3. Secrets — Injected at Runtime, Never in Code or Repo
+
+- **No secrets in tool code.** The `SHOPCORE_PG_DSN`, Stripe keys, and IdP client secrets arrive via the process environment (stdio), your orchestrator's secret store (K8s Secret / ECS task def / Vault Agent), or the host's `env` block in `claude_desktop_config.json`. All three are injection points, none are files in git.
+- **`.env.example` only** in the repo, with placeholder names; real `.env` in `.gitignore` and CI secrets.
+- **No secrets in tool *descriptions* either** — they go to the model. The model is not a vault.
+- Logging: never log the `Authorization` header, DSN, or token; the v2 SDK's OTel middleware does not capture them by default, but *your* middleware must not either. Redact `sk_live_*`, PANs, DSNs at the logger boundary.
+
+## 3.5 Token Shapes — Static, JWT, Introspection
+
+Not every deployment needs a full IdP. Pick consciously:
+
+| Shape | Mechanics | When it's OK | Failure mode |
+| :-- | :-- | :-- | :-- |
+| **Static bearer** | Opaque random string; verifier looks it up in env/KV | Single-team internal server; rotate monthly; IP-allowlisted | Leak = full access until rotation; no per-client identity |
+| **JWT (self-contained)** | SDK verifier checks signature + `aud` + `exp` against IdP JWKS | Multi-client org with OIDC IdP; short TTL (≤ 15 min) | Revocation needs short TTL or a denylist |
+| **Introspection (RFC 7662)** | Verifier calls IdP introspection per request (cached briefly) | High-value write:* servers where instant revocation matters | Latency + IdP outage = your outage; cache with care |
+
+All three bind `resource` (audience) per server. Static bearers are acceptable only behind VPN/mTLS + allowlist; never on the public internet. Document your choice in the server's README — the next on-call should not have to reverse-engineer it.
+
+## 4. Sandboxing the Server Process
+
+Treat the server as untrusted-adjacent code with your DB credentials:
+
+- **Containerize.** Read-only root filesystem, non-root user, dropped capabilities, no NewPrivileges. The MCP server reads policy files and one Postgres role; it needs nothing else.
+- **No network except required.** If it only talks to Postgres and the IdP's introspection endpoint, egress-allowlist exactly those two; everything else `REJECT`. A compromised policy tool cannot phone home.
+- **gVisor / Firecracker** for multi-tenant or third-party servers (pointer-level: gVisor's `runsc` runtime, or Cloud Run / Lambda microVMs — each buys syscall-level isolation at some latency cost).
+- **Filesystem:** mount `policy/` read-only; `tmpfs` for scratch; no host mounts beyond that.
+- **The read-only DB role is load-bearing:** `shopcore_ro` cannot `UPDATE`, so a SQL-injection-shaped bug in your handler (parameterization exists — this is defense in depth) still cannot write.
+- **Resource limits:** CPU/memory caps and a request timeout (30–60 s) bound a runaway or looped agent.
+
+## 5. Supply Chain — the Server Is a Dependency Too
+
+- **Pin exact versions** of `mcp`, `pydantic`, every dependency; hash-check the lockfile in CI (`pip install --require-hashes` or `uv` with `--locked`).
+- **Verify artifacts:** prefer official images/wheels with signed provenance (Sigstore/cosign where published); review checksums on upgrade; the MCP registry carries package metadata — still read the source before granting `write:*`.
+- **SBOM** per release (`cyclonedx-py` or `syft`) — when a CVE lands in a transitive dep you need the inventory yesterday.
+- **Pin base images by digest**, rebuild weekly, renovate/dependabot with mandatory CI green.
+- **Review MCP servers you didn't write** the way you'd review a CI action with secrets: source, last-commit, maintainer, issue tracker. A tool that shells out with `shell=True` is an instant no.
+
+## 6. Enterprise Integrations (Pointer Level)
+
+- **SSO/OIDC:** point `AuthSettings.issuer_url` at your IdP (Entra ID, Okta, Google Workspace, Ping). MCP doesn't sign anyone in — the IdP does, via standard OIDC discovery; your MCP server stays a pure resource server. Pre-register clients or use CIMD; DCR is deprecated.
+- **SCIM-ish provisioning:** MCP has no SCIM; use your IdP's SCIM/SCIM-like provisioning to create/revoke *IdP clients and role assignments*; users never appear in the MCP server. Revoking at the IdP kills access within token lifetime (keep tokens short: 15–60 min).
+- **Gateway pattern:** an internal MCP gateway (envoy/apisix/custom) can enforce per-team scopes, rate limits and audit *before* requests reach servers — where multiple servers share infra.
+- **Rate limiting:** 100 req/min per token, 10 concurrent, token-bucket at the gateway, plus per-tool limits on `write:*` (e.g., 5 refunds/min/agent). Return `429` with `Retry-After`.
+- **Audit expectations:** every tool call logged (31.2.2's `agent_actions`), token `client_id` attached, retention ≥ 2 years for money tools, exportable to your SIEM. Compliance will ask; have the query ready.
+
+## 6.5 Multiple Servers, One Host — Per-Server Boundaries
+
+Real hosts mount several servers at once (filesystem + Postgres + your ShopCore server). The isolation story is entirely in token audience and host policy:
+
+- Each server validates **its own audience**; a token minted for `mcp.shopcore.internal` presented to `github-mcp.example.com` is refused there — provided both enforce audience (most do not; verify by inspection).
+- The host decides which tools from which server reach which agent. "The Postmaster sees only the ShopCore server's tools" is a host/orchestrator config decision — nothing in the protocol co-locates or blends servers.
+- Never share one static bearer across several servers "for convenience" — you have built a confused deputy with a master key. One token per (client, server, audience) triple.
+- If your org runs an internal registry/gateway, issue per-server scoped tokens there and audit centrally; this collapses rotation from N secrets to one control plane.
+
+## 7. Incident Runbook — Leaked Bearer Token, Step by Step
+
+```text
+T+0     PagerDuty/Slack: "SHOPCORE_MCP_TOKEN exposed in <where>" (git leak / log / screenshot)
+T+5     1. Revoke at IdP (or set env token to a new random 32B; redeploy) — kills active use
+        2. Rolling restart of all MCP replicas (zero-downtime; stdio servers: host respawn)
+T+15    3. Audit: last 24h of agent_actions — filter client_id=compromised, outcome=executed
+        4. Reconcile money actions: any refund not in your approval queue -> freeze + finance call
+T+30    5. Rotate any co-located secrets the token could reach (DB role password, Stripe) if lateral risk
+        6. Notify per your disclosure policy (internal stakeholders; customer-impacting? check DPA/GDPR clock)
+T+24h   7. Postmortem: how did it leak (pre-commit hook? log line? screenshot?) — fix the class, not the instance
+        8. Verify: old token gets 401; new token works; alerts actually fire; runbook timing measured
+```
+
+Pre-stage: tokens 15–60 min TTL (refresh via IdP, revocation ≤ 1h, shrink when paranoid — correct), `SHOPCORE_MCP_TOKEN` rotation scripted, and a quarterly **fire drill**: revoke in staging mid-morning, time the detection-to-401 path.
+
+## 7.5 Verifying a Hardened Server — the Two-Minute Checklist
+
+Before this server touches a production agent, run this against staging with a real IdP token:
+
+1. `curl -X POST $URL/mcp` with no token → expect `401`, `WWW-Authenticate` contains `resource_metadata=` pointing at `/.well-known/oauth-protected-resource/mcp`.
+2. `curl $URL/.well-known/oauth-protected-resource/mcp` → expect JSON with `resource`, `authorization_servers`, `scopes_supported`.
+3. Full token dance via a real MCP client (Inspector pointed at the URL with auth, or `Client(url)` in Python) → `tools/list` succeeds; `call_tool` with an out-of-scope tool → `403 insufficient_scope` with the needed scope in the header.
+4. Expired token → `401`; revoked client at IdP → new token request fails; old token dies within its TTL.
+5. Kill the Postgres role (`REVOKE` temporarily in staging) → tools return clean `error:` strings, not tracebacks.
+6. Check the logs contain `client_id` per call and **no** tokens/DSNs; grep the log file for `sk_live` and your test password as a smoke test.
+
+If any step fails, fix before exposing the server to a single real ticket. The steps are deliberately mechanical — security you do not run is security you do not have.
+
+## 7.6 What the Audit Team Will Ask For
+
+When ShopCore's auditor (or your SOC 2 / ISO 27001 assessor) samples this system, they will pull three things: (1) the `agent_actions` extract for a refunded ticket — proving who/what/when and which approval; (2) the token issuance log from the IdP — proving `client_id` attribution and TTL compliance; (3) the CI supply-chain evidence — pinned lockfile, SBOM, and the hash-checked install (`pip install --require-hashes`). All three are already produced by the controls in this chapter; the gap would be *assembling* them on demand. Keep a one-page "MCP audit pack index" in the ops wiki pointing at the queries, the retention location, and the IdP log export path. Audits reward prep, not heroics.
+
+## 8. Common Mistakes & Assessment
+
+- Shipping `mcp dev`-style servers with no auth "because it's internal" — internal networks get scanned too.
+- Granting `write:refunds` to a read-mostly agent "temporarily". Scope grants are one-way ratchets; make revocation a cron job.
+- stdio server registered in two hosts with different `env` blocks — one of them has the prod DSN and your laptop SSH agent.
+- "The registry listing means it's safe." It means *published*; review anyway.
+- OAuth 2.1 done, audience not bound — tokens replayable across your three MCP servers. Bind `resource=` per server; verify `aud`.
+
+**Practice.** (1) Add `AuthSettings` + verifier to your 32.2.1 HTTP server; confirm 401→metadata→401-with-scope loop with `curl`. (2) Containerize it read-only with an egress allowlist; run the Inspector against the container. (3) Execute the T+0→T+15 steps against a staging token; attach the audit query output to your runbook.
+
+**Assessment checklist**
+
+- [ ] I can explain why "no auth" is the default in tutorials and why this page forbids it.
+- [ ] I can name the RFC 9728 metadata the SDK publishes and where it lives.
+- [ ] My server validates audience, uses per-tool scopes, and treats `admin:*` as non-agent.
+- [ ] My container is read-only, non-root, egress-allowlisted, with a read-only DB role.
+- [ ] I have a timed leaked-token runbook I have actually executed in staging.
+
+</BookNodePage>

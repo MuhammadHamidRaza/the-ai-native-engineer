@@ -1,0 +1,106 @@
+---
+id: "16-2-2-dns-records-nameservers-and-propagation"
+title: "16.2.2 DNS Records, Nameservers and Propagation"
+sidebar_label: "16.2.2 DNS Records & Propagation"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-2-dns-records-nameservers-and-propagation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s2-t2">
+
+Every website launch depends on two invisible systems working together: **registrars** (who owns the domain) and **DNS** (where the domain points). This lesson is the one place you learn both — then you prove them by watching a domain resolve live.
+
+## 1. What DNS Is and Why It Exists
+
+Computers speak IP addresses; humans remember names. The **Domain Name System (DNS)** is the internet's phone book: given `shopcore.dev`, return `203.0.113.10`. When it fails, nothing else in your stack matters — not servers, not certificates, not app code.
+
+DNS is a **distributed, hierarchical lookup system**: resolvers → root servers → TLD servers (`.dev`, `.com`) → your domain's **authoritative nameservers**, which hold the actual records. TTLs (time-to-live) tell caches how long to remember each answer — this is why DNS changes take time to "propagate."
+
+## 2. The Record Types You Will Actually Use
+
+| Type | Purpose | Example value |
+| :-- | :-- | :-- |
+| `A` | Domain → IPv4 address | `203.0.113.10` |
+| `AAAA` | Domain → IPv6 address | `2001:db8::10` |
+| `CNAME` | Alias this name to another name | `shopcore.dev → cdn.managed-host.net` |
+| `MX` | Mail exchanger (email routing) | `10 mail.example.com` |
+| `TXT` | Free text — SPF/DKIM/verification | `v=spf1 include:_spf.google.com ~all` |
+| `NS` | Authoritative nameservers for the zone | `ns1.registrar.net` |
+| `CAA` | Which CAs may issue certificates | `0 issue "letsencrypt.org"` |
+
+**Apex vs subdomain:** `@` (or blank) means the bare domain. CNAME cannot be used at the apex on most providers — use `A`/`ALIAS`/`ANAME` there instead. Subdomains like `api.` or `www.` are each their own record.
+
+## 3. Where DNS Records Are Managed — and Where They Are NOT
+
+You manage records either at the **registrar** (the company where you bought the domain — e.g., Namecheap, Cloudflare, GoDaddy) or, after you switch **nameservers**, at a **DNS host** like Cloudflare (free, excellent), Namecheap BasicDNS, or your cloud provider (Route 53, Cloud DNS). One zone holds your records; a second provider with stale copies does nothing.
+
+macOS/Linux: `dig` is the tool. Windows: `nslookup`, or install `dig` via WSL2.
+
+```bash
+# macOS/Linux/WSL2
+dig A shopcore.dev +noall +answer
+# Windows
+nslookup -type=A shopcore.dev
+```
+
+Expected (abbreviated), after propagation:
+
+```text
+shopcore.dev. 300 IN A 203.0.113.10
+```
+
+(Older cached answers with no reply usually mean you are inside the TTL window — resolution failures usually manifest as timeouts or `SERVFAIL`, not an HTTP status at all; `304` is an HTTP cache code, unrelated to DNS. Read `dig`'s status line and TTLs, not HTTP codes.)
+
+## 4. Lab — Point your domain at a server and verify live
+
+**Mental model first:** changing records does not move traffic instantly. Resolvers cache the old answer for up to the TTL. Plan with that.
+
+1. Buy or use a sandbox domain on your registrar. Note the current nameservers (`nslookup -type=NS shopcore.dev`).
+2. In the registrar's DNS panel, add:
+   - `A` record: host `@`, value `203.0.113.10`, TTL `300` (5 minutes — low TTL now so changes propagate fast; raise later).
+   - `A` record: host `www`, same value.
+   - `TXT` record: host `@`, value `v=spf1 include:_spf.google.com ~all` (only if you send mail).
+3. Wait one TTL, then check from several networks (home Wi-Fi, phone hotspot, a colleague's connection):
+   ```bash
+   nslookup -type=A shopcore.dev
+   nslookup -type=A www.shopcore.dev
+   ping shopcore.dev
+   ```
+4. Break things on purpose: temporarily change the A record to `192.0.2.1` (TEST-NET-1, reserved — cannot route) and confirm the lookup returns the new value and HTTP fails; restore immediately. You now understand what "propagation" really is.
+
+If you switched to Cloudflare for DNS: create the zone at cloudflare.com, follow their "change nameservers" instructions at your registrar, wait for the zone status **Active**, then set records — Cloudflare's dashboard shows red/yellow/grey cloud toggles (proxied = orange cloud = through Cloudflare; DNS-only = grey) depending on what you want proxied vs raw.
+
+## 5. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| "works on my machine, not my friend's" | Resolvers at different locations cached different answers | Lower TTL in advance; wait; test with `dig @1.1.1.1 <name>` and `dig @8.8.8.8 <name>` |
+| Domain resolves only intermittently | Rate-limited resolver or typo in record | Re-check exact host field (`@` vs blank vs `shopcore`) vs `ns1` vs `ns2` |
+| HTTPS works for apex but not `www` | `www` has no record or points to different infra | Add `www` A/CNAME to the same origin |
+| Nameserver change "stuck" for days | Registrars/TLD cache NS aggressively | Use registrar's official nameserver change flow; verify with `dig NS <domain>`; contact registrar if >48h |
+| Email sent but never arrives | Missing/mis-ordered MX or SPF | `nslookup -type=MX yourdomain`; SPF TXT must include your mail provider |
+| `nslookup` returns nothing for `@` | Host field literally blank vs `@` inconsistent between registrars | Use `@` (or leave blank on registrars that use blank = apex); verify what the panel shows |
+
+## 6. Cost and Safety Notes
+
+Registrar renewal prices drift — compare `.dev`/`.com`/`.io` at renewal, not just year-1 promo. Transferring domains means unlocking, EPP/auth codes, and 60-day transfer locks; do not transfer mid-launch. Never hand out registrar credentials or the zone's API token; enable 2FA at the registrar account level, not just on GitHub.
+
+## 7. Practice
+
+**Guided exercise.** Create (or reuse) a sandbox domain; set an A record to `203.0.113.10`; confirm resolution from two networks; flip it to `192.0.2.1`; confirm; restore.
+
+**Independent exercise.** Add a working SPF TXT record for whatever email provider your domain uses, and validate it at your provider's SPF checker.
+
+**Challenge.** Point `shopcore.dev` and `www.shopcore.dev` at a vanilla static host (e.g., GitHub Pages) using the host's recommended DNS target; screenshot the hosted page before and after.
+
+**Assessment checklist**
+
+- [ ] I can explain what DNS is and where records live.
+- [ ] I can add/edit A, CNAME, MX, TXT, CAA, NS records.
+- [ ] I understand TTL, propagation, and why changes are not instant.
+- [ ] I can verify a record with `dig`/`nslookup` from two networks.
+- [ ] I know apex-vs-subdomain CNAME restrictions.
+- [ ] I will never type registrar credentials into a terminal or screenshot.
+
+</BookNodePage>

@@ -1,0 +1,164 @@
+---
+id: "21-2-1-requirements-engineering-from-discovery-to-traceability"
+title: "21.2.1 Requirements Engineering: From Problem Discovery to Acceptance Criteria"
+sidebar_label: "21.2.1 Requirements Engineering: From Problem Discovery to Acceptance Criteria"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-1-requirements-engineering-from-discovery-to-traceability"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s2-t1">
+
+The most expensive bug in software is the one nobody asked to be fixed. Before ShopCore's sprint begins, one of three sentences will arrive: "checkout is slow", "add gift wrapping", "the reports are wrong". All three are *complaints*, not requirements — and a team that starts coding from a complaint will build the wrong thing perfectly. This lesson is the discipline that turns complaint into commitment: discovery, NFRs, acceptance criteria, traceability, and creep control.
+
+## 1. Complaint vs Pain vs Root
+
+Every ambiguous intake passes through the same three layers:
+
+| Layer | Example (ShopCore) | Artifact |
+| :-- | :-- | :-- |
+| Complaint | "Checkout feels slow" | Verbatim quote, timestamped |
+| Pain | p99 = 2.4 s on the payment step; 8% abandon at address form | Metrics, session replay, support tickets |
+| Root | N+1 on `order_items` + row lock contention on `inventory` | `EXPLAIN ANALYZE`, lock monitoring |
+
+Rule: you do not open a story until you can state the root or the *next experiment to find it*. "Gift wrapping" without a user-count or revenue hypothesis is a wish, not a requirement.
+
+## 2. Stakeholder Mapping
+
+List the humans before the features. ShopCore has five stakeholders with real veto power:
+
+| Stakeholder | Wants | Can veto | Evidence |
+| :-- | :-- | :-- | :-- |
+| Customers | Fast checkout, correct orders | Buy from someone else | Conversion, refunds |
+| Ops | No pages at 3 a.m. | Deploy freeze | Error budget, uptime |
+| Finance | Money arrives, reconciled daily | Launch hold | Settlement reports |
+| Engineering | Stoppable work in 2-week slices | Estimates | Velocity, incidents |
+| Legal/Compliance | No card data touches us; PCI scope minimal | Launch block | PCI DSS SAQ, DPA |
+
+Missing a row means discovering it at launch. Ops and Legal are the two most commonly skipped — and they are the two whose "no" is absolute.
+
+## 3. Functional vs Non-Functional Requirements (NFR)
+
+**Functional:** what the system does. "The system shall capture payment on checkout completion." Testable directly.
+
+**Non-functional:** how well it does it. NFRs are where ShopCore launches or dies, so write them with numbers:
+
+- `NFR-001` Checkout API server-time p99 ≤ **300 ms** (excluding client network).
+- `NFR-002` Availability **99.9%** per calendar month (43.2-minute error budget; see 22-3-2).
+- `NFR-003` PII (email, address, phone) encrypted at rest; **never logged** (see 22-3-1); retention 24 months then purge.
+- `NFR-004` Card data **never** transits or touches ShopCore — Stripe.js/Elements only; ShopCore sees tokens, not PANs (PCI DSS scope control).
+- `NFR-005` Recovery point ≤ **5 min** for orders (backups + PITR; see [12.3.2](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores)).
+
+Numeric NFRs are testable; adjectives ("fast", "secure", "scalable") are not requirements, they are marketing.
+
+## 4. Constraints
+
+Constraints are requirements that cannot be designed away:
+
+- **Budget.** Target $0/mo incremental infra for the first 500 orders (managed free tiers); the constraint forces design simplicity.
+- **Legacy.** PostgreSQL 16 with existing `orders` and `order_items` schemas — zero-downtime migrations only ([12.3.1](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-1-schemas-constraints-and-migrations)).
+- **Regulatory.** PCI DSS v4.0: cardholder data environment kept at Stripe; ShopCore stays in SAQ A scope. Any change that pulls PANs in-house needs Legal sign-off — full stop.
+- **Time.** Peak freeze 2026-11-20 → 2027-01-02; only fixes and flags allowed.
+
+## 5. Use Cases, User Stories and Given/When/Then
+
+**Use case:** `UC-PAY-1 Capture payment` — actor: customer; pre: cart valid; main flow: review → tokenized payment → capture → order created → confirmation; alternate: decline → order stays `payment_failed`, stock untouched (see 21.4.1's write-skew example for the stock rule).
+
+**User story:** "As a returning customer, I want one-click purchase using my saved Stripe customer, so that checkout takes one tap." (Saved-customer flow is a real Stripe capability — link to Stripe docs before designing.)
+
+**Acceptance criteria (given/when/then):**
+
+```text
+GIVEN a cart with 2× SKU-1001 and stock = 2
+WHEN  the customer double-clicks "Pay"
+THEN  exactly one charge is captured and one order is created
+AND   the idempotency key (header) is stored with the order id
+AND   a retry of the same request returns the original 201 response
+```
+
+Given/when/then forces the three conditions every story otherwise hides: state, trigger, observable result. If you cannot write the THEN, you do not understand the requirement.
+
+## 6. Validate Before You Build — the Thin Prototype
+
+The cheapest requirements review is running code. For gift wrapping, build the 20% slice: a `gift_wrap boolean` column, one checkbox, no emails, no tax logic — and show it to five real customers and finance. You will learn in one afternoon whether it is worth three sprints. Rule: prototype validates *desirability and usability*, not load or security.
+
+## 7. The Traceability Matrix
+
+| Req ID | Source | Story | Design artifact | Test | Deploy |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| NFR-001 | Ops + eng | 21.3.2 | API perf budget | k6 checkout scenario | 2026-12 rel |
+| UC-PAY-1 | Finance | 15.2.3 | ADR-002 | supertest idempotent capture | shipped |
+| NFR-004 | Legal | all payment stories | ADR-002, CSP | zap regression scan | 2026-10 rel |
+| C-PCI | Legal | scoped out of | Stripe Elements | manual SAQ review | quarterly |
+
+One row per requirement; every row must reach a test and a release. An untested requirement you "believe works" is fiction with a purchase order.
+
+## 8. Failure Modes and How to Catch Them
+
+- **Requirements creep (mid-sprint).** Tell: "while we're in here…" Growth without a traceable source. Catch: every addition must name its stakeholder and requirement ID, or it goes to the next sprint's discovery — no exceptions, including from the CEO, politely delivered.
+- **Gold plating.** Engineer adds unrequested "while I was here" scope. Catch: PR description must reference the requirement ID; the rest is a separate PR.
+- **Implicit NFRs.** "Obviously it should be fast" — no number, no budget. Catch: PR template has an NFR row; empty means not addressed.
+- **Unstated constraint discovery at launch.** Catch: the constraints table in Section 4 is reviewed at kickoff *and* at architecture review (21.2.2).
+- **Ambiguous words.** "Fast", "quickly", "secure". Catch: linter regex on tickets; no adjective without a number.
+
+Mid-sprint creep protocol: freeze → classify (bug? scope change? new requirement?) → re-plan honestly → if truly mid-sprint-critical, bring it to standup with the trade (what drops?). Never silently widen.
+
+## 9. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Story "done" but stakeholder rejects | Complaint captured, root never found | Add Section 1 workshop before story creation |
+| Estimates 2× actual | Hidden NFRs surfaced late | NFR template mandatory at intake |
+| QA finds "missing" validation | Acceptance criteria were adjectives | Rewrite given/when/then; node QA at refinement |
+| Sprint ends, scope doubled | Creep accepted without re-plan | Re-plan at first creep event; escalate pattern to eng manager |
+| Launch blocked by Legal | PCI constraint unowned | Named compliance owner in stakeholder map, signed at kickoff |
+
+## 10. The Assembled ShopCore PRD — What "Done" Actually Looks Like
+
+Students who can list the ingredients usually blank on the artifact. Here is the minimal complete ShopCore PRD for one body of work, written the way you would actually ship it. Copy the skeleton, not the content.
+
+```text
+PRODUCT REQUIREMENTS DOCUMENT
+Project: ShopCore — Abandoned-Cart Recovery (one-tap buy is out of scope)
+Owner: Product (Jordan) · Eng: Priya · Design: Sam · Compliance: Priya (dual-hats)
+Status: Ready for build · Freeze window: none (normal release train) · Target: 2026-12-15
+
+1. PROBLEM. 61% of ShopCore carts are abandoned; of those, 22% return within 14 days and complete the purchase.
+   The business case costs $3.80 in ads per recovered cart vs $12.40 new-customer acquisition.
+2. GOALS. (a) Recover 8–10% of abandoned carts via email + push within 48 h. (b) Zero customer-experience harm
+   (unsubscribe rate under 0.5% per send). (c) Zero support load increase (no manual refunds triggered by stale carts).
+3. NON-GOALS. One-tap re-buy (separate project). Retargeting ads. SMS. Win-back of > 90-day churned customers.
+4. USERS & STORIES. As a guest who left a cart, I want a link that restores it, so I do not re-pick 4 items on mobile.
+5. CONSTRAINTS. No marketing-automation SaaS (budget $0/mo). Must not store card data (SAQ A). Graceful degradation
+   when email provider is down (queue, never block checkout).
+6. NFRs. 99.9% availability for the recovery endpoint. Restored cart renders < 1 s p95. Unsubscribe honored in < 60 s.
+   Email deliverability >= 98% (SPF/DKIM/DMARC green — verified in Section 3 of 16.2.2).
+7. ACCEPTANCE CRITERIA.
+   GIVEN a cart with 2x SKU-1001 and stock = 1 when the recovery job fires,
+   THEN exactly one recovery email is queued, referencing the cart by opaque token,
+   AND a second job run does not enqueue a duplicate,
+   AND the token expires after 14 days.
+8. OPEN QUESTIONS (tracked to owner). (1) Do we include a discount? — Jordan (answer due 2026-11-25).
+   (2) Do recovery emails carry the order subtotal? — Compliance (answer due 2026-11-25).
+9. SUCCESS METRICS. Recovery rate vs 14-day baseline. Unsubscribe rate. Support tickets tagged "cart-recovery".
+   Roll back if unsubscribe > 0.5% for 2 consecutive sends.
+```
+
+Notes on the skeleton: every NFR has a number; every open question has an owner and a date; every story maps to a constraint; every email action maps to a graceful-degradation plan. When you inherit a ShopCore PRD, check those four or it is not ready for build.
+
+## 11. Practice
+
+**Guided exercise.** Take "add one-tap buy" (Section 5) through the full pipeline: stakeholder map row, NFRs (which apply?), given/when/then, traceability row, and the 20% prototype plan.
+
+**Independent exercise.** Audit your last closed ShopCore ticket: which stakeholder asked, where is its NFR number, does a test reference it, and did anything creep in mid-sprint? Fix the ticket retroactively — it takes 10 minutes and teaches the muscle.
+
+**Challenge.** Run the creep protocol on a real artifact: pick any open PR in the repo, classify every line as serving the stated requirement ID or not, and split the PR if needed.
+
+**Assessment checklist**
+
+- [ ] I can walk complaint → pain → root for any intake message.
+- [ ] I can write five numeric NFRs for ShopCore checkout from memory.
+- [ ] I can produce a traceability row for any requirement in 10 minutes.
+- [ ] I know the creep protocol cold and can run it in a standup.
+
+</BookNodePage>

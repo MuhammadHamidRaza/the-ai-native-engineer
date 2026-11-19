@@ -1,0 +1,185 @@
+---
+id: "23-2-1-redis-cache-invalidation-and-rate-limiting"
+title: "23.2.1 Redis, Cache Invalidation and Rate Limiting"
+sidebar_label: "23.2.1 Redis, Cache Invalidation and Rate Limiting"
+slug: "/part-06-system-design-and-production-quality/23-performance-and-scalability/23-2-caching-and-horizontal-scaling/23-2-1-redis-cache-invalidation-and-rate-limiting"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-23-s2-t1">
+
+ShopCore's catalog is read 95% of the time and written almost never — the ideal cache workload and the place every naive cache goes to die (flush the cache, watch 5,000 requests hit Postgres at once: the **cache stampede**). This lesson covers the three cache patterns, a worked TTL strategy with jitter, single-flight request coalescing, invalidation-on-write, stale-while-revalidate at the HTTP layer, a Redis-backed rate limiter, and the failure modes that actually page you.
+
+## 1. The Three Patterns — And When Each Lies
+
+| Pattern | Read path | Write path | Use when | Watch out for |
+| :-- | :-- | :-- | :-- | :-- |
+| **Cache-aside** (lazy loading) | App checks cache; miss → DB → populate cache | App writes DB; **invalidate/delete cached key** | Read-heavy, tolerate 100–300 ms fill on miss | Stampede on miss (fix: §4); stale reads between write and invalidate |
+| **Read-through** | Cache sits in front of DB and fills itself | Same as above (via library) | Simple mental model; client code stays clean | The cache client owns the load logic — hidden complexity; same stampede |
+| **Write-through** | Cache read | App writes cache; cache **synchronously** writes DB | Read-your-writes strong consistency | Write latency (two hops); cache fills with data nobody reads (wasted memory) |
+
+ShopCore uses **cache-aside** everywhere except the cart session, which is write-through-ish (Redis is the system of record for carts, Postgres gets it on checkout). "Cache invalidation is one of the two hard problems in CS" — the other half of that cliché is exactly the §5 discipline below.
+
+## 2. Cache-Aside in Code + a Worked TTL Strategy
+
+```js
+// src/lib/catalog-cache.js (ioredis; the official `redis` package is equivalent)
+import Redis from 'ioredis';
+const redis = new Redis(process.env.REDIS_URL);
+
+export async function getProduct(id) {
+  const key = `product:${id}`;
+  const hit = await redis.get(key);
+  if (hit) return JSON.parse(hit);                    // ~1 ms
+
+  const row = await db.query('SELECT * FROM products WHERE id = $1', [id]);
+  if (!row.rows[0]) return null;
+  // TTL with jitter: spread expirations so keys don't all die in the same second
+  const ttl = 300 + Math.floor(Math.random() * 60);   // 300–360 s
+  await redis.set(key, JSON.stringify(row.rows[0]), 'EX', ttl);
+  return row.rows[0];
+}
+```
+
+| Data | Key shape | TTL | Rationale |
+| :-- | :-- | :-- | :-- |
+| Product detail | `product:{id}` | 300–360 s + jitter | Changes rarely; price must never be stale > 5 min |
+| Catalog listing page N | `catalog:{cat}:p{n}` | 120 s + jitter | List mix shifts faster; 2 min is acceptable staleness |
+| Free-shipping threshold etc. | `config:shipping` | 60 s | Admin-toggleable; short TTL = no invalidation needed |
+| Cart session | `cart:{session}` | 7 d | User-owned; evicted by TTL |
+| Idempotency key | `idem:{key}` | 24 h | Processed webhook/order replay protection |
+
+**Hit rate target:** > 90% on catalog reads, measured with `redis-cli INFO stats` (`keyspace_hits` / `keyspace_misses`) plus a counter in your app metrics. Below 80%: either TTLs are too short, keys are churned by unpredictable components (timestamps in keys!), or your hit path has a bug.
+
+## 3. HTTP Stale-While-Revalidate — The Free Layer Under Your Cache
+
+Before Redis even sees a request, the CDN/browser can serve stale content while refreshing:
+
+```text
+Cache-Control: public, max-age=60, stale-while-revalidate=300
+# fresh for 60 s; for the next 300 s a request may get stale content
+# while the CDN revalidates in the background
+```
+
+This costs zero infrastructure and shields origin from synchronized expirations. It does **not** fix values that changed mid-TTL; it makes "slightly stale but always fast" an explicit contract. Vary by path — never apply SWR to `/api/orders` or anything user-specific.
+
+## 4. Stampede Prevention — Single-Flight (Request Coalescing)
+
+100 concurrent requests miss the same key at once → 100 identical Postgres queries → the DB melts. Fix: **only one** fill is in flight; everyone else waits (or serves stale).
+
+```js
+// In-process single-flight (good enough for 1 instance)
+const inflight = new Map();
+export async function getProductCoalesced(id) {
+  const key = `product:${id}`;
+  const hit = await redis.get(key);
+  if (hit) return JSON.parse(hit);
+  if (inflight.has(key)) return inflight.get(key);    // coalesce!
+  const p = (async () => {
+    try {
+      const row = await db.query('SELECT * FROM products WHERE id = $1', [id]);
+      const ttl = 300 + Math.floor(Math.random() * 60);
+      if (row.rows[0]) await redis.set(key, JSON.stringify(row.rows[0]), 'EX', ttl);
+      return row.rows[0] ?? null;
+    } finally {
+      inflight.delete(key);   // ALWAYS clear — a rejected promise left in the map
+    }                         // would be served to every later caller, forever
+  })();
+  inflight.set(key, p);
+  return p;
+}
+```
+
+```text
+# Multi-instance single-flight: SET NX as a distributed fill lock
+SET product:fill:{id} 1 NX EX 5   # only one instance fills; losers retry-read or serve stale
+```
+In-process coalescing fixes the single-node case; the `SET NX` lock is a sketch of the distributed variant — keep the fill critical section tiny, always `EX` the lock, and on lock failure serve stale (never spin). This is the difference between a cache miss costing 30 ms and costing a partial outage.
+
+## 5. Invalidation on Write — Delete, Don't Update
+
+On `PUT /admin/products/:id`:
+
+```js
+await db.query('UPDATE products SET ... WHERE id = $1', [id]);
+await redis.del(`product:${id}`);                 // precise delete
+await redis.del('catalog:*');                     // NO — Redis has no recursive del
+```
+
+`DEL catalog:*` doesn't exist. Real options, cheapest first:
+1. **Precise key deletion** (`product:{id}`) + short catalog-list TTLs — staleness bounded by 120 s, no wildcard deletes.
+2. **Versioned keys** — `catalog:v{n}:{cat}:p{n}`; bump `catalog:version` on any product change; old keys age out by TTL. No deletion at all.
+3. **SCAN + DEL** — works but O(n) and blocks; fine for tiny keyspaces, never in the hot path.
+4. **Pub/Sub invalidation bus** — all API nodes subscribe and drop their local copies; still fine to keep short TTLs as the backstop.
+
+Rule: **delete, never update-in-place** — an updated cache entry is a write to two systems with no transaction between them. And accept bounded staleness (TTL) instead of chasing perfect invalidation; if the business needs price-never-stale, that endpoint bypasses the cache by design.
+
+## 6. Rate Limiting — Token Bucket in Redis
+
+Sketch (fixed-window INCR; production token buckets use a small Lua script or `redis-cell` module):
+
+```js
+// token bucket, fixed window, per client IP — good enough to stop abuse
+async function allow(ip, limit = 100, windowSec = 60) {
+  const key = `rl:${ip}:${Math.floor(Date.now() / 1000 / windowSec)}`;
+  const n = await redis.incr(key);
+  if (n === 1) await redis.expire(key, windowSec);
+  return n <= limit;                 // true = allow, false = 429
+}
+```
+
+```text
+# Token-bucket core (atomic via Lua — no race between read and write)
+local tokens = tonumber(redis.call('GET', KEYS[1]) or ARGV[1])
+if tokens > 0 then
+  redis.call('SET', KEYS[1], tokens - 1, 'EX', ARGV[2])
+  return 1
+else
+  return 0
+end
+```
+
+ShopCore policy: `GET /api/*` → 100 req/min per IP; `POST /v1/orders` → **20 req/min per session**; admin → authenticated + separate budget. Return `429` + `Retry-After: <seconds>`. Never rate-limit by raw user-agent; do not key on anything spoofable for anything money-adjacent.
+
+## 7. Redis Operations — TTL, LRU, Memory
+
+```bash
+redis-cli INFO memory            # used_memory, used_memory_human, maxmemory
+redis-cli INFO stats             # keyspace_hits/misses, evicted_keys
+redis-cli DBSIZE
+CONFIG SET maxmemory 256mb
+CONFIG SET maxmemory-policy allkeys-lru   # evict LRU keys when full (cache use-case)
+```
+
+`allkeys-lru` is right for pure caches (evict anything old). If Redis also holds carts/idempotency keys, use `volatile-lru` (evicts only keys with TTLs) — or better, **separate instances** for cache vs data. On `noeviction`, a full Redis starts rejecting writes: the classic "everything is suddenly down and CPU is fine" pager. Watch `evicted_keys` rate; non-zero means you are under-provisioned or TTLs are wrong.
+
+## 8. Failure Modes — Dogpile, Poisoning, Hot Keys
+
+| Failure | Symptom | Cause | Fix |
+| :-- | :-- | :-- | :-- |
+| **Cache stampede / dogpile** | DB p99 explodes on TTL expiry | No coalescing; herd expiry | Jitter + §4 single-flight + SWR |
+| **Cache poisoning** | Wrong price served to everyone | Bad row cached, e.g. after partial write or bad deploy | Validate before `SET`; short TTLs; `DEL` on deploy hooks; never cache error payloads |
+| **Hot key** | One Redis shard/CPU at 100% | `product:featured` read by everyone | Local in-process cache layer with 5–10 s TTL in front of Redis |
+| **Stale after write** | "I just changed the price!" | Invalidate missed a key | Re-check §5; add cache-buster in admin preview |
+| **Redis down → DB dies** | Cascading outage | App treats cache failure as fatal | Fail **open** (skip cache) with a circuit breaker + alert; never let cache outage take the site down |
+| **Flush-all in prod** | Instant thundering herd | Someone typed `FLUSHALL` | ACLs: rename/disable `FLUSHALL`, `FLUSHDB` (`rename-command`); require role |
+
+## 9. Practice
+
+**Guided.** Add §2's `getProduct` to ShopCore behind the existing product-read path. Run k6 (23.1.2) before/after and record catalog p95 and Postgres query count (`pg_stat_activity` or log count). Compute hit rate after 5 minutes.
+
+**Independent.** Implement §4 single-flight (in-process version). Then prove it works: flush Redis, run `autocannon -c 50`, and count queries reaching Postgres with and without coalescing.
+
+**Challenge.** Implement §6's limiter on `POST /v1/orders` at 20/min per session. Hammer it with k6 past the limit, verify `429` + `Retry-After`, and verify the checkout still works for a fresh session. Then simulate Redis being down and verify the API fails open.
+
+**Assessment checklist**
+
+- [ ] I can explain cache-aside vs read-through vs write-through and defend ShopCore's choice.
+- [ ] I set TTLs with jitter and can state the staleness contract per key class.
+- [ ] I can implement and *demonstrate* single-flight stampede protection.
+- [ ] I invalidate on write by deletion (or versioning), never wildcard `DEL`.
+- [ ] I can write a correct-enough Redis rate limiter and know its fixed-window caveat.
+- [ ] I know the six failure modes and which one my current design is most exposed to.
+
+</BookNodePage>

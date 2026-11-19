@@ -1,0 +1,169 @@
+---
+id: "28-1-2-vector-indexing-and-metadata-filtering"
+title: "28.1.2 Vector Indexing and Metadata Filtering"
+sidebar_label: "28.1.2 Vector Indexing and Metadata Filtering"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines/28-1-2-vector-indexing-and-metadata-filtering"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28-s1-t2">
+
+Chunks without vectors are just text files. This lesson turns ShopCore's parsed policy chunks into a searchable index — and, critically, teaches the metadata filters that keep HelpBot citing **current** policy only — then proves the index works by querying it by hand.
+
+## 1. Embeddings Refresher — Cosine vs Dot Product
+
+An embedding maps text to a point in high-dimensional space; relevance is geometric closeness. Three distance functions exist in practice: **cosine similarity** (angle between vectors, magnitude-free), **dot product** (angle + magnitude), and **L2/Euclidean** (straight-line distance). OpenAI's `text-embedding-3-small` and `text-embedding-3-large` vectors are normalized, so cosine and dot product produce the *same ranking* — pick either and be consistent. pgvector's `<=>` operator is cosine distance (`1 - cosine_similarity`).
+
+**Dimensions — verified November 2026** against the official OpenAI embeddings guide (https://developers.openai.com/api/docs/guides/embeddings):
+
+| Model | Default dims | Max input | Cost driver |
+| :-- | :-- | :-- | :-- |
+| `text-embedding-3-small` | **1536** | 8192 tokens | Cheapest; fine for ShopCore-scale (thousands of chunks) |
+| `text-embedding-3-large` | **3072** | 8192 tokens | Better recall on subtle queries; 2× storage of 3-small at same count (3072 vs 1536 dims) |
+
+Use 3-small unless you can *measure* retrieval regressions — ShopCore cannot answer its refund question better because of embeddings, and you pay for dimensions in Postgres storage and index build time. Both models accept a `dimensions` parameter to shorten vectors (e.g. 256/1024) without retraining.
+
+## 2. Choosing the Vector Store — ShopCore Default is pgvector
+
+| Option | Sweet spot | Watch out |
+| :-- | :-- | :-- |
+| **pgvector** (Postgres extension, v0.8.x verified Nov 2026) | You already run Postgres (Part 04). One database, transactions, joins with `orders`/`tickets` | Single-node ceiling; index build slows writes — batch ingest |
+| **Qdrant** (open source, Rust; cloud + self-host) | 10M+ vectors, rich filtered search, payload indexing | Another service to run and back up |
+| **Pinecone** (managed serverless) | Zero-ops scale, team without DBAs | Cost at scale; vendor lock-in; data lives outside your Postgres |
+
+HelpBot ships on pgvector: six policy docs, maybe a few hundred chunks — adding a new database service for that is cargo-cult architecture. Migrate to Qdrant/Pinecone only when chunk count or QPS genuinely demands it.
+
+## 3. HNSW vs IVFFlat — the Two pgvector Index Types
+
+| | HNSW | IVFFlat |
+| :-- | :-- | :-- |
+| Structure | Navigable small-world graph | k-means clusters (`lists` buckets) |
+| Build | Slower, no training step | Fast, but needs data present to train |
+| Recall/speed | Better recall at same latency | Degrades if data drifts from training sample |
+| When | Default for policy corpora that change | Static, very large corpora; re-train after big ingests |
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE policy_chunks (
+  id            bigserial PRIMARY KEY,
+  doc_id        text NOT NULL,
+  chunk_index   int  NOT NULL,
+  heading_path  text NOT NULL,
+  page          int,
+  effective_date date NOT NULL,
+  doc_type      text NOT NULL DEFAULT 'policy',
+  access_tier   text NOT NULL DEFAULT 'public',
+  text          text NOT NULL,
+  embedding     vector(1536) NOT NULL,
+  UNIQUE (doc_id, chunk_index)
+);
+CREATE INDEX ON policy_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX ON policy_chunks (doc_type, effective_date);
+```
+
+## 4. Metadata Filtering — Current Policy Only
+
+Filters are SQL `WHERE` clauses — that is the entire point of pgvector. For HelpBot, the non-negotiable rule is: **never cite a policy older than two years or of unknown type.**
+
+```sql
+SELECT doc_id, heading_path, page, effective_date,
+       1 - (embedding <=> $1) AS similarity
+FROM policy_chunks
+WHERE doc_type = 'policy'
+  AND effective_date >= CURRENT_DATE - INTERVAL '2 years'
+  AND access_tier = 'public'          -- HelpBot serves customers, not staff
+ORDER BY embedding <=> $1
+LIMIT 5;
+```
+
+Filtering patterns you will reuse: **namespace** (`doc_id` or a `namespace` column to isolate tenants/products), **date range** (above), **access tier** (`public` / `internal` / `restricted` — enforced server-side, never trusted from the client), and **doc_type** (`policy` vs `faq` vs `changelog`). With Qdrant you express the same as payload filters; with Pinecone as metadata filters on the namespace — same concepts, different syntax.
+
+## 5. Lab — Embed the six policies, then verify by hand
+
+```ts
+// scripts/embed-policies.ts — run with: npx tsx scripts/embed-policies.ts
+import OpenAI from "openai";
+import pg from "pg";
+import { readFile } from "node:fs/promises";
+import "dotenv/config";
+
+const openai = new OpenAI();
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+// JSONL is line-delimited — one JSON object per line, not one JSON array.
+const lines = (await readFile("policy_chunks_preview.jsonl", "utf8"))
+  .split("\n").map(l => l.trim()).filter(Boolean);
+const chunks = lines.map(l => JSON.parse(l) as {
+  doc_id: string; chunk_index: number; heading_path: string; page: number;
+  effective_date: string; doc_type: string; text: string;
+});
+
+const embed = async (inputs: string[]) =>
+  (await openai.embeddings.create({ model: "text-embedding-3-small", input: inputs }))
+    .data.map(d => d.embedding);
+
+for (const c of chunks) {
+  const [vec] = await embed([c.text]);
+  await pool.query(
+    `INSERT INTO policy_chunks(doc_id,chunk_index,heading_path,page,effective_date,doc_type,access_tier,text,embedding)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT (doc_id, chunk_index) DO UPDATE SET text = EXCLUDED.text, embedding = EXCLUDED.embedding`,
+    [c.doc_id, c.chunk_index, c.heading_path, c.page, c.effective_date, c.doc_type, "public", c.text, JSON.stringify(vec)]
+  );
+}
+await pool.end();
+```
+
+Run it against the six canonical policies. (The full pipeline — chunking, embedding, quarantine and evaluation — exists in this repository at `examples/shopcore-helpbot/`, executed November 2026: `npm run ingest` produces 32 chunks from the six documents, and `npm test` passes 14/14 including the injection drill.) Verification is mandatory and manual:
+
+1. Query: *"How many days do I have to return an opened item?"* — the top-3 must include the refunds-clause chunk from `returns-policy` and the refunds table chunk. If either is missing, inspect chunk boundaries before blaming the model.
+2. Query: *"Can you store my card details?"* — expect the security/privacy policy chunk, not shipping.
+3. Query with a **date trap**: pretend the 2024 returns policy exists in the index (insert it manually with `effective_date = '2024-01-01'`) — confirm the current-policy filter excludes it.
+
+```text
+$ tsx scripts/embed-policies.ts
+returns: 6 chunks embedded → upserted (1536 dims, model text-embedding-3-small)
+shipping: 5 chunks  privacy: 4  security: 4  warranty: 3  accessibility: 2
+$ psql -c "SELECT doc_id, count(*) FROM policy_chunks GROUP BY doc_id;"
+ accessibility |  2
+ privacy |  4
+ returns |  6
+ security |  4
+ shipping |  5
+ warranty |  3
+```
+
+If any count differs from the parsed JSONL preview, your insert loop dropped rows — compare line counts before debugging vectors.
+
+## 6. Cost and Ops Notes
+
+Six policy PDFs is roughly 2–5k tokens each; the full corpus is well under 100k tokens — embedding it once costs fractions of a cent, and re-embedding on every policy change is trivially cheap. pgvector storage: 1,536 floats ≈ 6 KB per vector (plus HNSW overhead ~1.5×). For 1,000 chunks that is under 15 MB — "vector database" is a rounding error on the machine that already runs ShopCore. The real ops discipline is operational: run ingestion in a transaction per document, keep `effective_date` honest, and re-embed on policy re-issue.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `operator does not exist: vector <=> vector` | `CREATE EXTENSION vector` never ran | Run it as superuser/extension owner |
+| All similarities ~1.0 | Embedded an empty string or whitespace | Drop chunks under 30 chars; re-embed |
+| Filter returns nothing | `effective_date` stored as text | Use `date` type; index it |
+| HNSW index ignored | Table too small — planner prefers seq scan | Normal at 6 docs; trust seq scan until ~10k chunks |
+| Wrong doc outranks policy | No `doc_type` filter | Always filter `doc_type = 'policy'` |
+
+## Practice
+
+**Guided.** Run the lab exactly; paste the three query outputs. Circle the chunk you expected at rank 1.
+
+**Independent.** Add an `access_tier = 'internal'` chunk to the security policy. Confirm customer-tier queries never return it, then flip one row to `restricted` and re-test.
+
+**Challenge.** Swap `text-embedding-3-small` for `text-embedding-3-large` with `dimensions: 1536`. Measure top-3 overlap on the same five questions. Report: is it worth 2× the storage for your corpus?
+
+## Assessment Checklist
+
+- [ ] I can explain cosine vs dot product and why normalization makes them equivalent here.
+- [ ] I can state current embedding dims for 3-small/3-large and the 8192-token cap.
+- [ ] I can write the `policy_chunks` DDL with HNSW and a composite metadata index.
+- [ ] I can enforce current-policy-only retrieval with a date filter.
+- [ ] I verified top-3 retrieval by hand on at least three queries, including a date trap.
+
+</BookNodePage>

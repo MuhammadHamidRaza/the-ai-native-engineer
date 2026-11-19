@@ -1,0 +1,67 @@
+---
+id: "10-2-3-reliable-retry-and-error-patterns"
+title: "10.2.3 Reliable Retry and Error Patterns"
+sidebar_label: "10.2.3 Reliable Retry and Error Patterns"
+slug: "/part-03-python-development/10-python-for-apis-files-and-automation/10-2-files-data-processing-and-scripts/10-2-3-reliable-retry-and-error-patterns"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-10-s2-t3">
+
+Networks hiccup, APIs return `429 Too Many Requests`, and servers occasionally return `503 Service Unavailable`. Retrying immediately in a tight `while True:` loop hammers a struggling service worse (**thundering herd**), while retrying a `400 Bad Request` or `401 Unauthorized` wastes time on an error that will never succeed.
+
+## 1. Exponential Backoff + Full Jitter
+
+Wait exponentially longer after each transient failure (`0–0.5s`, `0–1s`, `0–2s`, `0–4s` — full jitter, i.e. a uniform random draw up to the exponential cap), add **random jitter** so 1,000 failing clients do not retry at the exact same millisecond, and **only retry transient errors** (`TimeoutException`, `429`, `500`, `502`, `503`, `504`):
+
+```python
+import logging
+import random
+import time
+import httpx
+
+logger = logging.getLogger(__name__)
+RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
+def fetch_with_retry(url: str, max_attempts: int = 4, base_delay: float = 0.5) -> dict:
+    with httpx.Client(timeout=5.0) as client:          # one connection pool per call site, not per attempt
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = client.get(url)
+                if resp.status_code in RETRYABLE_STATUSES:
+                    raise httpx.HTTPStatusError(
+                        f"Retryable status {resp.status_code}",
+                        request=resp.request,
+                        response=resp,
+                    )
+                resp.raise_for_status()
+                return resp.json()
+            except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
+                is_http_non_retryable = (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and exc.response.status_code not in RETRYABLE_STATUSES
+                )
+                if is_http_non_retryable or attempt == max_attempts:
+                    logger.error("Request failed permanently (%s): %s", url, exc)
+                    raise
+
+                sleep_s = random.uniform(0, base_delay * (2 ** (attempt - 1)))
+                logger.warning("Attempt %d failed; retrying in %.2fs", attempt, sleep_s)
+                time.sleep(sleep_s)
+    raise RuntimeError("Unreachable")
+```
+
+*(For production libraries, **`tenacity`** wraps this exact pattern cleanly via `@retry(...)` decorators.)*
+
+## 2. Idempotency Before Retrying Mutations (`POST`)
+
+Retrying a `GET` request is safe; retrying `POST /charges` after a network timeout can **double-charge a customer** unless the endpoint accepts an **`Idempotency-Key`** (`UUID` generated once before the retry loop) so the server processes that payment at most once — the pattern is taught end-to-end in [13.4.1 Background Jobs and Idempotency](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency) (Part 04) and revisited with full HTTP semantics in [21.3.2 API Architecture](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-2-api-architecture-contracts-versioning-pagination-idempotency) (Part 06).
+
+## Mastery Checklist
+
+- [ ] Retries only transient failures (`Timeout`, `429`, `5xx`), never permanent `400`/`401`/`404` bugs.
+- [ ] Adds exponential backoff + random jitter and caps `max_attempts`.
+- [ ] Passes stable `Idempotency-Key` headers when retrying mutating requests.
+
+</BookNodePage>

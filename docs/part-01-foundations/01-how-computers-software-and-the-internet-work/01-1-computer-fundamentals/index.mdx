@@ -1,0 +1,125 @@
+---
+id: "index"
+title: "01.1 Computer Fundamentals"
+sidebar_label: "01.1 Computer Fundamentals"
+slug: "/part-01-foundations/01-how-computers-software-and-the-internet-work/01-1-computer-fundamentals"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-01-s1">
+
+Open a browser tab, query a PostgreSQL database, or run a Python script that parses a JSON invoice, and every single action reduces physically to voltage changes moving across silicon gates, memory cells, and persistent storage media. Most developers write high-level JavaScript or Python for years without ever connecting those high-level abstractions back to how the underlying machine actually stores bits, moves bytes across buses, and executes instructions sequentially. While you can certainly print `"Hello, World"` without understanding caches or binary precision, **every time software behaves unexpectedly at scale—sluggish APIs, out-of-memory crashes, garbled international customer names, or subtle currency rounding bugs—the true explanation lives inside Subchapter 01.1.**
+
+**01.1 Computer Fundamentals (`~2.5 Focused Hours`)** equips you with clear, accurate physical intuition for what a modern computer really is, how hardware and software cooperate across abstraction boundaries, how the **Input → Processing → Storage → Output** cycle governs latency and reliability, and how numbers, text, and memory addresses exist physically in binary.
+
+## Why High-Level Web & AI Engineers Still Need Machine Fundamentals
+
+Modern frameworks like React, FastAPI, and LLM SDKs insulate engineers from raw assembly instructions—yet physical reality continuously leaks upward through those abstractions:
+
+1. **Latency orders of magnitude govern architecture:** Reading a value sitting inside CPU L1 cache takes roughly **1 nanosecond**, reading main RAM takes roughly **100 nanoseconds**, reading a modern NVMe SSD takes **tens of microseconds**, and round-tripping across a continental HTTPS call takes **tens to hundreds of milliseconds**—tens of millions of times slower than CPU registers! When you understand why disk and network I/O are millions of times slower than memory, database indexing (`Part 04`), caching, and asynchronous workers (`Part 06`) become obvious engineering instincts instead of memorized trivia.
+2. **Data representation leaks directly into JSON, SQL, and LLMs:** Every TypeScript `number` obeys **IEEE 754 `binary64`** double-precision arithmetic (`53` bits of exact integer precision up to `Number.MAX_SAFE_INTEGER = 9,007,199,254,740,991`), where `0.1 + 0.2 !== 0.3` and 64-bit database snowflakes corrupt silently if serialized blindly as numbers instead of strings. Every text payload moves as **UTF-8 bytes (`RFC 3629`)**, where English ASCII characters take `1 byte`, accented Latin letters take `2 bytes`, many Asian scripts take `3 bytes`, and modern emojis take `4 bytes`.
+3. **Resource ceilings shape production costs:** Whether running local Docker containers (`00.11.1`) or budgeting cloud RAM for Python RAG ingestion workers (`Part 08`), knowing how memory pages, swap thrashing, and CPU cores interact lets you size infrastructure calmly instead of guessing blindly.
+
+## Subchapter 01.1 Structural Roadmap (`4 Deep Topics`)
+
+```text
++-----------------------------------------------------------------------------+
+|                    01.1 COMPUTER FUNDAMENTALS ROADMAP                       |
++-----------------------------------------------------------------------------+
+|                                                                             |
+|  [01.1.1 What Is a Computer?]                                               |
+|   Stored-program model (von Neumann), Fetch-Decode-Execute loop,            |
+|   deterministic machines vs. probabilistic software layers                    |
+|                                      |                                      |
+|                                      v                                      |
+|  [01.1.2 Hardware and Software]                                             |
+|   Abstraction stack: Silicon Gates -> ISA -> Firmware -> OS -> Runtimes     |
+|   Why hardware constraints dictate software design & cloud pricing          |
+|                                      |                                      |
+|                                      v                                      |
+|  [01.1.3 Input, Processing, Output and Storage]                             |
+|   CPU cores/threads, volatile RAM vs. persistent NVMe SSD, I/O bottlenecks  |
+|   Inspecting real machine resources live across Linux, macOS & WSL 2        |
+|                                      |                                      |
+|                                      v                                      |
+|  [01.1.4 Binary, Data Representation and Memory]                            |
+|   Bits, bytes, hex, two's complement, IEEE 754 floats, RFC 3629 UTF-8       |
+|   Addresses, pointers, references, stack vs. heap allocation models         |
++-----------------------------------------------------------------------------+
+```
+
+## Topic Overview & Key Inspection Outcomes
+
+| Topic | Core Questions Answered | Hands-On Verification You Run |
+| :--- | :--- | :--- |
+| **[01.1.1 What Is a Computer?](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-1-computer-fundamentals/01-1-1-what-is-a-computer)** | Why does storing *instructions inside the exact same memory as data* change everything? How does the CPU `Fetch → Decode → Execute` cycle run billions of times per second? | Trace a miniature stored-program accumulator simulation step by step in Python/Node and inspect real compiled machine instructions |
+| **[01.1.2 Hardware and Software](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-1-computer-fundamentals/01-1-2-hardware-and-software)** | Where does hardware end and software begin? How do CPU instruction sets (`x86-64` vs. `ARM64`), UEFI firmware, drivers, compilers, and interpreters bridge silicon and React/Python code? | Inspect your workstation's exact CPU architecture (`uname -m`), endianness, logical core count, and Node/Python runtime layers |
+| **[01.1.3 Input, Processing, Output and Storage](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-1-computer-fundamentals/01-1-3-input-processing-output-and-storage)** | Why does RAM vanish when power drops while SSDs persist? What happens physically when an app spills from fast RAM into slow disk swap? | Measure live memory footprint, CPU threads, and disk space (`free -h`, `vm_stat`, `df -h`) and benchmark memory vs. disk write speeds locally |
+| **[01.1.4 Binary, Data Representation and Memory](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-1-computer-fundamentals/01-1-4-binary-data-representation-and-memory)** | How do `0` and `1` voltage levels represent negative integers, decimal prices, international text, and memory references cleanly? | Inspect live UTF-8 multi-byte sequences (`Buffer.from` / Python `.encode()`), `Number.MAX_SAFE_INTEGER` precision loss, and hexadecimal byte dumps |
+
+## Bridging Intuition First: The Kitchen Countertop Analogy
+
+Before diving into silicon nomenclature, carry one crisp physical mental model across all four topics:
+
+- **Your SSD / Hard Drive (`Storage`)** is the **locked pantry down the hallway**: vast capacity (`512 GB–2 TB`), holds ingredients safely even when the kitchen lights turn off overnight, yet walking to the pantry takes noticeable time.
+- **Your RAM (`Main Memory`)** is the **kitchen prep counter**: much smaller (`8 GB–32 GB`), cleared completely whenever power shuts off, yet ingredients sitting on the counter lie within arm's reach so work moves thousands of times faster than walking back to the pantry.
+- **Your CPU Registers & L1/L2/L3 Caches (`Processor`)** are **your two hands and the tiny cutting board right in front of the knife**: holds only a handful of numbers or bytes right now, operating at nanosecond speed.
+- **Your I/O Devices (`Keyboard, Network Card, Display`)** are **delivery doors and serving windows**: data enters from keyboards or network cables (`Input`) and exits to screens, speakers, printers, or remote APIs (`Output`).
+
+Keep checking back against that kitchen model whenever a software failure confuses you. Is an API slow because the chef's hands (`CPU`) are overwhelmed calculating cryptography, because the prep counter (`RAM`) ran out of space and forced constant trips to the pantry (`swap thrashing`), or because the chef is standing idle waiting on a slow delivery truck (`network / database I/O`)? Almost every performance bottleneck in software engineering maps straight onto one of those four symptoms!
+
+## Common Beginner Misconceptions Corrected Early
+
+- **Misconception 1 — "Computers understand Python or JavaScript directly."** Silicon transistors only toggle high/low voltage states representing `1` and `0`. Every line of Python, TypeScript, or SQL must be translated—either ahead of time by a compiler or dynamically by an interpreter/JIT engine (`V8`, `CPython`)—into tiny numeric machine opcodes native to your CPU (`x86-64` or `ARM64`).
+- **Misconception 2 — "Saving a file updates RAM and stops."** Editing a variable in code mutates volatile RAM only. Unless software explicitly flushes bytes through operating system storage APIs down to non-volatile NAND flash (`SSD`), a sudden battery failure or process crash erases unsaved work completely.
+- **Misconception 3 — "More CPU GHz always makes web apps faster."** Most web backends and AI wrappers spend `90%+` of wall-clock latency waiting on network sockets, database queries, or remote LLM tokens rather than saturating raw CPU arithmetic. Understanding *where* time goes prevents expensive wrong upgrades.
+- **Misconception 4 — "Strings are simple arrays of single-byte characters."** Assuming `1 character === 1 byte` breaks silently the moment a user enters `"Café"`, `"東京"`, or `"🚀"` (`2`, `3`, and `4` UTF-8 bytes respectively), corrupting string slicing, database column length checks, and HTTP `Content-Length` headers.
+
+## How Subchapter 01.1 Connects Forward Into Part 01 and Beyond
+
+- **Straight into `01.2 Operating Systems`:** Once you see how hardware executes instructions inside flat physical memory addresses, `01.2` reveals how the OS kernel creates isolated **virtual address spaces** and schedules dozens of competing programs fairly onto limited CPU cores.
+- **Straight into `01.3 How the Internet Works`:** Once you grasp binary serialization and UTF-8 bytes, sending structured packets and HTTP payloads over fiber-optic networks becomes transparent.
+- **Long-term payoff (`Parts 02–08`):** From choosing PostgreSQL `BIGINT` / integer cents (`Part 04`) to inspecting Docker memory limits (`Part 05`) and calculating vector embedding byte sizes (`Part 08` — e.g., `1,536` float32 dimensions × `4 bytes` = `6,144 bytes` per chunk), Subchapter `01.1` pays dividends in every single chapter of this book.
+
+## Quick Diagnostic Guide: Mapping Hardware Symptoms to `01.1` Concepts
+
+Before moving sequentially into `01.1.1`, preview how four real-world developer headaches trace straight back to the machine fundamentals taught across this subchapter:
+
+| Production / Local Symptom | Underlying `01.1` Mechanism | Which Topic Explains It Deeply |
+| :--- | :--- | :--- |
+| App uses `100%` of one CPU core while 7 other cores sit completely idle | Single-threaded instruction stream running sequentially on one core | `01.1.1` & `01.1.3` |
+| Laptop fans spin loudly and every switch between VS Code and browser lags for 5 seconds | Physical RAM saturated; OS kernel paging memory furiously onto SSD swap | `01.1.3` |
+| Docker container built on Apple Silicon (`arm64`) behaves oddly or runs slowly on Linux (`amd64`) | Instruction Set Architecture (`ISA`) binary mismatch requiring QEMU/Rosetta translation | `01.1.2` |
+| Database total invoice `$19.99` displays `$19.989999999999998` or truncates international emojis | IEEE 754 `binary64` binary float approximation & multi-byte UTF-8 truncation | `01.1.4` |
+
+## Guided Pre-Check Before Starting `01.1.1`
+
+Open your terminal (`Ubuntu on WSL 2`, `macOS Terminal`, or `Ubuntu Linux`) and verify Python 3 and Node.js run cleanly, alongside checking your machine's CPU architecture and page size:
+
+```bash
+python3 --version && node --version && uname -m
+```
+
+On a modern Intel/AMD laptop or cloud VM, `uname -m` prints `x86_64` (or `amd64`); on Apple Silicon Macs (`M1–M4`) and AWS Graviton servers, it prints `arm64` (`aarch64`). Watch how that single line already connects silicon architecture (`01.1.2`) directly to your live runtime environment!
+
+## Subchapter 01.1 Exit Checklist
+
+By the time you finish `01.1.4`, verify you can answer all four questions confidently:
+- **Stored Program Execution:** What is the Fetch–Decode–Execute cycle, and why can the exact same RAM hold both program instructions and user data?
+- **Hardware vs. Software:** What separates physical logic gates, CPU ISAs (`x86-64` / `ARM64`), compiled machine binaries, and bytecode/JIT engines (`V8` / `CPython`)?
+- **Resource Tiers:** Why is L1 cache ~100x faster than RAM and RAM ~1,000x faster than NVMe SSD—and what triggers swap thrashing?
+- **Binary & Memory:** How do two's complement, IEEE 754 `binary64`, UTF-8 (`1–4` bytes), and Stack vs. Heap pointers operate in practice?
+
+If both runtime versions print cleanly above, step directly into **01.1.1 What Is a Computer?**.
+
+## Official Primary References
+
+- [MDN Web Docs — Introduction to Character Encodings & UTF-8](https://developer.mozilla.org/en-US/docs/Glossary/UTF-8)
+- [IEEE 754 Floating-Point Reference (`Number.MAX_SAFE_INTEGER` on MDN)](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER)
+- [IETF RFC 3629 — UTF-8 Specification (`datatracker.ietf.org`)](https://datatracker.ietf.org/doc/html/rfc3629)
+- [Node.js `Buffer` Documentation (`nodejs.org/api/buffer.html`)](https://nodejs.org/api/buffer.html)
+
+**Start Topic 01.1.1:** [01.1.1 What Is a Computer?](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-1-computer-fundamentals/01-1-1-what-is-a-computer)
+
+</BookNodePage>

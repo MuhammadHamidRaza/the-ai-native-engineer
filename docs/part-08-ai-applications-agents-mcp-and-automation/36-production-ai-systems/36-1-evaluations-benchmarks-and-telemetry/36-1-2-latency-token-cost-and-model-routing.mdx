@@ -1,0 +1,201 @@
+---
+id: "36-1-2-latency-token-cost-and-model-routing"
+title: "36.1.2 Latency, Token Cost and Model Routing"
+sidebar_label: "36.1.2 Latency, Token Cost and Model Routing"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-1-evaluations-benchmarks-and-telemetry/36-1-2-latency-token-cost-and-model-routing"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-36-s1-t2">
+
+A HelpBot run that costs 9 cents and 28 seconds feels fine. At 40,000 resolutions a month it is $3,600 and a support queue that hates you. This lesson is the arithmetic and the routing decisions that keep an agent viable in production: where the seconds go, where the cents go, and which 5% of traffic deserves the expensive model.
+
+## 1. Latency Fundamentals — TTFT vs Tokens/Second vs Total
+
+Three numbers, three different levers (full treatment in [25.2.2 Model Capabilities, Latency and Cost Trade-offs](/book/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-2-how-language-models-work-and-programmatic-access/25-2-2-model-capabilities-latency-and-cost-trade-offs)):
+
+| Metric | Definition | Dominated by | Fix with |
+| :-- | :-- | :-- | :-- |
+| **TTFT** (time to first token) | Until the stream starts | Queueing + prefill of your input | Shorter prompts, prompt caching, smaller/faster tier |
+| **Throughput** | Tokens generated per second | Model size, provider load, effort knob | Lower `reasoning.effort`, smaller tier |
+| **Total latency** | TTFT + (output tokens / throughput) | Mostly output length | Cap `max_output_tokens`, streaming (below) |
+
+Worked example: 2,200-token prompt on a mid-tier model — prefill dominates TTFT (~1–3s when loaded; measure in your region, don't trust spec sheets). A 280-token completion then streams at tens of tokens per second. Total often lands 8–15s for a 2-tool agent run.
+
+**Why streaming wins perceived latency:** users forgive a slow answer that starts immediately far more than a fast one that arrives all at once. Streaming does not reduce total time — it reduces the *felt* wait and lets the UI render the first sentence while the rest generates. Ship SSE/WebSocket for any agent reply expected to exceed ~2 seconds. Caveat: never stream into UI until output guardrails (31.2) have cleared the content, or you will stream a banned refund promise into a customer's face.
+
+## 2. Token Economics per Request — the Worked Table
+
+Cost per request = (input tokens × input price) + (output tokens × output price), per call, summed over all calls in the agent loop. HelpBot does ~3 model calls per resolution (triage, tool selection+synthesis, post-check). Assume ~2,200 input and ~280 output tokens per call, ~30,000 resolutions/month — **plug in your own current prices; they drift monthly. Do not quote these numbers in budgets without re-checking:**
+
+Pricing pages: [OpenAI](https://developers.openai.com/api/docs/pricing) · [Anthropic](https://platform.claude.com/docs/en/about-claude/pricing) · [Google](https://aistudio.google.com/docs/pricing)
+
+Relative shape (stable) vs absolute decimals (not stable). Using the Chapter 25 tier map (small: `gpt-5.6-luna`, `claude-haiku-5-5`, `gemini-3.5-flash-lite`; mid: `gpt-6-sol`, `gpt-5`, `claude-sonnet-5-5`, `gemini-3.8-flash`; frontier: `gpt-5.5`, `gpt-6-astra`, `claude-opus-5-5`, `gemini-4-carbon`):
+
+| Tier | Relative cost per resolution (small = 1x) | Monthly shape at 30k resolutions | Where it wins |
+| :-- | :-- | :-- | :-- |
+| Small | 1x | Baseline | Classification, routing, tag extraction |
+| Mid | ~10–15x | Order of magnitude above small | The 80%: routine tickets, synthesis |
+| Frontier | ~40–60x | Risky to run as default | The hard 5%: policy disputes, legal-adjacent, novel failures |
+
+For bulk offline jobs (nightly re-labeling of 40k tickets), use the provider's Batch API rather than streaming through the live path — it is typically 50% cheaper and asynchronous; fine for anything that tolerates minutes-to-hours of delay, wrong for anything a customer is waiting on. Confirm current batch terms on the pricing pages linked above.
+
+Output length is the biggest invisible lever: a system prompt saying "answer in under 60 words" routinely saves more than any model swap. Hidden reasoning tokens (effort knobs) bill as output — turning effort to `high` buys capability with latency and cost you may not see in the visible text.
+
+## 3. Cost Tracking per User and per Tenant — `x-request-id` All the Way Down
+
+Generate a request ID at the edge; propagate it through every model call, tool call and log line. Without this, "which tenant blew the budget?" is a forensic exercise.
+
+```bash
+# every outbound model call carries it
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "x-request-id: req_9f2c1a" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-6-sol","input":"..."}'
+```
+
+Log one row per model call:
+
+```text
+req_id | tenant_id | user_id | model | in_tok | out_tok | ms | status | cost_est
+```
+
+Then the monthly invoice splits per tenant:
+
+```sql
+SELECT tenant_id, SUM(cost_est) FROM llm_calls
+WHERE created_at >= date_trunc('month', now())
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+Alert on the delta: a tenant whose cost-per-resolution jumps 50% week-over-week is either a bug (retry storm), an abuse pattern (agent loops), or a genuine usage spike — all three want a human before the invoice does.
+
+## 4. Model Routing — Frontier for the Hard 5%, Mid for Routine, Small for Classification
+
+Do not send every request to the biggest model. Route on difficulty, exactly the Ch 25.2.2 pattern applied to agents:
+
+```text
+request -> [Small: classify intent, 4 labels, F1-verified on 200 historical tickets]
+              |-- "refund_standard" -------> [Mid: resolve]
+              |-- "policy_dispute" --------> [Frontier: resolve + cite policy]
+              |-- "shipping_status" -------> [Mid: resolve w/ tracking tool]
+              +-- "human_request"/"legal" --> handoff (no model)
+```
+
+The router itself runs on the small tier — it costs ~1x and saves ~15x on the calls it diverts. Promote on evidence only: run the 200-ticket holdout quarterly; if mid-tier accuracy drops below the small classifier's routing quality by more than the eval's noise band, revisit the threshold. Fallback rule: if the chosen tier returns low confidence or `issue_refund` for an out-of-policy case, escalate one tier up — never to a human silently, always to the human with context.
+
+## 5. Caching Strategies
+
+- **Exact-match cache:** Redis on `hash(normalized_prompt)`. HelpBot's top tickets ("where is my order", "refund status") repeat constantly; hit rates of 20–35% are realistic for support workloads. TTL 24h, key includes model and prompt_version.
+- **Semantic cache:** embed the query, reuse an answer when cosine similarity to a cached question is at or above **0.92** — tune on your corpus; too low serves wrong answers confidently. Always cache the *answer*, flag the cache hit in telemetry, and never semantic-cache actions (tool calls) — only prose answers, and never for PII-bearing prompts.
+- **Prompt caching (provider-side, where available):** long stable system prompts and tool definitions are ideal candidates — the provider discounts the cached prefix. Verify current terms and minimum cacheable lengths on the pricing pages above; availability and mechanics differ per provider and **both change**.
+
+## 6. Rate Limits and Retry Semantics — 429s Are a Design Input
+
+Every provider enforces per-minute/per-token limits. When you get 429:
+
+1. Honor `Retry-After` when present (OpenAI sends it; check your provider's contract).
+2. Exponential backoff **with jitter**: `sleep = min(cap, base * 2^attempt) * (0.5 + rand()/2)` — full jitter, not decorative jitter (full pattern in [13.4.2 Webhooks, Rate Limiting and File Uploads](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-2-webhooks-rate-limiting-and-file-uploads)).
+3. Bounded attempts (3), then a **fallback chain**: mid -> small tier, or provider B, or the deterministic "We're busy, a human will follow up" — never an infinite retry on a metered API.
+4. Respect idempotency: retried writes need the idempotency key from [13.4.1 Background Jobs and Idempotency](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency), or one refund becomes three.
+5. Fallback ladder, explicit in config: `gpt-6-sol` -> `gpt-5` (same provider, cheaper) -> `claude-sonnet-5-5` (cross-provider, if your keys and DPA allow) -> deterministic canned response + human ticket. The ladder lives in config, not in the retry loop, so ops can edit it during a provider incident without a deploy.
+
+```bash
+for i in 1 2 3; do
+  code=$(curl -s -o resp.json -w "%{http_code}" -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -H "Content-Type: application/json" -d @body.json https://api.openai.com/v1/responses)
+  [ "$code" = "200" ] && break
+  [ "$code" = "429" ] && sleep $(( (2**i) + RANDOM % 3 )) && continue
+  break
+done
+```
+
+## 7. Queue-Based Smoothing for Peak Load
+
+HelpBot's Monday-9am spike should not become 40 concurrent agent runs against a 30 RPM token budget. Put submissions on a queue (the worker pattern from [34.1.2 Event-Driven vs Scheduled Worker Execution](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-2-event-driven-vs-scheduled-worker-execution)), process at a fixed concurrency (start at 5, tune to stay under 50% of your RPM ceiling), and show users "position in line" rather than letting requests time out silently. Queue depth is itself a health metric; depth rising while throughput is flat is your early-warning for both load and provider degradation.
+
+Backpressure rules worth writing in the runbook: when depth exceeds N for 10 minutes, shed gracefully (offer "email us instead" with the captured question queued for async answer) rather than accepting runs you cannot serve; never let the queue grow unbounded — unbounded queues are how a 9am spike becomes an 11pm bill. Drain in FIFO with per-tenant fairness if you are multi-tenant, or one whale customer will monopolize the line.
+
+## 8. Defining the AI Feature SLO — and Alerting on Regression
+
+HelpBot's SLO, written down:
+
+```text
+SLO-1  95% of agent runs complete under 30s, measured p95 per day
+SLO-2  Cost per resolved conversation under budget ceiling (set with Finance)
+SLO-3  Escalation rate under 15%; override rate under 3%
+Error budget: 5% of runs may breach SLO-1 per 30 days; burn > budget -> freeze non-critical prompt changes
+```
+
+Alert on **P95 latency** (5-min sliding window, page at 2x baseline for 15 min) and **cost per resolution** (daily delta > 25% pages the owning squad), not on averages — averages hide the tail where your angriest customer lives. Wire alerts to the same channel as the human-override alerts so one person owns the whole picture.
+
+**Error-budget burn math (do this once, commit it to the runbook):** 5% of ~30,000 runs = 1,500 breached runs allowed per 30 days, ~50/day. Burn 100 in a day -> freeze prompt changes and route all deploys through the regression gate with double review until the trailing-7-day rate recovers. SLO breaches are a deployment decision, not just a dashboard.
+
+## 9. The HelpBot Latency Waterfall — Where the 30 Seconds Actually Go
+
+Before tuning anything, budget the seconds on a real trace:
+
+```text
+User sends "where is my refund?"         0.0s
+Edge -> auth -> agent start               0.1s
+Small-tier intent classification          1.2s   (TTFT 0.7 + generate 0.5)
+Tool: lookup_order (ShopCore API)         0.4s
+Mid-tier synthesis call                   3.8s   (TTFT 1.3 + stream 2.5)
+Tool: check_refund_status                 0.3s
+Mid-tier final answer stream              4.1s   (TTFT 1.1 + stream 3.0)
+Stream render to user                     +perceived instant from 5.3s
+TOTAL (user-visible)                      ~5.2s first token, ~10.0s complete
+```
+
+Ten seconds of that ten is model calls and tools; two milliseconds are your code. Every optimization dollar goes to: prompt length (prefill), output length (decode), tool round-trips (parallelize independent tools), and queueing. If the waterfall shows a 6-second gap between "tool done" and "final call starts", you have an orchestration bug, not a model problem — and no amount of model upgrading will fix it.
+
+## 10. Measuring, Not Speculating — a 60-Second Probe
+
+```bash
+curl -s -o /dev/null -w "ttfb: %{time_starttransfer}s  total: %{time_total}s\n" \
+  -X POST https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-6-sol","input":"Say OK in 3 words."}'
+```
+
+Expected shape:
+
+```text
+ttfb: 0.94s  total: 1.31s
+```
+
+Run this from your staging region (not your laptop) 20 times at 9:05am on a Monday; the spread is your true TTFT distribution. Aggregate into the same `llm_calls` table from §3 so latency and cost live in one queryable place. If you cannot answer "what is our p95?" with one SQL query, you do not have an SLO — you have a wish.
+
+## 11. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| p95 fine, customers complain it "hangs" | Streaming started but last token starved; or tool call hung silently | Timeout per tool call (10s); watch total tokens per run; add heartbeat events |
+| Bill 3x last month, traffic flat | Retry storm counted as new resolutions | Check retry counts in `llm_calls`; fix 429 backoff; cap agent loop iterations |
+| Semantic cache serves stale policy answer | Cache TTL too long vs policy churn | Shorter TTL or version cache keys on `policy_version` |
+| 429s even under quota average | TPM burst, not RPM average | Smooth with queue; ask provider for limit raise; split small/large prompt buckets |
+| Frontier model used for "hi" | Router misfired or defaulted up | Log route decisions; alert when frontier share > 8% for an hour |
+| Cache hit rate collapses after deploy | Prompt text changed -> every hash cold | Include prompt_version in key; warm cache post-deploy |
+
+## 12. Practice
+
+**Guided exercise.** Add `x-request-id` to a local agent run; pipe the logs into a file; sum tokens and cost (using linked pricing pages for one provider); produce the per-tenant table from §3 with fabricated tenants.
+
+**Independent exercise.** Build the §4 router in 60 lines (any language): small-model classifier to 4 labels, dispatch to mid or frontier, log the decision to a CSV. Run it on 20 test tickets; report route distribution and estimated savings vs frontier-for-everything.
+
+**Challenge.** Insert the semantic cache in front of your §12 homework from 36.1.1 with cosine threshold 0.92; measure hit rate and eyeball the five worst hits for correctness. Document the cases you would never cache.
+
+**Assessment checklist**
+
+- [ ] I can explain TTFT vs throughput vs total latency and which lever fixes which.
+- [ ] I can compute per-resolution token cost formula and where to verify current prices.
+- [ ] I propagate one request ID through model calls, tools and logs, per tenant.
+- [ ] I run a router: small classifies, mid resolves, frontier for the hard 5%.
+- [ ] I can describe exact-match vs semantic caching (cosine ≥ 0.92) vs provider prompt caching.
+- [ ] I back off with jitter on 429, honor Retry-After, cap attempts, and fall back.
+- [ ] I wrote an SLO (95% under 30s) with an error budget and two alerts: P95 latency, cost per resolution.
+
+</BookNodePage>

@@ -1,0 +1,1096 @@
+# MASTER BUILD PROMPT — THE AI-NATIVE ENGINEER
+## Build a Premium, Animation-Rich Interactive Book Website Using Docusaurus + React
+
+You are a senior product designer, award-winning UI/UX designer, creative frontend engineer, React architect, animation specialist, and technical documentation platform engineer.
+
+Your task is to DESIGN AND BUILD a complete, production-ready, visually exceptional interactive book website.
+
+Do not just give me a plan, wireframe, explanation, or sample code. Actually create the complete working project in the available workspace. Create the files, components, pages, styles, animations, navigation, and configuration.
+
+You must work like an autonomous engineering agent:
+1. Inspect the existing workspace and understand its current state.
+2. Plan the architecture.
+3. Build the complete website.
+4. Run the project.
+5. Inspect the result.
+6. Fix errors and visual problems.
+7. Test all navigation and interactions.
+8. Prepare it for free GitHub Pages deployment.
+
+Do not stop after creating the homepage. Build the complete website structure.
+
+---
+
+# 1. PROJECT IDENTITY
+
+**Book title:** The AI-Native Engineer
+
+**Subtitle:** Think. Build. Solve. Ship.
+
+**Author:** Hamid Raza
+
+**Website purpose:**
+
+This website is an interactive, premium digital book and learning platform that guides readers through modern software engineering, AI-native development, agentic AI, automation, production engineering, freelancing, client acquisition, product development, and startups.
+
+This should feel like a premium modern technology learning product, not a traditional documentation website.
+
+The experience should be:
+- Beautiful and visually memorable.
+- Modern, immersive, and interactive.
+- Smooth and satisfying to navigate.
+- Easy to read for long periods.
+- Responsive on desktop, tablet, and mobile.
+- Fast and optimized.
+- Accessible.
+- Easy to maintain and expand.
+- Ready for GitHub Pages deployment.
+
+**Important:** At this stage, build the complete website, book structure, navigation, design system, and empty content pages only.
+
+DO NOT write actual educational content, explanations, tutorials, lessons, code examples, exercises, or chapter descriptions.
+
+All book pages must be empty content templates with their correct titles, hierarchy, navigation, and placeholders for future content.
+
+---
+
+# 2. TECHNICAL REQUIREMENTS
+
+Use the following architecture:
+
+- Docusaurus as the documentation/book framework.
+- React for custom UI components.
+- TypeScript wherever appropriate.
+- CSS Modules or a well-organized global CSS architecture.
+- Framer Motion / Motion for React for advanced animations.
+- Lucide React for icons.
+- CSS transitions and keyframes where appropriate.
+- Docusaurus MDX for book pages.
+- GitHub Pages for free hosting.
+
+Use stable, compatible package versions. Check package compatibility before installing dependencies.
+
+Do not replace Docusaurus with a completely custom React application. Docusaurus must remain the underlying book and documentation framework, while the React layer provides a completely custom visual experience.
+
+Avoid unnecessary dependencies.
+
+Do not require:
+- Paid hosting.
+- Paid UI libraries.
+- Paid animation libraries.
+- Paid databases.
+- Backend servers.
+- Authentication services.
+- External paid APIs.
+
+The finished website must be deployable as a static website through GitHub Pages.
+
+---
+
+# 3. VISUAL DESIGN DIRECTION
+
+This is the most important requirement.
+
+I do NOT want the default Docusaurus appearance.
+
+Do not use the standard documentation-style layout with:
+- Ordinary sidebar navigation.
+- Plain white content pages.
+- Default Docusaurus cards.
+- Generic documentation headers.
+- Boring blue links.
+- Basic Markdown-looking chapter pages.
+
+Create a distinctive visual identity for The AI-Native Engineer.
+
+The website should feel like a combination of:
+
+- A premium digital book.
+- An interactive learning environment.
+- A modern developer product.
+- A high-end editorial publication.
+- A futuristic but professional technology experience.
+
+Take visual inspiration from high-quality modern developer products, editorial websites, interactive portfolios, and premium SaaS interfaces. Do not copy another website's design.
+
+## Design personality
+
+Use:
+- Strong typography.
+- Large editorial headings.
+- Beautiful spacing.
+- High-quality visual hierarchy.
+- Sophisticated dark surfaces.
+- Subtle gradients.
+- Glass-like elements where appropriate.
+- Fine borders and separators.
+- Beautiful hover effects.
+- Layered backgrounds.
+- Carefully designed cards.
+- Smooth transitions.
+- Beautiful progress indicators.
+- Distinctive icons.
+- Thoughtful micro-interactions.
+
+The website should look premium, not childish or excessively futuristic.
+
+## Color direction
+
+Create a consistent design system.
+
+Suggested direction:
+- Deep charcoal / near-black backgrounds.
+- Soft white text.
+- Muted secondary text.
+- A distinctive electric violet, indigo, or blue accent.
+- Carefully used cyan highlights.
+- Subtle gradient surfaces.
+- Elegant borders and shadows.
+
+Do not use too many colors.
+
+The accent color should be used consistently for:
+- Active navigation.
+- Progress indicators.
+- Interactive elements.
+- Important labels.
+- Chapter numbers.
+- Small visual highlights.
+
+Support both:
+1. Dark mode.
+2. Light mode.
+
+Dark mode can be the initial default.
+
+The light theme must be carefully designed, not simply an inverted dark theme.
+
+Remember the user's theme preference.
+
+---
+
+# 4. ANIMATION AND INTERACTION REQUIREMENTS
+
+Animations are a major part of this project.
+
+I want the website to feel alive, responsive, and enjoyable.
+
+Use meaningful animations throughout the experience, but never sacrifice readability, accessibility, or performance.
+
+Do not animate every element randomly. Every animation should have a purpose.
+
+## Homepage animations
+
+Create:
+- A beautiful hero entrance animation.
+- Animated title reveal.
+- Staggered subtitle and button appearance.
+- Subtle animated background elements.
+- Gradient movement.
+- Floating visual elements.
+- Smooth scroll-based reveals.
+- Animated book structure preview.
+- Animated progress indicators.
+- Interactive hover effects on cards.
+- Smooth section transitions.
+
+## Navigation animations
+
+Create:
+- Smooth sidebar open/close transitions.
+- Animated active navigation indicators.
+- Smooth nested navigation expansion.
+- Animated chapter selection.
+- Hover states with subtle movement.
+- Smooth mobile menu transitions.
+- Animated progress changes.
+
+## Page transition animations
+
+Implement elegant transitions when navigating between:
+- Homepage.
+- Parts.
+- Chapters.
+- Subchapters.
+- Nested subchapters.
+- Appendix pages.
+
+Use subtle fades, vertical movement, and layout transitions where appropriate.
+
+Avoid jarring full-screen transitions.
+
+## Scroll animations
+
+Use scroll-triggered animations for:
+- Section headings.
+- Part cards.
+- Chapter lists.
+- Learning pathway sections.
+- Statistics.
+- Footer sections.
+
+Animations should happen only when appropriate and should not replay unnecessarily.
+
+## Micro-interactions
+
+Include:
+- Button hover animations.
+- Card hover elevation.
+- Animated borders.
+- Icon movement.
+- Smooth tooltips.
+- Animated progress bars.
+- Expand/collapse transitions.
+- Interactive table-of-contents links.
+- Reading progress animation.
+- Smooth back-to-top button.
+
+## Performance and accessibility
+
+- Respect `prefers-reduced-motion`.
+- Provide reduced-motion alternatives.
+- Avoid excessive parallax.
+- Avoid animation that causes layout shifts.
+- Avoid unnecessary continuous animations.
+- Use GPU-friendly properties where possible.
+- Lazy-load heavy visual elements.
+- Keep mobile performance excellent.
+- Ensure text remains readable during animations.
+
+The goal is a premium experience, not an animation demonstration.
+
+---
+
+# 5. WEBSITE INFORMATION ARCHITECTURE
+
+Create the complete website with these main sections:
+
+1. Home
+2. Start Here
+3. Learning Roadmap
+4. Book Structure
+5. All Parts
+6. All Chapters
+7. Subchapter Pages
+8. Nested Subchapter Pages
+9. Appendix
+10. About the Book
+11. About the Author
+12. Glossary placeholder
+13. Resources placeholder
+14. Search
+
+Every section must have a working route and a consistent design.
+
+Do not leave broken links or unfinished navigation.
+
+---
+
+# 6. HOMEPAGE DESIGN
+
+Create an exceptional homepage.
+
+The homepage must not look like a standard documentation landing page.
+
+## Hero section
+
+Include:
+
+**THE AI-NATIVE ENGINEER**
+
+**Think. Build. Solve. Ship.**
+
+Author: Hamid Raza
+
+A compelling visual presentation of the book.
+
+Include two primary actions:
+- Explore the Book
+- Start Learning
+
+These buttons must navigate to the correct pages.
+
+The hero should contain a custom visual composition representing the book's journey:
+
+Foundations → Software Engineering → Cloud → Production → AI → Agents → Automation → Client Delivery → Products
+
+Do not use random stock images.
+
+Prefer original CSS/SVG visual elements and interactive compositions.
+
+## Book overview section
+
+Show:
+- 10 Parts
+- 42 Chapters
+- 592 Focused Learning Hours
+- A practical engineering-to-AI learning journey
+
+Use attractive animated statistic counters.
+
+## Learning journey section
+
+Create a beautiful interactive timeline or pathway showing the ten parts.
+
+Each part should be clickable.
+
+## Featured chapters section
+
+Show selected chapter cards from different parts.
+
+These should navigate to the actual chapter pages.
+
+## Book structure preview
+
+Create an interactive expandable book outline.
+
+Users should be able to:
+- Expand a part.
+- View its chapters.
+- Expand a chapter.
+- View its subchapters.
+- Open the relevant page.
+
+## Learning philosophy section
+
+Show these principles as visually attractive elements:
+
+- Understand before building.
+- Engineering fundamentals matter.
+- AI should enhance engineering, not replace it.
+- Build real systems.
+- Verify what AI produces.
+- Solve actual business problems.
+- Deliver measurable outcomes.
+
+Do not write lengthy educational explanations here. These are short design-level statements only.
+
+## Footer
+
+Create a premium footer with:
+- Book title.
+- Author.
+- Navigation links.
+- GitHub repository placeholder.
+- Copyright.
+- Back-to-top interaction.
+
+Do not invent a GitHub repository URL. Keep it configurable.
+
+---
+
+# 7. COMPLETE BOOK STRUCTURE
+
+Create all ten parts, all 42 chapters, and the complete nested page hierarchy.
+
+The following titles and hours are authoritative. Do not rename chapters, remove chapters, merge chapters, or change the hours.
+
+Create a dedicated landing page for every part.
+
+Create a dedicated page for every chapter.
+
+Create individual pages for every subchapter and nested subchapter.
+
+You may create logical subchapter headings based on the chapter title, but do not write their educational content.
+
+Every page should contain:
+- Correct page title.
+- Breadcrumb navigation.
+- Parent part and chapter references.
+- Previous/next navigation where applicable.
+- Table of contents placeholder where appropriate.
+- Empty content area.
+- A subtle "Content coming soon" placeholder.
+- Reading progress UI.
+- Consistent visual layout.
+
+The content area must remain empty apart from structural labels and placeholders.
+
+## PART 1 — FOUNDATIONS
+Total: 3 chapters | 26 hours
+
+01. How Computers, Software & the Internet Work — 8h
+
+02. Critical Thinking & Problem Solving — 8h
+
+03. Developer Tools, Git, Debugging & AI Learning — 10h
+
+## PART 2 — JAVASCRIPT & FRONTEND DEVELOPMENT
+Total: 5 chapters | 92 hours
+
+04. JavaScript Fundamentals (Deep) — 28h
+
+05. TypeScript for Professional Development — 12h
+
+06. HTML, CSS & Browser Development — 16h
+
+07. React Development — 22h
+
+08. Next.js & Modern Web Applications — 14h
+
+## PART 3 — PYTHON DEVELOPMENT
+Total: 2 chapters | 40 hours
+
+09. Python Fundamentals (Deep) — 26h
+
+10. Python for APIs, Files & Automation — 14h
+
+## PART 4 — DATABASES, BACKEND & FULL-STACK DEVELOPMENT
+Total: 5 chapters | 92 hours
+
+11. Database Design & Fundamentals — 8h
+
+12. SQL, PostgreSQL & MongoDB — 20h
+
+13. Backend Engineering with Node.js — 24h
+
+14. Git Teamwork, Testing & Code Review — 10h
+
+15. Complete Full-Stack Application — 30h
+
+## PART 5 — DEPLOYMENT, CLOUD & DEVOPS
+Total: 5 chapters | 62 hours
+
+16. Linux, Servers & Networking — 12h
+
+17. Domains, DNS, HTTPS & Hosting — 8h
+
+18. Docker & Containerization — 12h
+
+19. CI/CD & Cloud Fundamentals — 12h
+
+20. Production Deployment & Operations — 18h
+
+## PART 6 — SYSTEM DESIGN & PRODUCTION QUALITY
+Total: 4 chapters | 44 hours
+
+21. Software Architecture & System Design — 10h
+
+22. Security, Reliability & Observability — 14h
+
+23. Performance & Scalability — 10h
+
+24. Database Performance & Operations — 10h
+
+## PART 7 — AI-NATIVE SOFTWARE DEVELOPMENT
+Total: 3 chapters | 32 hours
+
+25. LLMs & Model APIs — 10h
+
+26. Prompt & Context Engineering — 10h
+
+27. AI-Assisted & Spec-Driven Engineering — 12h
+
+## PART 8 — AI APPLICATIONS, AGENTS, MCP & AUTOMATION
+Total: 9 chapters | 128 hours
+
+28. AI-Powered Applications & RAG — 16h
+
+29. Agent Architecture & Agentic AI — 12h
+
+30. OpenAI Agents SDK with Python — 18h
+
+31. Agent Tools, State, Memory & Guardrails — 12h
+
+32. Model Context Protocol (MCP) — 12h
+
+33. n8n Workflow Automation — 12h
+
+34. AI Workers — 20h
+
+35. Multi-Agent Orchestration — 12h
+
+36. Production AI Systems — 14h
+
+## PART 9 — CAREER, CLIENT WORK, PRODUCTS & STARTUPS
+Total: 5 chapters | 40 hours
+
+37. Teamwork & Professional Engineering — 6h
+
+38. Jobs & Career Development — 8h
+
+39. Client Discovery, Freelancing & Client Acquisition — 10h
+
+40. Product Thinking & MVP Development — 8h
+
+41. Startup, Launch & Growth — 8h
+
+## PART 10 — INTEGRATED CAPSTONE
+Total: 1 chapter | 36 hours
+
+42. From Real Problem to Production Product — 36h
+
+---
+
+# 8. SUBCHAPTER AND NESTED PAGE STRUCTURE
+
+This is a book, not just a list of chapter titles.
+
+Build a proper three-level hierarchy:
+
+**Level 1:** Part
+
+**Level 2:** Chapter
+
+**Level 3:** Subchapter
+
+**Level 4:** Nested subchapter / topic page
+
+Example:
+
+Part 1 — Foundations
+  Chapter 01 — How Computers, Software & the Internet Work
+    01.1 Computer Fundamentals
+      01.1.1 What Is a Computer?
+      01.1.2 Hardware and Software
+      01.1.3 Input, Processing, Output and Storage
+    01.2 Operating Systems
+      01.2.1 What an Operating System Does
+      01.2.2 Files, Processes and Memory
+    01.3 How the Internet Works
+      01.3.1 Networks
+      01.3.2 IP Addresses
+      01.3.3 DNS
+      01.3.4 HTTP and HTTPS
+
+This is only a hierarchy example.
+
+For every chapter:
+- Generate a meaningful set of subchapter titles.
+- Generate further nested topic titles where appropriate.
+- Use a logical learning sequence.
+- Use unique page routes.
+- Make every item navigable.
+- Create the corresponding page files.
+- Keep all educational content empty.
+
+Do not use the same generic subchapter names for every chapter.
+
+The nested titles must reflect each chapter's actual subject.
+
+Create enough hierarchy to make this a complete book structure, not a shallow outline.
+
+The structure should be easy to expand later without changing the routing architecture.
+
+---
+
+# 9. SPECIAL REQUIREMENTS FOR CHAPTER 39 — CLIENT DISCOVERY, FREELANCING & CLIENT ACQUISITION
+
+This chapter is especially important.
+
+It must have a detailed nested hierarchy covering the full client acquisition process.
+
+Create empty pages for topics such as:
+
+39.1 Understanding Freelancing and Independent Work
+39.2 Choosing a Niche and Service
+39.3 Personal Branding and Portfolio
+39.4 Finding Clients Through Social Media
+39.5 Freelance Marketplaces
+39.6 Direct Client Hunting
+39.7 Understanding and Catching Business Pain Points
+39.8 Lead Generation and Qualification
+39.9 Relationship-First Outreach
+39.10 Writing Effective Pitches
+39.11 Demonstrations and Proof of Work
+39.12 Client Discovery Calls
+39.13 Proposals and Pricing
+39.14 Negotiation and Closing
+39.15 Freelance Project Management
+39.16 Retention and Growth
+39.17 Freelance Business Operations
+39.18 AI-Powered Client Acquisition
+
+Create further nested page structures for:
+- LinkedIn.
+- Facebook.
+- Instagram.
+- X.
+- Reddit.
+- YouTube.
+- TikTok.
+- Threads.
+- Discord.
+- Slack.
+- Telegram.
+- WhatsApp Business.
+- Upwork.
+- Fiverr.
+- Freelancer.com.
+- Contra.
+- PeoplePerHour.
+- Guru.
+- Toptal.
+- Cold email.
+- Direct outreach.
+- Referrals.
+- Agency partnerships.
+- White-label services.
+- Business pain-point research.
+- Relationship-first engagement.
+- Comments and connections.
+- Qualification.
+- Pitches.
+- Demos.
+- Discovery calls.
+- Proposals.
+- Pricing.
+- Closing.
+- Client delivery.
+- Retention.
+
+Do not write actual freelancing lessons yet.
+
+---
+
+# 10. APPENDIX STRUCTURE
+
+Create an Appendix landing page and individual appendix pages.
+
+## Appendix A — Complete Client Acquisition Playbook
+
+A.1 Positioning and Service Selection
+A.2 Social Media Client Acquisition
+A.3 Freelance Marketplaces
+A.4 Direct Client Acquisition
+A.5 Business Pain-Point Research
+A.6 Relationship-First Outreach
+A.7 Cold Email and Calling
+A.8 Pitches and Demonstrations
+A.9 Discovery, Proposals and Closing
+A.10 Delivery, Retention and Growth
+
+## Appendix B — Practical Client Outreach Rules and Templates
+
+Create empty pages for:
+- Value-based comments.
+- Connection requests.
+- First conversations.
+- Pain-point confirmation.
+- Personalized pitches.
+- Demo invitations.
+- Follow-ups.
+- Proposal templates.
+- Discovery call preparation.
+- Client communication rules.
+- 20 practical outreach rules.
+
+## Appendix C — Client Hunting Practice Workbook
+
+Create empty pages for:
+- Niche research.
+- Business research.
+- Pain-point identification.
+- Lead qualification.
+- Outreach writing.
+- Demo planning.
+- Sales role-play.
+- Client pipeline.
+- Final client acquisition assignment.
+
+## Appendix D — Job Search and Career Resources
+
+## Appendix E — Developer Reference Materials
+
+Also create empty pages for:
+- Glossary.
+- Command reference.
+- Troubleshooting.
+- Assessment rubrics.
+- Further learning resources.
+
+---
+
+# 11. CUSTOM READING EXPERIENCE
+
+The reading interface is as important as the homepage.
+
+Do not make the reader feel that they are browsing a documentation website.
+
+Build a premium reading environment.
+
+## Desktop layout
+
+Use a thoughtful three-area layout:
+
+1. Left: collapsible book navigation.
+2. Center: main reading area.
+3. Right: table of contents / page outline.
+
+The main reading area should have a comfortable maximum width.
+
+The sidebar should:
+- Show all ten parts.
+- Expand to reveal chapters.
+- Expand chapters to reveal subchapters.
+- Expand subchapters to reveal nested pages.
+- Highlight the active page.
+- Show chapter numbers.
+- Have smooth animations.
+- Support search/filter.
+- Be collapsible.
+
+The right-side outline should:
+- Show headings on the current page.
+- Highlight the active heading.
+- Support smooth scrolling.
+- Hide on small screens.
+
+## Chapter page header
+
+Show:
+- Part number and title.
+- Chapter number.
+- Chapter title.
+- Estimated hours.
+- Chapter position in the book.
+- Breadcrumbs.
+- Previous/next navigation.
+
+Do not write chapter descriptions or actual lessons.
+
+## Reading progress
+
+Add:
+- Top reading progress bar.
+- Chapter progress placeholder.
+- Overall book progress placeholder.
+
+Do not claim the user has completed lessons.
+
+If progress tracking is implemented, use browser local storage only, with no account or backend requirement.
+
+Clearly distinguish visited pages from completed pages.
+
+---
+
+# 12. SEARCH EXPERIENCE
+
+Implement working client-side search across:
+- Part names.
+- Chapter names.
+- Subchapter names.
+- Nested topic names.
+- Appendix names.
+
+Search should:
+- Open with a keyboard shortcut such as Ctrl+K or Cmd+K.
+- Have a polished modal.
+- Show grouped results.
+- Highlight matching text.
+- Support keyboard navigation.
+- Navigate to the selected page.
+- Display a useful empty state.
+
+Use a Docusaurus-compatible search solution or a lightweight local index.
+
+Do not require Algolia or any paid external service.
+
+---
+
+# 13. RESPONSIVE DESIGN
+
+The website must work exceptionally well on:
+
+- Large desktop screens.
+- Standard laptops.
+- Tablets.
+- Mobile phones.
+
+Mobile experience is not optional.
+
+On mobile:
+- Use a beautiful navigation drawer.
+- Keep the reading area comfortable.
+- Avoid horizontal overflow.
+- Use touch-friendly controls.
+- Keep animations lightweight.
+- Make the search easy to access.
+- Ensure nested navigation is easy to operate.
+
+Test multiple viewport sizes.
+
+---
+
+# 14. ACCESSIBILITY AND USABILITY
+
+Follow good accessibility practices:
+
+- Semantic HTML.
+- Correct heading hierarchy.
+- Keyboard navigation.
+- Visible focus indicators.
+- Accessible labels.
+- Good color contrast.
+- Screen-reader-friendly controls.
+- Reduced-motion support.
+- No interaction that requires a mouse only.
+
+Do not sacrifice accessibility for visual effects.
+
+---
+
+# 15. DOCUSaurus AND GITHUB PAGES CONFIGURATION
+
+Configure Docusaurus for GitHub Pages.
+
+Use:
+- A correct `baseUrl`.
+- A configurable `organizationName`.
+- A configurable `projectName`.
+- Correct deployment configuration.
+- A working build command.
+- A working local development command.
+- A GitHub Actions deployment workflow.
+
+Do not invent my GitHub username or repository name.
+
+Use clearly marked configuration placeholders for:
+- GitHub username.
+- Repository name.
+- Website URL.
+
+Make it straightforward for me to replace these values.
+
+Create a GitHub Actions workflow that builds and deploys the static website to GitHub Pages.
+
+Add a README with:
+- Project overview.
+- Installation instructions.
+- Local development.
+- Build instructions.
+- GitHub Pages deployment instructions.
+- How to update repository configuration.
+- How to add new chapters and pages.
+- How to add future book content.
+
+The website must not depend on a backend.
+
+---
+
+# 16. PROJECT ARCHITECTURE AND CODE QUALITY
+
+Keep the project modular and maintainable.
+
+Create reusable components such as:
+
+- SiteNavbar
+- HeroSection
+- BookStats
+- LearningPathway
+- PartCard
+- ChapterCard
+- BookOutline
+- BookSidebar
+- MobileBookNavigation
+- ReadingLayout
+- Breadcrumbs
+- ChapterHeader
+- TableOfContents
+- ReadingProgress
+- ThemeToggle
+- SearchModal
+- PreviousNextNavigation
+- AnimatedSection
+- Footer
+- EmptyContentPlaceholder
+
+Create a centralized source of truth for:
+- Parts.
+- Chapters.
+- Subchapters.
+- Nested topics.
+- Page routes.
+- Chapter hours.
+- Navigation relationships.
+
+Do not manually duplicate navigation data across dozens of files.
+
+Use reusable page templates.
+
+Make the content hierarchy data-driven.
+
+The structure must allow me to add educational content later without rebuilding the UI.
+
+Use clear TypeScript types.
+
+Avoid:
+- Giant single-file components.
+- Repeated CSS.
+- Hardcoded duplicate navigation.
+- Unnecessary dependencies.
+- Broken imports.
+- Fake interactions.
+- Dead buttons.
+- Placeholder links that lead nowhere.
+
+Every interactive control must work.
+
+---
+
+# 17. CONTENT RESTRICTIONS — VERY IMPORTANT
+
+At this stage, I only want the book's structure and website UI.
+
+DO NOT:
+- Write chapter explanations.
+- Write lesson content.
+- Write tutorials.
+- Write code lessons.
+- Write exercises.
+- Write quizzes.
+- Write assessments.
+- Write chapter summaries.
+- Write educational paragraphs.
+- Fill pages with generic AI-generated text.
+- Invent the book's actual teaching content.
+
+DO:
+- Create all ten parts.
+- Create all 42 chapters.
+- Create all chapter pages.
+- Create all subchapter pages.
+- Create nested subchapter pages.
+- Create appendix pages.
+- Create all navigation.
+- Create all page layouts.
+- Create the homepage.
+- Create the search system.
+- Create animations.
+- Create reading UI.
+- Create responsive layouts.
+- Create empty content placeholders.
+
+Each page should have a clean empty content area ready for future writing.
+
+A small placeholder such as "Content will be added here" is acceptable.
+
+Do not use large blocks of filler text.
+
+The purpose is to establish the complete book website and its premium design system before writing the book.
+
+---
+
+# 18. FINAL QUALITY ASSURANCE
+
+Before considering the project complete, perform these checks.
+
+## Structure checks
+
+- Exactly 10 parts.
+- Exactly 42 chapters.
+- All chapter titles match the supplied structure.
+- All chapter hours match the supplied structure.
+- Total learning hours equal 592.
+- All parts have landing pages.
+- All chapters have individual pages.
+- All subchapters have individual pages.
+- All nested subchapters have individual pages.
+- All five appendices exist.
+- Chapter 39 has its detailed client acquisition hierarchy.
+- No broken internal routes.
+
+## UI checks
+
+- Homepage looks premium.
+- Website does not look like default Docusaurus.
+- Typography is consistent.
+- Spacing is consistent.
+- Dark mode works.
+- Light mode works.
+- Theme preference persists.
+- Animations are smooth.
+- Navigation works.
+- Sidebar works.
+- Search works.
+- Mobile navigation works.
+- Reading progress works.
+- Previous/next links work.
+- All buttons perform their intended actions.
+- No horizontal overflow.
+- Reduced-motion mode works.
+
+## Technical checks
+
+- Dependencies install successfully.
+- Development server runs.
+- Production build succeeds.
+- No TypeScript errors.
+- No broken imports.
+- No browser console errors.
+- No missing assets.
+- GitHub Pages configuration is correct.
+- GitHub Actions workflow is valid.
+- Static deployment does not require a backend.
+
+Run the actual commands and inspect their results. Do not simply claim that the project works.
+
+---
+
+# 19. EXECUTION INSTRUCTIONS
+
+Work in phases, but complete the entire project.
+
+### Phase 1 — Inspect and plan
+Inspect the workspace and determine whether a Docusaurus project already exists.
+
+Do not overwrite existing work unnecessarily.
+
+### Phase 2 — Set up architecture
+Configure Docusaurus, React, TypeScript, animation dependencies, routing, and the central book structure.
+
+### Phase 3 — Create the design system
+Build typography, colors, spacing, components, responsive layouts, and animation utilities.
+
+### Phase 4 — Build the homepage
+Create the complete premium landing page.
+
+### Phase 5 — Generate the book hierarchy
+Generate all 10 parts, 42 chapters, subchapters, nested subchapters, and appendices.
+
+Create all actual page routes and files.
+
+### Phase 6 — Build the reading experience
+Implement the sidebar, breadcrumbs, chapter headers, right-side outline, progress indicators, previous/next navigation, and responsive reading layout.
+
+### Phase 7 — Add interactions and animations
+Implement the animation system and all interactions.
+
+### Phase 8 — Search and accessibility
+Implement search, keyboard navigation, reduced-motion support, and accessibility.
+
+### Phase 9 — GitHub Pages
+Configure static deployment and GitHub Actions.
+
+### Phase 10 — Test and polish
+Run the build, inspect pages, fix errors, test responsive layouts, and polish the UI.
+
+---
+
+# 20. DEFINITION OF DONE
+
+I will consider this project complete only when:
+
+1. The entire Docusaurus + React website exists in the workspace.
+2. The homepage is visually impressive and unique.
+3. All 10 parts are represented.
+4. All 42 chapters have their own pages.
+5. Every chapter has subchapter pages.
+6. Nested subchapter pages are also created.
+7. All appendices have pages.
+8. Navigation works throughout the book.
+9. Search works.
+10. Animations and transitions work smoothly.
+11. Dark and light themes work.
+12. Mobile and desktop layouts work.
+13. All educational content areas remain empty.
+14. Production build succeeds.
+15. GitHub Pages deployment is configured.
+
+**Final instruction: Build the actual website, not a proposal.**
+
+Prioritize exceptional UI/UX, visual quality, animations, transitions, navigation, and maintainable architecture.
+
+I want someone opening this website to immediately feel that they are using a premium, thoughtfully designed interactive technology book — not an ordinary Docusaurus documentation site.
+
+Do not stop at a homepage or a prototype. Finish the complete website structure and verify it.

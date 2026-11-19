@@ -1,0 +1,121 @@
+---
+id: "38-2-1-coding-system-design-and-behavioral-interviews"
+title: "38.2.1 Coding, System Design and Behavioral Interviews"
+sidebar_label: "38.2.1 Interviews"
+slug: "/part-09-career-client-work-products-and-startups/38-jobs-and-career-development/38-2-interviews-and-career-progression/38-2-1-coding-system-design-and-behavioral-interviews"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-38-s2-t1">
+
+Interviews test three axes: **can you code, can you design, are you someone we want to work with.** Every 2026 interview loop weights these differently — map the loop before you prep, and prepare the right axis first. This lesson gives you a working preparation system for all three, tuned to how real loops run at mid-to-senior levels.
+
+## 1. Map the Loop Before You Prep
+
+| Loop type | Typical stages | What decides |
+| :-- | :-- | :-- |
+| Startup (seed–A) | Founder chat → practical task (pair/take-home) → culture | Can you ship? Will I tolerate you? |
+| Growth (B–D) | Screen → 1 coding → 1 system design → behavioral | Balance of all three |
+| Big tech / FAANG | Recruiter → 2 tricky coding → design + behavioral | Coding gates you; design+behavior differentiate |
+| AI-native startups | Screen → practical (LLM/agent task) → product thinking | Evaluation discipline, scoping, guardrails |
+
+**Golden rule:** ask your recruiter "what does the loop look like?" — it's standard practice and they'll tell you. Tailor accordingly.
+
+## 2. Coding — The 80/20 That Matters
+
+Forget exotic algorithms. The interview coding bar is: **can you write correct, readable code under pressure while narrating?** Key patterns:
+
+**Data structures (must be fluent, not just theoretical):** arrays/strings, hash maps, two pointers, sliding window, stacks/queues, heaps, trees (BFS/DFS), graphs, intervals, basic DP.
+**The interview cadence:**
+
+1. **Clarify** (2 min) — inputs, constraints, edge cases. "Sorted? Duplicates? Empty input?" — asking this wins you points even before coding.
+2. **Brute force first** (1 min) — state it, with complexity. Shows judgment.
+3. **Optimize** (5–15 min) — improve to target complexity while narrating.
+4. **Test** (3 min) — walk through example + edge case; dry-run in your head.
+5. **Discuss** (2 min) — trade-offs, what changes at scale, production concerns.
+
+```text
+Q: "Given a stream of user actions, return the first non-repeating action."
+
+Clarify: actions are strings? bounded length? case-sensitive? single-pass stream allowed?
+Brute: count occurrences each query — O(n) per query, O(n²) total. State that.
+Optimize: hash map count + queue of candidates — O(1) amortized per op.
+Test: ["a","a","b","c"] → a, a, b, b ... walk through queue expiry logic.
+Discuss: memory grows with stream; use time-windowed counts if unbounded.
+```
+
+**Practice with a timer** — 25 minutes a problem, out loud, on paper or a whiteboard. 100–150 problems across the pattern list beats 500 random ones. Quality of narration is half the score: silent solvers lose points everywhere in 2026.
+
+## 3. System Design — The Template That Carries You
+
+For entry-to-mid level, design questions are about **judgment with 2–3 real trade-offs**, not distributed-systems trivia. Use this framework:
+
+```text
+1. Requirements (5 min)
+   - Functional: what does the user actually do?
+   - Non-functional: scale (DAU, RPS, data volume), consistency, availability,
+     latency target, read/write ratio.
+
+2. High-level design (5–10 min)
+   - Draw boxes: client → LB → API → primary store + cache + queue (if async).
+   - Name technologies with reasons (Postgres for relational, Redis for cache,
+     S3 for blobs, Kafka if events must be durable).
+
+3. Deep dive (15–20 min) — pick the 1–2 hardest parts they ask about:
+   - Data model (schema, indexes)
+   - Caching strategy (invalidation!)
+   - Consistency choice (strong vs eventual — justify)
+   - Failure modes (what breaks, how you detect, how you recover)
+
+4. Trade-offs & scaling (5 min)
+   - Where does it break at 10×? Why?
+   - What would you NOT build yet (YAGNI discipline).
+```
+
+Design a URL shortener, a rate-limiter, a notification system, and a parking-lot cache — the pattern repeats in most loops. **ShopCore analogy**: "design the checkout Idempotency-Key flow" is a real system-design question that maps directly onto Parts 04–06 — if you've studied it, you already have a distributed answer (unique index + write-before-process).
+
+## 4. Behavioral — STAR Is Not Optional
+
+Behavioral rounds fail people who are technically brilliant but narratively blank. Prepare 6–8 stories **in advance**, one per common theme:
+
+- Conflict with a teammate · Ambiguity · Shipping under pressure · Failure/mistake · Disagreement with management · Learning from zero · Working with hard feedback
+
+**STAR** = **S**ituation (1 sentence) · **T**ask (1 sentence) · **A**ction (most of the answer: *you*, specifically — "we" is banned from the action part) · **R**esult (quantified outcome + what you learned).
+
+```text
+Q: Tell me about a time you disagreed with code review feedback.
+
+S: "Our checkout PR got a blocking comment — reviewer wanted the order 
+    creation split from payment capture, arguing consistency risk."
+T: "I had to either accept the redesign or justify keeping it atomic."
+A: "I pulled the payment capture out into a follow-up PR behind a flag, 
+    added an idempotency-key retry path, and showed failure-injection tests. 
+    I explained the 2-phase risk I actually worried about (double-charge), 
+    not the theoretical one."
+R: "We merged. Zero double-charges in 3 months; the pattern became team 
+    standard. I learned: disagreement is a request for shared context, not a fight."
+```
+
+Two stories is a coincidence; four is a pattern. Interviewers probe for follow-ups — know every story cold: what you'd do differently, what you said, who else was involved.
+
+## 5. AI-Era Loop Adjustments (2026)
+
+- **Allowed to use AI?** Ask in advance. Some loops permit it (treat it as pair programming, narrate what you accept/reject), others forbid it — violating that is instant fail.
+- **LLM-aware design**: expect "add an AI assistant to X" — the correct answer always includes evaluation (golden set, refusal thresholds) and guardrails, not just "call the API".
+- **Practical AI tasks** often look like: "fix this RAG prompt", "debug this flaky eval", "design citation checking" — the same muscle as Parts 07–08.
+
+## 6. Drills and Timeline
+
+- Week 1: pattern list coding (2/day, timed, out loud) · 2 behavioral stories written per theme
+- Week 2: 2 mock loops with peers (record both) · 2 mock designs (whiteboard yourself)
+- Week 3: refine weak spots · ask your recruiter for the loop format again
+- Day before: sleep > cram. The morning of: 10 minutes of breathing, water, one calm coffee.
+
+## 7. Exercise
+
+Record two timed mock interviews (one coding, one behavioral, 25 min each) with a peer. Watch them back. List the five ugliest moments (filler words, silence while coding, "um", vague outcomes, no follow-up questions). Fix them; re-record; ship your resume to 10 targets from the previous lesson.
+
+**Acceptance criteria.** Your recording shows: a clarified question back to the interviewer, narrated reasoning throughout, quantified result in every behavioral answer, and zero >20-second silences during coding.
+
+</BookNodePage>

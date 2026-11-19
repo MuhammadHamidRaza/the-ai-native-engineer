@@ -1,0 +1,163 @@
+---
+id: "23-1-1-core-web-vitals-and-frontend-bundle-budgets"
+title: "23.1.1 Core Web Vitals and Frontend Bundle Budgets"
+sidebar_label: "23.1.1 Core Web Vitals and Frontend Bundle Budgets"
+slug: "/part-06-system-design-and-production-quality/23-performance-and-scalability/23-1-latency-profiling-and-bottlenecks/23-1-1-core-web-vitals-and-frontend-bundle-budgets"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-23-s1-t1">
+
+A user does not experience "ShopCore's architecture." They experience: does the page appear, does it react when I tap, does it jump around under my thumb. Google measures exactly those three things and calls them **Core Web Vitals (CWV)**. In this lesson you will learn to measure ShopCore's storefront the same way Google does, set budgets that fail CI when the site regresses, and fix the three usual offenders — LCP, INP, CLS — with techniques that survive contact with production.
+
+## 1. The Three Metrics — As of Nov 2026
+
+Google's current Core Web Vitals (field, 75th percentile) — stable since the March 12, 2024 replacement of First Input Delay (FID) with **Interaction to Next Paint (INP)**:
+
+| Metric | What it measures | Good | Needs improvement | Poor |
+| :-- | :-- | :-- | :-- | :-- |
+| **LCP** (Largest Contentful Paint) | Loading — when the largest visible element renders | ≤ 2.5 s | ≤ 4.0 s | > 4.0 s |
+| **INP** (Interaction to Next Paint) | Responsiveness — latency of taps/clicks across the visit | ≤ 200 ms | ≤ 500 ms | > 500 ms |
+| **CLS** (Cumulative Layout Shift) | Visual stability — unexpected layout movement | ≤ 0.1 | ≤ 0.25 | > 0.25 |
+
+Sources: [web.dev Core Web Vitals](https://web.dev/articles/vitals) and Google's [INP transition announcement](https://web.dev/blog/inp-cwv-march-12). All three must pass at the **75th percentile of real (field) visits** — lab tools alone cannot pass a page. "Good" is per-page, per-device bucket (mobile vs desktop), not site-wide average.
+
+**ShopCore's storefront budget (stricter than "good" on purpose):** LCP ≤ 2.0 s on 4G mobile, INP ≤ 200 ms, CLS ≤ 0.05, all p75.
+
+## 2. Field Data vs Lab Data — Measure Both
+
+| Tool | Data type | Tells you | Use for |
+| :-- | :-- | :-- | :-- |
+| **CrUX** (Chrome UX Report) | Field, 28-day, p75 | What real users got | Pass/fail for CWV |
+| **PageSpeed Insights** | Field (CrUX) + lab (Lighthouse) | Both views in one report | Weekly check of `shopcore.example.com` |
+| **Lighthouse** (DevTools / CLI / CI) | Lab, controlled | Regressions before deploy | Pull-request gate |
+| **Lighthouse CI** | Lab in CI | Budget enforcement | CI failure on regression |
+| **`web-vitals` JS library** | Field, from your own users | Real INP/LCP/CLS per session | Your own analytics beacon |
+
+Real-user capture in ShopCore's frontend (send to your analytics sink; §5 of [22.3.1](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-3-observability-and-incident-response/22-3-1-structured-logging-and-correlation-ids) covers the request side):
+
+```js
+// frontend/src/lib/vitals.js — run after app boot
+import { onLCP, onINP, onCLS } from 'web-vitals';
+
+function report(metric) {
+  const body = JSON.stringify({
+    name: metric.name, value: metric.value, id: metric.id,
+  });
+  navigator.sendBeacon('/api/vitals', body);
+}
+onLCP(report); onINP(report); onCLS(report);
+```
+
+Lighthouse CLI locally: `npx lighthouse https://shopcore.example.com --preset=desktop --view` (mobile by default — always check mobile). CI gate: `npx lhci autorun --config=./lighthouserc.cjs` with `assert` rules, e.g. `"categories:performance": ["error", {"minScore": 0.9 }]`.
+
+## 3. Bundle Budgets — Make "Faster" Non-Optional
+
+An unbudgeted bundle only grows. Put the budget **in CI** so a PR that adds 80 KB of JS fails like a broken test. Example with `bundlesize` (npm):
+
+```jsonc
+// package.json
+"bundlesize": [
+  { "path": "dist/assets/index-*.js",  "maxSize": "180 kB", "compression": "gzip" },
+  { "path": "dist/assets/catalog-*.js", "maxSize": "60 kB",  "compression": "gzip" },
+  { "path": "dist/assets/admin-*.js",   "maxSize": "250 kB", "compression": "gzip" }
+],
+"scripts": { "size": "bundlesize" }
+```
+
+```yaml
+# .github/workflows/ci.yml (excerpt — the size step fails the PR)
+- run: npm run build
+- run: npm run size
+```
+
+"Max 180 kB gzip" means the network cost of the critical path; it does **not** measure INP directly — but JS weight is the strongest predictor of main-thread contention, which is what INP punishes. (The `size-limit` npm package is an equivalent gate with per-entry sizing — either is fine; pick one and keep it.)
+
+**Route-level code splitting** keeps `/catalog` from downloading the admin dashboard:
+
+```jsx
+// React + Vite
+import { lazy, Suspense } from 'react';
+const CheckoutAdmin = lazy(() => import('./routes/CheckoutAdmin.jsx'));
+// In Vite you get route chunks automatically with dynamic import().
+// In Next.js use next/dynamic; in Parcel it is also dynamic import().
+```
+
+Verify the split: `npm run build` and look at `dist/assets/` — each route should be its own hashed chunk, and the initial load should not include it.
+
+## 4. Images — The LCP Killer and the CLS Maker
+
+ShopCore's product images are the largest contentful paint on catalog pages, and the classic layout-shift source.
+
+```html
+<!-- Responsive + modern formats + reserved space -->
+<picture>
+  <source type="image/avif" srcset="/img/tee-400.avif 400w, /img/tee-800.avif 800w" sizes="(max-width: 600px) 100vw, 400px">
+  <source type="image/webp" srcset="/img/tee-400.webp 400w, /img/tee-800.webp 800w" sizes="(max-width: 600px) 100vw, 400px">
+  <img src="/img/tee-800.jpg" alt="Organic cotton tee, navy" width="800" height="800"
+       loading="lazy" decoding="async" fetchpriority="auto">
+</picture>
+
+<!-- The LCP hero on the product detail page: NOT lazy, high priority -->
+<img src="/img/hero-800.webp" alt="" width="800" height="600"
+     fetchpriority="high" decoding="async">
+```
+
+Rules: always `width`/`height` (or CSS `aspect-ratio`) so the browser reserves space — this is the single cheapest CLS fix. `loading="lazy"` for below-the-fold images only; the LCP candidate must **not** be lazy. `fetchpriority="high"` on the hero. Serve **WebP/AVIF** (create with `sharp`, `squoosh`, or your CDN's format negotiation). `srcset`+`sizes` so mobile doesn't download desktop pixels.
+
+## 5. React Render Performance — Measure First, Then Memoize
+
+The wrong order is: "it feels sluggish" → sprinkle `memo` everywhere. The right order: **profile, find the hot component, memoize that one decision.** Tools: React DevTools → Profiler tab → record a checkout interaction → look at the flame graph for long commits and frequent re-renders. `why-did-you-render` (dev-only) logs exactly which prop reference broke memoization.
+
+Legitimate uses after measurement: `React.memo` on a pure list-row component (e.g. `OrderLineItem`) that re-renders because its parent's state object is rebuilt each keystroke; `useMemo` for an expensive derived value (e.g. filtered catalog) with a stable dependency array; `useCallback` for a handler passed to memoized children. If you cannot name the measurement that justified the memo, remove it.
+
+## 6. CDN Caching and Preconnect Hints
+
+```text
+# Hashed, immutable build assets (Vite/webpack output)
+Cache-Control: public, max-age=31536000, immutable
+
+# HTML on the CDN (short, revalidate at edge)
+Cache-Control: public, max-age=0, s-maxage=300, stale-while-revalidate=60
+```
+
+On the HTML `<head>` for third-party origins ShopCore talks to (Stripe.js, CDN img host):
+
+```html
+<link rel="preconnect" href="https://js.stripe.com" crossorigin>
+<link rel="dns-prefetch" href="https://img.shopcore.example.com">
+```
+
+`preconnect` = DNS + TCP + TLS handshake done ahead of time (worth ~100–300 ms on first interaction with a third-party origin); `dns-prefetch` = DNS only, cheaper, weaker signal. `preconnect` the 1–2 origins you always need; do not spray hints everywhere — each hint competes for bandwidth.
+
+## 7. Troubleshooting Table — CWV Symptoms
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| LCP > 2.5 s on catalog | Huge hero, no `fetchpriority`, render-blocking CSS/JS | Preload hero, split CSS, defer third-party JS, CDN for images |
+| INP > 200 ms on "Add to cart" | Long task on main thread (JSON parse, sync Stripe call) | Break up work, move logic off-thread, debounce, route-split |
+| CLS > 0.1 | Images/ads without reserved space; late fonts | `width`/`height` + `aspect-ratio`; `font-display: swap` with size-adjusted fallbacks |
+| Poor lab score but good CrUX | Lab is a controlled single run | Trust field p75; lab only for regressions |
+| Poor CrUX but passes Lighthouse | Users on slow devices/networks | Test throttled mobile in Lighthouse; check CrUX segmentation |
+| `bundlesize` spiked after adding one lib | One heavy import pulled a whole namespace | Use named/dynamic imports; analyze with `rollup-plugin-visualizer` or `source-map-explorer` |
+
+## 8. Practice
+
+**Guided.** Run Lighthouse (mobile, throttled) on your local ShopCore. Record LCP/INP/CLS. Wrap the two largest routes in `React.lazy`, re-run, record again. Commit the numbers to your notebook.
+
+**Independent.** Add `web-vitals` beacon to the frontend, log LCP/INP/CLS to your analytics (or a console endpoint), and capture 20 real sessions. Report the p75.
+
+**Challenge.** Convert the catalog to `srcset`/`sizes` + WebP with reserved aspect-ratio space. Show before/after CLS in Lighthouse. Then add `bundlesize` to CI with an 180 kB gzip cap on the entry chunk and prove it fails on a deliberately oversized build.
+
+**Assessment checklist**
+
+- [ ] I can state the CWV metrics, thresholds, and the 75th-percentile field-data rule without notes.
+- [ ] I know INP replaced FID (March 2024) and why.
+- [ ] I can check CrUX/PSI for my site and read Lighthouse correctly (mobile first).
+- [ ] My CI fails when a JS bundle exceeds its committed budget.
+- [ ] I can route-split a route and verify the chunk in `dist/`.
+- [ ] I can explain why the LCP image must not be `loading="lazy"`.
+- [ ] I memoize only what I measured re-rendering.
+
+</BookNodePage>

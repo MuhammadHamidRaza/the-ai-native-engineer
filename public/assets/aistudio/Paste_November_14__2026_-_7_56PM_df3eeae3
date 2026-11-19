@@ -1,0 +1,1471 @@
+# MASTER AUTHORING PROMPT — PART 00
+# THE AI-NATIVE ENGINEER
+## Think. Build. Solve. Ship.
+### Part 00 — About This Book
+
+You are acting as a combination of:
+
+1. Senior technical book author
+2. Principal software engineer
+3. AI-native engineering researcher
+4. Forward Deployed Engineer (FDE)
+5. AI and agentic systems specialist
+6. Technical curriculum architect
+7. Professional technical editor
+8. Research analyst
+9. Documentation engineer
+10. Docusaurus and MDX content engineer
+
+Your responsibility is to research, write, edit, and integrate the complete **Part 00 — About This Book** into my existing book website.
+
+This is a serious technical book project. Do not treat it as a blog post, a short introduction, a collection of generic AI explanations, or automatically generated documentation.
+
+I expect detailed, complete, carefully researched, professionally written book content.
+
+---
+
+# 1. BOOK IDENTITY
+
+**Book title:** The AI-Native Engineer
+
+**Subtitle:** Think. Build. Solve. Ship.
+
+**Author:** Muhammad Hamid Raza (Hamid Raza)
+
+**Book purpose:**
+
+This book helps developers evolve beyond simply writing code. It teaches them to think clearly, understand problems, engineer software systems, work effectively with AI, build intelligent applications, solve real-world problems, and deliver meaningful outcomes.
+
+The book covers the journey from software engineering fundamentals to modern AI-native engineering, applied AI, agentic systems, automation, cloud deployment, system design, client work, products, and startups.
+
+The intended engineering mindset is:
+
+- Understand before implementing.
+- Think before building.
+- Learn fundamentals rather than depending entirely on tools.
+- Use AI as an engineering multiplier.
+- Understand the systems being built.
+- Build practical solutions for real problems.
+- Verify what AI and software produce.
+- Measure outcomes, not just lines of code.
+- Deliver complete working solutions.
+
+The book follows a practical engineering philosophy, not a hype-driven approach.
+
+## Important terminology
+
+AI-Native Engineer is the broad engineering direction and philosophy used by this book. It is not a universally standardized job title.
+
+Different companies use different job titles, responsibilities, and expectations. Explain these differences honestly.
+
+Forward Deployed Engineering (FDE) is an important engineering approach covered in the book. Do not claim that every AI engineer is an FDE or that all companies use identical FDE responsibilities.
+
+---
+
+# 2. YOUR TASK
+
+Write the complete Part 00, including all 11 main sections and every nested topic specified below.
+
+This is the only part you are authorized to write in this task.
+
+Do not start writing Part 01, Part 02, or any other curriculum part.
+
+Do not write all 42 chapters.
+
+Do not modify the existing 10-part curriculum.
+
+Do not generate placeholder pages instead of actual content.
+
+Every specified page must contain complete, substantial, educational writing.
+
+The finished result should feel like a professionally authored introductory volume of a serious technical book.
+
+## What I mean by complete content
+
+I do NOT want:
+
+- One short paragraph per page.
+- Generic introductions.
+- Superficial bullet-point explanations.
+- Repeated explanations with slightly different wording.
+- Artificially inflated content.
+- Lists without explanations.
+- Definitions without examples.
+- Unsupported claims.
+- Fake statistics.
+- Outdated technical recommendations.
+- A few paragraphs followed by an empty placeholder.
+
+I DO want:
+
+- Deep explanations.
+- Clear conceptual foundations.
+- Context and reasoning.
+- Relevant technical examples.
+- Real-world engineering scenarios.
+- Comparisons where useful.
+- Practical illustrations.
+- Decision-making guidance.
+- Advantages and limitations.
+- Common misconceptions.
+- Concrete examples.
+- Carefully explained diagrams where appropriate.
+- Useful tables where they genuinely improve understanding.
+- References to authoritative and current sources.
+- Meaningful transitions between topics.
+
+Explain subjects so that a beginner can understand them without making the content unnecessarily simplistic for experienced developers.
+
+---
+
+# 3. RESEARCH BEFORE WRITING
+
+You MUST perform research before drafting the content.
+
+Do not rely entirely on your pretrained knowledge.
+
+Use available web research and official documentation to verify technical information, especially for rapidly evolving topics.
+
+## Research priorities
+
+Prefer sources in this order:
+
+1. Official documentation from technology providers.
+2. Official engineering blogs and technical publications.
+3. Standards organizations and technical specifications.
+4. Reputable research papers and academic publications.
+5. Established engineering publications.
+6. Well-documented real-world engineering case studies.
+7. Reputable professional and community discussions when they provide useful practical perspectives.
+
+## Important sources to investigate where relevant
+
+- OpenAI documentation: https://platform.openai.com/docs
+- OpenAI Agents SDK: https://openai.github.io/openai-agents-python/
+- Model Context Protocol: https://modelcontextprotocol.io/
+- Git documentation: https://git-scm.com/doc
+- MDN Web Docs: https://developer.mozilla.org/
+- Python documentation: https://docs.python.org/3/
+- Node.js documentation: https://nodejs.org/docs/
+- React documentation: https://react.dev/
+- TypeScript documentation: https://www.typescriptlang.org/docs/
+- PostgreSQL documentation: https://www.postgresql.org/docs/
+- Docker documentation: https://docs.docker.com/
+- Kubernetes documentation: https://kubernetes.io/docs/
+- AWS documentation: https://docs.aws.amazon.com/
+- Microsoft Learn: https://learn.microsoft.com/
+- Google Cloud documentation: https://cloud.google.com/docs
+
+These are suggested research sources, not a requirement to reference every source in every chapter.
+
+Find the most relevant sources for each subject.
+
+## Current information requirements
+
+For technologies, tools, APIs, AI frameworks, protocols, and industry practices:
+
+- Verify their current status.
+- Check current official documentation.
+- Check whether a feature is stable, experimental, deprecated, or changing.
+- Distinguish established concepts from emerging trends.
+- Use the latest reliable information available at the time of writing.
+- Include the research/access date where appropriate.
+- Never claim a feature exists without verifying it.
+
+For career roles and industry practices:
+
+- Research actual job descriptions and employer terminology when useful.
+- Explain that titles and responsibilities differ between organizations.
+- Avoid presenting isolated job advertisements as universal industry standards.
+- Do not invent employment statistics, salary data, or future predictions.
+
+## Citation requirements
+
+Use references throughout the book.
+
+For factual and technical claims that benefit from external verification:
+
+- Add inline citations or numbered references.
+- Link to the original source.
+- Prefer primary sources.
+- Include publication or update dates when available.
+- Add an appropriate references section to relevant pages.
+- Make it clear when a claim is an interpretation rather than a directly established fact.
+
+Do not fabricate URLs, article titles, publication dates, authors, or citations.
+
+If a claim cannot be verified, either qualify it or remove it.
+
+Do not copy large portions of external articles. Explain concepts in your own original language.
+
+---
+
+# 4. WRITING QUALITY AND DEPTH STANDARD
+
+The entire Part 00 must maintain consistent depth.
+
+## Target length
+
+Use the following as writing targets, not as permission to add filler:
+
+- Main section landing pages: approximately 1,200–2,000 words where the subject supports that depth.
+- Individual nested topic pages: approximately 700–1,400 words where appropriate.
+- Complex topics: may require 1,500–2,000 words or more.
+- Short orientation topics: may be shorter when additional length would be repetitive.
+
+The total Part 00 should be a substantial introductory section, not a few thousand words of summaries.
+
+Prioritize completeness and quality over rigid word counts.
+
+If the project contains many nested pages, write each page independently and ensure the combined result is comprehensive.
+
+## Explanation style
+
+Use clear, professional, natural English.
+
+The book should feel like an experienced engineer teaching another engineer.
+
+Use:
+
+- Clear headings.
+- Meaningful paragraphs.
+- Detailed explanations.
+- Realistic examples.
+- Comparison tables.
+- Numbered steps when explaining a process.
+- Bullets when listing related items.
+- Callouts for important insights.
+- Code only when it genuinely helps explain a concept.
+
+Avoid:
+
+- Marketing language.
+- Empty motivational statements.
+- Excessive emojis.
+- Overly complicated academic language.
+- Unexplained jargon.
+- Repeating the same introduction on every page.
+- Unnecessary filler.
+- Artificially long conclusions.
+
+Introduce technical terminology before using it extensively.
+
+When introducing an abbreviation, write its full form first.
+
+For example:
+
+Forward Deployed Engineer (FDE).
+
+Explain why a concept matters, where it is used, how it works, and what limitations it has.
+
+---
+
+# 5. COMPLETE PART 00 STRUCTURE
+
+Preserve the following hierarchy and numbering.
+
+Do not rename, remove, merge, or reorder these sections.
+
+Additional nested topics may be added only when they provide genuine educational value. Do not omit any specified topic.
+
+# 00.1 — Welcome to The AI-Native Engineer
+
+## Purpose
+
+Introduce the reader to the book and establish the central idea of AI-native engineering.
+
+Write the main section as a thoughtful, engaging introduction to the entire book.
+
+### 00.1.1 — What Is The AI-Native Engineer?
+
+Explain:
+
+- What an AI-Native Engineer means in this book.
+- How traditional software engineering relates to AI-native engineering.
+- How AI changes the engineering workflow.
+- Why understanding software fundamentals remains essential.
+- How engineers combine programming, reasoning, AI tools, system design, and problem solving.
+- The difference between using AI tools and engineering AI-powered systems.
+- The difference between AI-assisted coding and AI-native engineering.
+- Why verification and independent judgment matter.
+- Why this is an engineering approach rather than a universally standardized job title.
+
+Give realistic examples of how an engineer's work changes when AI becomes part of the development workflow.
+
+### 00.1.2 — Why This Book Exists
+
+Explain:
+
+- How software development is changing.
+- The rise of AI-assisted development.
+- The emergence of AI-powered applications and agentic systems.
+- Why developers need to adapt.
+- Why learning isolated tools is insufficient.
+- Why engineering fundamentals still matter.
+- Why practical implementation is important.
+- Why deployment and delivery matter as much as development.
+- Why developers need to understand business problems and user outcomes.
+
+Explain the motivation behind creating this book without inventing personal achievements or unsupported experiences.
+
+### 00.1.3 — Who This Book Is For
+
+Discuss:
+
+- Complete beginners interested in software engineering.
+- Students learning programming.
+- Frontend developers.
+- Backend developers.
+- Full-stack developers.
+- MERN developers.
+- Python developers.
+- AI engineers.
+- Agentic AI developers.
+- Automation engineers.
+- Freelancers.
+- Independent builders.
+- Startup developers.
+- Experienced software engineers adapting to AI.
+
+For each audience, explain:
+
+- What they may already know.
+- What they can gain from the book.
+- Which parts may be especially useful.
+- What challenges they should expect.
+
+Also explain who may not benefit from following the complete learning path.
+
+### 00.1.4 — What You Will Explore
+
+Introduce the complete scope of the book:
+
+- Computing fundamentals.
+- Critical thinking.
+- Developer tools.
+- JavaScript.
+- Frontend development.
+- Python.
+- Databases.
+- Backend engineering.
+- Full-stack development.
+- Deployment.
+- Cloud.
+- DevOps.
+- System design.
+- Production quality.
+- AI-native software development.
+- Applied AI.
+- Agentic systems.
+- MCP.
+- Automation.
+- Career development.
+- Freelancing.
+- Client acquisition.
+- Products.
+- Startups.
+- Integrated capstone.
+
+Explain how these subjects connect rather than merely listing them.
+
+### 00.1.5 — What You Can Expect to Build
+
+Describe the kinds of practical systems a reader may learn to design and build throughout the book.
+
+Discuss examples such as:
+
+- Websites and frontend applications.
+- Backend APIs.
+- Full-stack applications.
+- Database-backed systems.
+- Deployed cloud applications.
+- AI-powered applications.
+- AI assistants.
+- Tool-using agents.
+- Multi-agent workflows.
+- MCP-connected systems.
+- Business automation workflows.
+- Real-world client solutions.
+- Integrated production-oriented projects.
+
+Clearly distinguish learning objectives from guaranteed outcomes.
+
+Do not claim every reader will become an expert or obtain a job after completing the book.
+
+# 00.2 — Understanding the Modern Engineering Landscape
+
+## Purpose
+
+Explain the different engineering disciplines and how they connect in the modern software industry.
+
+### 00.2.1 — Traditional Software Engineering
+
+Explain:
+
+- Software engineering principles.
+- Requirements.
+- Architecture.
+- Programming.
+- Testing.
+- Debugging.
+- Maintenance.
+- Deployment.
+- Collaboration.
+- Reliability.
+
+Explain why these fundamentals remain important in AI-assisted environments.
+
+### 00.2.2 — AI-Assisted Software Development
+
+Explain:
+
+- AI coding assistants.
+- Code completion.
+- Code generation.
+- Refactoring assistance.
+- Debugging assistance.
+- Test generation.
+- Documentation generation.
+- AI-assisted planning.
+- Human review and verification.
+
+Discuss the limitations, risks, and responsibilities involved in using AI-generated code.
+
+### 00.2.3 — Applied AI Engineering
+
+Explain:
+
+- Applying AI models to practical products.
+- Model APIs.
+- Structured outputs.
+- Retrieval and grounding.
+- Classification.
+- Extraction.
+- Summarization.
+- Multimodal applications.
+- Evaluation.
+- Reliability and cost considerations.
+
+Show how applied AI differs from simply integrating a chatbot.
+
+### 00.2.4 — Agentic AI Engineering
+
+Explain:
+
+- What an AI agent is.
+- Model reasoning and decision-making.
+- Tools and tool calling.
+- Instructions and context.
+- State and memory concepts.
+- Multi-step workflows.
+- Agent orchestration.
+- Multi-agent systems.
+- Guardrails.
+- Human approval.
+- Evaluation.
+- Observability.
+- Failure handling.
+
+Differentiate agents from ordinary deterministic automation and basic chat interfaces.
+
+Explain that agentic systems have limitations and require engineering controls.
+
+### 00.2.5 — AI Automation and Integration
+
+Explain:
+
+- Business process automation.
+- API integrations.
+- Event-driven workflows.
+- Workflow orchestration.
+- AI-powered automation.
+- Human-in-the-loop processes.
+- Error handling.
+- Monitoring.
+- Business system integration.
+
+Include realistic business scenarios.
+
+### 00.2.6 — Forward Deployed Engineering
+
+Explain:
+
+- The FDE role and its purpose.
+- Customer-facing engineering.
+- Understanding business environments.
+- Discovery and requirements.
+- Technical implementation.
+- Integrating with existing systems.
+- Iterative delivery.
+- Measuring outcomes.
+- Deployment and handover.
+
+Explain how FDE responsibilities vary by company.
+
+### 00.2.7 — Product and Startup Engineering
+
+Explain:
+
+- Product thinking.
+- User problems.
+- MVP development.
+- Iterative releases.
+- Technical decisions.
+- Product-market fit as a business concept.
+- Engineering constraints.
+- Small-team ownership.
+- Reliability and scalability.
+
+### 00.2.8 — How These Engineering Areas Connect
+
+Create a comprehensive explanation of how traditional software engineering, AI-assisted development, applied AI, agentic AI, automation, FDE, and product engineering overlap.
+
+Include:
+
+- A comparison table.
+- Practical scenarios.
+- Typical responsibilities.
+- Skills required.
+- How one engineer may work across multiple disciplines.
+- Why job titles are not always reliable indicators of actual responsibilities.
+
+Provide a meaningful conceptual diagram if possible.
+
+# 00.3 — Career Paths and Professional Roles
+
+## Purpose
+
+Give readers a realistic understanding of modern engineering roles and how they relate.
+
+Include all 15 roles below.
+
+Do not invent standardized definitions. Explain that organizations use different job titles and that responsibilities overlap.
+
+### 00.3.1 — Forward Deployed Engineer
+
+Explain:
+
+- Typical purpose.
+- Customer interaction.
+- Technical discovery.
+- Problem solving.
+- Implementation.
+- Integration.
+- Deployment.
+- Communication.
+- Required skills.
+- Example work scenario.
+
+### 00.3.2 — Forward Deployed AI Engineer
+
+Explain how this role combines FDE delivery with substantial AI integration.
+
+Cover AI systems, customer workflows, model integration, agents, evaluation, and deployment.
+
+### 00.3.3 — Agentic AI Engineer
+
+Explain agent architecture, tools, state, orchestration, guardrails, evaluation, and production reliability.
+
+### 00.3.4 — Applied AI Engineer
+
+Explain building AI-powered product features and practical AI applications.
+
+### 00.3.5 — AI Engineer
+
+Explain the broad and variable meaning of this title.
+
+Discuss how responsibilities may include model integration, AI infrastructure, evaluation, machine learning, or application development depending on the employer.
+
+### 00.3.6 — AI Solutions Engineer
+
+Explain translating customer requirements into practical AI solutions.
+
+### 00.3.7 — AI Automation Engineer
+
+Explain automating business workflows using APIs, automation platforms, AI models, and integrations.
+
+### 00.3.8 — AI Integration Engineer
+
+Explain connecting AI services and capabilities to existing software systems.
+
+### 00.3.9 — Solutions Engineer
+
+Explain technical customer support, solution design, demonstrations, implementation, and the possible pre-sales component.
+
+Distinguish pre-sales responsibilities from post-sales engineering.
+
+### 00.3.10 — Solutions Architect
+
+Explain architecture design, system integration, infrastructure decisions, scalability, security, and technology selection.
+
+### 00.3.11 — Customer Engineer
+
+Explain technical customer adoption, implementation, troubleshooting, and problem solving.
+
+### 00.3.12 — Field Engineer
+
+Explain technical work close to customer environments and the variation between industries.
+
+### 00.3.13 — Implementation Engineer
+
+Explain configuring, integrating, deploying, and validating customer systems.
+
+### 00.3.14 — Cloud AI Engineer
+
+Explain cloud infrastructure, AI services, deployment, security, scalability, monitoring, and cost management.
+
+### 00.3.15 — Founding Engineer
+
+Explain early-stage product development, broad technical ownership, architecture, implementation, iteration, and startup constraints.
+
+## Additional career analysis
+
+Create separate nested topics for:
+
+- Comparing the 15 roles.
+- Understanding overlapping job titles.
+- Customer-facing versus product-focused engineering.
+- AI-focused versus general software engineering.
+- Technical depth versus communication responsibilities.
+- Choosing a suitable career direction.
+- Building a skills roadmap for a selected role.
+- Reading and interpreting real job descriptions.
+- Understanding the difference between a job title and actual work.
+
+Use this grouping as a helpful framework, not as a universal classification.
+
+**Customer-facing and delivery-oriented roles:**
+
+- Forward Deployed Engineer
+- Forward Deployed AI Engineer
+- AI Solutions Engineer
+- Solutions Engineer
+- Customer Engineer
+- Field Engineer
+- Implementation Engineer
+
+**AI and applied engineering roles:**
+
+- Agentic AI Engineer
+- Applied AI Engineer
+- AI Engineer
+- AI Automation Engineer
+- AI Integration Engineer
+- Cloud AI Engineer
+
+**Architecture and product leadership:**
+
+- Solutions Architect
+- Founding Engineer
+
+Explain that these categories overlap and are not strict industry standards.
+
+# 00.4 — Philosophy of This Book
+
+## Purpose
+
+Explain the principles that guide the entire curriculum.
+
+### 00.4.1 — Think Before Building
+
+Explain problem analysis, assumptions, requirements, planning, trade-offs, and reasoning.
+
+### 00.4.2 — Understand the Problem
+
+Explain user needs, business context, root causes, constraints, workflows, and success criteria.
+
+### 00.4.3 — Master the Fundamentals
+
+Explain why programming, data structures, databases, networking, HTTP, operating systems, and software engineering concepts remain valuable.
+
+### 00.4.4 — AI Augments Engineering
+
+Explain how AI can improve productivity without replacing engineering judgment.
+
+Discuss responsible use, limitations, and verification.
+
+### 00.4.5 — Build Real Systems
+
+Explain the difference between tutorial projects and real-world systems.
+
+Cover architecture, integrations, security, testing, data, deployment, maintenance, and reliability.
+
+### 00.4.6 — Verify What You Build
+
+Explain testing, validation, code review, model evaluation, observability, and production checks.
+
+### 00.4.7 — Focus on Outcomes
+
+Explain the relationship between technical delivery and measurable user or business value.
+
+### 00.4.8 — Deliver More Than Code
+
+Explain why engineering work includes documentation, communication, deployment, monitoring, handover, and ongoing responsibility.
+
+# 00.5 — Learning Journey
+
+## Purpose
+
+Give readers a detailed guide to the book's structure and how to study it.
+
+### 00.5.1 — The Complete Learning Roadmap
+
+Explain the overall journey from foundational knowledge to building and delivering integrated systems.
+
+### 00.5.2 — Understanding the 10 Curriculum Parts
+
+Introduce each of the ten curriculum parts and explain its role.
+
+Preserve these exact titles:
+
+1. Foundations — 3 chapters, 26 hours
+2. JavaScript & Frontend Development — 5 chapters, 92 hours
+3. Python Development — 2 chapters, 40 hours
+4. Databases, Backend & Full-Stack Development — 5 chapters, 92 hours
+5. Deployment, Cloud & DevOps — 5 chapters, 62 hours
+6. System Design & Production Quality — 4 chapters, 44 hours
+7. AI-Native Software Development — 3 chapters, 32 hours
+8. AI Applications, Agents, MCP & Automation — 9 chapters, 128 hours
+9. Career, Client Work, Products & Startups — 5 chapters, 40 hours
+10. Integrated Capstone — 1 chapter, 36 hours
+
+Explain how the parts build on each other.
+
+### 00.5.3 — The 42-Chapter Structure
+
+Explain the chapter-based organization.
+
+The curriculum has 42 chapters. Part 00 is introductory and is not included in that count.
+
+### 00.5.4 — Understanding the 592 Focused Learning Hours
+
+Explain:
+
+- What the 592 hours represent.
+- Why they are an estimated focused learning allocation.
+- What the hours do and do not include.
+- Why individual learning speed varies.
+- How practice and revision affect total completion time.
+
+Do not present the hours as a guaranteed completion deadline.
+
+### 00.5.5 — Learning Paths for Beginners
+
+Explain a sensible approach for readers who are new to software development.
+
+Discuss foundational skills, pacing, practice, prerequisites, and how to avoid rushing.
+
+### 00.5.6 — Learning Paths for Experienced Developers
+
+Explain how experienced developers can assess their existing knowledge, identify gaps, and navigate the material efficiently without skipping essential concepts blindly.
+
+### 00.5.7 — Learning Paths for AI-Focused Developers
+
+Explain how developers who already work with AI can strengthen software fundamentals, backend development, deployment, system design, and production engineering.
+
+### 00.5.8 — How to Navigate the Book
+
+Explain the parts, chapters, nested sections, sidebar, search, reading progress, previous/next navigation, and appendices.
+
+# 00.6 — Teaching and Practice Method
+
+## Purpose
+
+Explain how the book teaches concepts and turns understanding into practical engineering ability.
+
+### 00.6.1 — Concept-Based Learning
+
+Explain learning principles and building a mental model before memorizing tools.
+
+### 00.6.2 — Practical Examples
+
+Explain the purpose of realistic examples and how they connect theory to implementation.
+
+### 00.6.3 — Manual Practice
+
+Explain why developers should understand and perform important engineering tasks themselves instead of depending entirely on AI.
+
+### 00.6.4 — AI-Assisted Practice
+
+Explain how AI can support learning, implementation, debugging, review, and experimentation.
+
+### 00.6.5 — Hands-On Labs and Projects
+
+Explain progressive practical work, realistic constraints, testing, and project-based learning.
+
+### 00.6.6 — Debugging and Problem Solving
+
+Explain systematic debugging, reading errors, reproducing problems, inspecting assumptions, and validating fixes.
+
+### 00.6.7 — Portfolio Development
+
+Explain how to document meaningful projects, demonstrate technical ability, write READMEs, and present engineering decisions.
+
+### 00.6.8 — Assessment and Progress
+
+Explain how readers can measure understanding through implementation, explanation, testing, review, and independent problem solving.
+
+# 00.7 — Working With AI
+
+## Purpose
+
+Teach readers how to work effectively and responsibly with AI systems throughout the book.
+
+### 00.7.1 — AI as a Learning Partner
+
+Explain tutoring, brainstorming, explanation, practice generation, and technical assistance.
+
+### 00.7.2 — Providing Context to AI
+
+Explain instructions, requirements, project context, codebase context, constraints, examples, and expected output.
+
+### 00.7.3 — Reviewing AI-Generated Code
+
+Explain code review, readability, correctness, security, maintainability, and architectural fit.
+
+### 00.7.4 — Verifying AI Outputs
+
+Explain fact checking, running code, tests, official documentation, source verification, and independent validation.
+
+### 00.7.5 — Avoiding Overdependence
+
+Discuss automation bias, shallow understanding, hallucinations, dependency, privacy, and the risks of accepting outputs blindly.
+
+### 00.7.6 — Developing Independent Engineering Judgment
+
+Explain how to build the ability to evaluate approaches, recognize trade-offs, make decisions, and take responsibility for systems.
+
+Include practical scenarios demonstrating good and poor AI usage.
+
+# 00.8 — FDE Mindset
+
+## Purpose
+
+Introduce the reader to the customer-focused engineering lifecycle used throughout the book.
+
+The FDE delivery lifecycle must remain exactly:
+
+**Listen → Map → Measure → Slice → Build → Verify → Handover**
+
+### 00.8.1 — Understanding Customer Problems
+
+Explain customer conversations, discovery, pain points, requirements, assumptions, and context.
+
+### 00.8.2 — Mapping Workflows
+
+Explain how to understand existing business processes, users, systems, integrations, and bottlenecks.
+
+### 00.8.3 — Measuring Impact
+
+Explain baselines, measurable outcomes, success criteria, operational metrics, and business value.
+
+Do not invent universal metrics. Explain that suitable measures depend on the problem.
+
+### 00.8.4 — Slicing Deliverables
+
+Explain breaking large problems into achievable, testable, high-value increments.
+
+### 00.8.5 — Building Solutions
+
+Explain implementation, integration, architecture, iteration, and working with customer constraints.
+
+### 00.8.6 — Verifying Results
+
+Explain testing, acceptance criteria, validation, reliability, and measuring whether the solution actually addresses the problem.
+
+### 00.8.7 — Deployment and Handover
+
+Explain deployment, documentation, knowledge transfer, operational ownership, monitoring, and support.
+
+### 00.8.8 — The Complete FDE Delivery Lifecycle
+
+Explain all seven stages together using one detailed, realistic end-to-end business scenario.
+
+Show how an engineer moves from the original customer problem to a working, verified, delivered solution.
+
+Explain how the lifecycle can also be applied to independent products and internal engineering projects.
+
+# 00.9 — Tools, Technologies and Learning Resources
+
+## Purpose
+
+Orient readers to the technology areas covered in the book without turning this section into an unverified list of fashionable tools.
+
+### 00.9.1 — Programming Languages
+
+Discuss JavaScript, TypeScript, Python, and the role of other languages where relevant.
+
+Explain language selection based on requirements and ecosystem.
+
+### 00.9.2 — Frontend Technologies
+
+Discuss HTML, CSS, JavaScript, TypeScript, React, Next.js, and modern frontend engineering concepts.
+
+### 00.9.3 — Backend Technologies
+
+Discuss APIs, Node.js, Express, Python backend ecosystems, authentication, authorization, and server-side engineering.
+
+### 00.9.4 — Databases
+
+Introduce relational and document databases, data modeling, SQL, PostgreSQL, MongoDB, indexing, and data integrity.
+
+### 00.9.5 — Cloud and DevOps
+
+Introduce cloud platforms, Linux, networking, containers, Docker, deployment, CI/CD, monitoring, and infrastructure concepts.
+
+### 00.9.6 — AI Models and APIs
+
+Explain model providers, model APIs, inference, tokens, structured outputs, multimodal capabilities, latency, reliability, and costs.
+
+### 00.9.7 — Agent Frameworks and Tools
+
+Introduce the categories of agent frameworks, orchestration tools, tool calling, evaluations, and guardrails.
+
+Use current examples only after checking official documentation.
+
+### 00.9.8 — MCP and Automation
+
+Explain Model Context Protocol, tools, resources, prompts, client/server concepts, and workflow automation.
+
+Clearly distinguish MCP from ordinary API integrations and workflow automation platforms.
+
+### 00.9.9 — Free-First Learning Resources
+
+Explain how readers can learn using official documentation, open-source projects, free tiers, local development, community resources, and free educational materials.
+
+Verify resource availability before describing a resource as free.
+
+### 00.9.10 — Understanding Paid Services and Costs
+
+Explain:
+
+- API usage costs.
+- Cloud costs.
+- Hosting costs.
+- Model pricing.
+- Database hosting.
+- Usage limits.
+- Rate limits.
+- Free-tier limitations.
+- Budget management.
+- Unexpected usage.
+- Cost monitoring.
+
+Do not invent current prices. When actual prices are relevant, link to official pricing pages and identify the research date.
+
+# 00.10 — Projects, Portfolio and Career Outcomes
+
+## Purpose
+
+Help readers understand how the knowledge in the book can translate into practical projects and professional development.
+
+### 00.10.1 — Understanding the Project Journey
+
+Explain how projects progress from problem identification to requirements, design, implementation, testing, deployment, and improvement.
+
+### 00.10.2 — Building Real-World Projects
+
+Explain how to select meaningful problems, manage constraints, integrate technologies, and deliver useful systems.
+
+### 00.10.3 — Creating a Developer Portfolio
+
+Explain:
+
+- Project selection.
+- Technical depth.
+- Project descriptions.
+- Screenshots and demonstrations.
+- Architecture explanations.
+- Deployment links.
+- Source code.
+- Documentation.
+- Honest presentation of contributions.
+
+### 00.10.4 — GitHub and Technical Documentation
+
+Explain repository organization, READMEs, commit history, issue tracking, pull requests, licensing, documentation, and open-source participation.
+
+### 00.10.5 — Preparing for Engineering Jobs
+
+Explain:
+
+- Technical fundamentals.
+- Practical project experience.
+- Problem solving.
+- Interviews.
+- System design.
+- Communication.
+- Role-specific preparation.
+- Understanding job requirements.
+- Demonstrating engineering ability.
+
+Do not promise employment outcomes.
+
+### 00.10.6 — Freelancing and Client Work
+
+Introduce:
+
+- Finding potential clients.
+- Understanding business pain points.
+- Client discovery.
+- Communication.
+- Scoping.
+- Proposals.
+- Negotiation.
+- Delivery.
+- Client relationships.
+- Retention.
+
+Connect this introduction to the deeper material in Part 09 and Appendix A–C.
+
+### 00.10.7 — Building Products and Startups
+
+Explain product thinking, MVPs, validation, user feedback, iterative development, technical decisions, and early-stage engineering.
+
+### 00.10.8 — Understanding the Capstone
+
+Explain the purpose of the integrated capstone in Part 10.
+
+Discuss how readers bring together software engineering, AI, architecture, deployment, testing, and delivery.
+
+Do not write the actual capstone instructions here.
+
+### 00.10.9 — What Completion Means
+
+Explain what it means to complete the book responsibly.
+
+Focus on demonstrated understanding, independent implementation, verification, problem solving, and the ability to explain technical decisions.
+
+Do not equate completion with mastery or guaranteed career success.
+
+# 00.11 — Before You Begin
+
+## Purpose
+
+Prepare readers to start the curriculum.
+
+### 00.11.1 — Computer and System Requirements
+
+Explain practical hardware and software considerations.
+
+Distinguish essential requirements from recommendations.
+
+Do not impose unnecessary expensive hardware requirements.
+
+### 00.11.2 — Setting Up Your Development Environment
+
+Introduce:
+
+- Operating systems.
+- Terminal.
+- Code editor.
+- Git.
+- Runtime environments.
+- Browser.
+- Package managers.
+- Python environment.
+- Node.js environment.
+- Basic development tools.
+
+Do not write a full installation tutorial for every technology here. Those topics belong in the relevant curriculum chapters.
+
+Verify current installation documentation before linking it.
+
+### 00.11.3 — Understanding the Learning Expectations
+
+Explain the time, effort, experimentation, problem solving, reading, practice, and revision involved.
+
+### 00.11.4 — Managing Your Learning Time
+
+Discuss realistic schedules, consistency, focused sessions, revision, breaks, and balancing study with other responsibilities.
+
+### 00.11.5 — Tracking Your Progress
+
+Explain learning goals, chapter progress, project completion, notes, self-assessment, and reviewing weak areas.
+
+### 00.11.6 — Starting Your Journey
+
+Finish Part 00 with a thoughtful transition to Part 01 — Foundations.
+
+Explain why starting with fundamentals creates a stronger foundation for everything that follows.
+
+---
+
+# 6. CONTENT DEVELOPMENT REQUIREMENTS FOR EVERY PAGE
+
+Every main section and nested topic page must be a complete reading experience.
+
+Use this structure where appropriate:
+
+1. Clear title.
+2. Opening context.
+3. Why the subject matters.
+4. Detailed conceptual explanation.
+5. Important terminology.
+6. How the subject works.
+7. Practical examples or scenarios.
+8. Real-world applications.
+9. Comparisons and trade-offs.
+10. Limitations and common misconceptions.
+11. Practical guidance.
+12. Key takeaways.
+13. References and further reading.
+
+This is a flexible framework. Do not force every heading into every page.
+
+Avoid repeating entire explanations across multiple pages. Cross-link related topics instead.
+
+## Examples
+
+Examples should be realistic and technically accurate.
+
+When discussing an AI agent, distinguish:
+
+- A simple chat interface.
+- A model calling a tool.
+- A deterministic workflow.
+- An agentic workflow.
+- A multi-agent architecture.
+
+When discussing deployment, distinguish:
+
+- Local development.
+- Testing environments.
+- Staging.
+- Production.
+- Monitoring and maintenance.
+
+When discussing career roles, explain variations and overlap rather than claiming every employer follows one definition.
+
+When discussing costs, use current official pricing sources rather than guessed figures.
+
+---
+
+# 7. DIAGRAMS, TABLES AND VISUAL LEARNING
+
+Use visuals when they improve understanding.
+
+Appropriate examples:
+
+- Traditional software engineering versus AI-assisted engineering.
+- Modern engineering landscape.
+- Relationship between applied AI and agentic AI.
+- Career-role comparison.
+- Ten-part curriculum roadmap.
+- AI-assisted development workflow.
+- FDE seven-stage lifecycle.
+- Software project lifecycle.
+- Technology ecosystem map.
+
+Use Mermaid diagrams when suitable and supported by the existing Docusaurus configuration.
+
+Every diagram must:
+
+- Have a clear purpose.
+- Be technically accurate.
+- Be explained in the surrounding text.
+- Render correctly on the website.
+
+Do not add decorative diagrams that provide no educational value.
+
+Use comparison tables when they help readers understand differences.
+
+Do not turn every explanation into a table.
+
+---
+
+# 8. INTEGRATE CONTENT INTO THE EXISTING WEBSITE
+
+You are working inside an existing Docusaurus project.
+
+Do not create a separate website.
+
+Do not replace the current design.
+
+Do not rebuild the project unnecessarily.
+
+Preserve:
+
+- Existing theme.
+- Dark and light modes.
+- Responsive design.
+- Navigation.
+- Sidebar behavior.
+- Search.
+- Reading progress.
+- Breadcrumbs.
+- Previous/next navigation.
+- Existing animations.
+- Typography.
+- Author information.
+- Social links.
+- Homepage.
+- Existing Parts 01–10.
+- Existing Chapter 39 hierarchy.
+- Appendices A–E.
+- GitHub Pages configuration.
+
+## Part 00 navigation
+
+The final book navigation must begin:
+
+Part 00 — About This Book
+
+Then:
+
+Part 01 — Foundations
+
+Continue through Part 10 and Appendices A–E.
+
+Part 00 must be visually identified as introductory.
+
+Do not count it as an eleventh curriculum part.
+
+## Routes
+
+Use the existing route conventions where possible.
+
+The Part 00 landing page should use the agreed route:
+
+/book/part-00-about-this-book
+
+Use consistent nested routes for all sections and topics.
+
+All visible links must work.
+
+Every page must appear in the correct sidebar position.
+
+---
+
+# 9. CENTRALIZED CONTENT AND MAINTAINABILITY
+
+Keep the project maintainable.
+
+Use the existing Docusaurus architecture.
+
+Prefer:
+
+- MDX for content.
+- Reusable components.
+- Shared layout components.
+- Consistent front matter.
+- Centralized navigation configuration where practical.
+- A consistent source of truth for the book hierarchy.
+- Local references and cross-links.
+
+Do not duplicate the same page content in multiple locations.
+
+Use appropriate page metadata:
+
+- Title.
+- Description.
+- Sidebar position.
+- Slug where needed.
+- Part and section identifiers.
+- Reading order.
+
+Ensure MDX syntax is valid.
+
+Ensure code fences, Mermaid blocks, links, tables, and special characters render correctly.
+
+---
+
+# 10. AUTHORSHIP AND ACCURACY
+
+The author is Muhammad Hamid Raza, professionally known as Hamid Raza.
+
+The author's professional focus includes agentic AI development, full-stack engineering, AI-powered applications, MCP, automation, and modern software engineering.
+
+Use this identity only where relevant.
+
+Do not invent:
+
+- Degrees.
+- Awards.
+- Employment history.
+- Company ownership.
+- Years of experience.
+- Research publications.
+- Personal achievements.
+- Customer results.
+- Project metrics.
+
+The book should have its own professional voice.
+
+Do not write as if the author has personally invented established engineering practices.
+
+Distinguish:
+
+- Established engineering principles.
+- Current technical practices.
+- Emerging technologies.
+- Authorial recommendations.
+- Interpretations and opinions.
+
+---
+
+# 11. WRITING AND RESEARCH WORKFLOW
+
+Follow this workflow in order.
+
+## Phase 1 — Project inspection
+
+Inspect the existing project, Docusaurus configuration, Part 00 routes, content folders, navigation, and existing book data.
+
+Confirm the actual location of the Part 00 content pages.
+
+Do not overwrite unrelated files.
+
+## Phase 2 — Research
+
+Research all 11 sections and their nested topics.
+
+Create a research plan.
+
+Identify the most important current sources.
+
+Verify rapidly changing technical claims against official documentation.
+
+## Phase 3 — Content architecture
+
+Map each topic to its appropriate page.
+
+Avoid duplication.
+
+Identify cross-references between related topics.
+
+## Phase 4 — Drafting
+
+Write every specified page in full.
+
+Do not stop after the first few sections.
+
+Do not replace later pages with summaries or placeholders.
+
+Maintain the same level of quality throughout Part 00.
+
+## Phase 5 — Technical editing
+
+Check:
+
+- Accuracy.
+- Clarity.
+- Completeness.
+- Logical progression.
+- Consistent terminology.
+- Citation quality.
+- Repetition.
+- Broken references.
+- Outdated claims.
+- Markdown and MDX validity.
+
+## Phase 6 — Website integration
+
+Place the completed content in the correct Part 00 pages.
+
+Update the sidebar and navigation only where needed.
+
+Keep the existing design.
+
+## Phase 7 — Quality assurance
+
+Run the actual project build.
+
+Check the pages in the running website.
+
+Verify all Part 00 routes and internal links.
+
+Correct any errors found.
+
+---
+
+# 12. STRICT COMPLETENESS CHECKLIST
+
+Before declaring the task finished, verify every item.
+
+- [ ] Part 00 landing page has complete content.
+- [ ] 00.1 is complete.
+- [ ] All five 00.1 nested topics are complete.
+- [ ] 00.2 is complete.
+- [ ] All eight 00.2 nested topics are complete.
+- [ ] 00.3 is complete.
+- [ ] All 15 professional roles are explained.
+- [ ] Additional career comparison topics are complete.
+- [ ] 00.4 is complete.
+- [ ] All eight 00.4 nested topics are complete.
+- [ ] 00.5 is complete.
+- [ ] All eight 00.5 nested topics are complete.
+- [ ] 00.6 is complete.
+- [ ] All eight 00.6 nested topics are complete.
+- [ ] 00.7 is complete.
+- [ ] All six 00.7 nested topics are complete.
+- [ ] 00.8 is complete.
+- [ ] All eight 00.8 nested topics are complete.
+- [ ] 00.9 is complete.
+- [ ] All ten 00.9 nested topics are complete.
+- [ ] 00.10 is complete.
+- [ ] All nine 00.10 nested topics are complete.
+- [ ] 00.11 is complete.
+- [ ] All six 00.11 nested topics are complete.
+- [ ] References are present where needed.
+- [ ] All research claims are properly supported.
+- [ ] No fabricated sources or facts.
+- [ ] No short placeholder content remains.
+- [ ] No educational pages have been accidentally omitted.
+- [ ] Part 00 appears before Part 01.
+- [ ] Part 00 is not counted as an additional curriculum part.
+- [ ] The original 592-hour curriculum remains unchanged.
+- [ ] Existing Parts 01–10 remain intact.
+- [ ] Existing Appendices A–E remain intact.
+- [ ] All Part 00 links and routes work.
+- [ ] Search indexes the new content.
+- [ ] Production build succeeds.
+
+---
+
+# 13. FINAL REPORT
+
+When the work is complete, provide a clear report containing:
+
+1. Research sources consulted.
+2. Sections and nested pages written.
+3. Total pages completed.
+4. Approximate total word count.
+5. Important diagrams and tables created.
+6. Files created or modified.
+7. Citation and reference coverage.
+8. Routes verified.
+9. Build results.
+10. Remaining limitations, if any.
+
+Be honest about incomplete work.
+
+If you cannot finish every page in one execution, continue in manageable batches until the entire Part 00 is complete. Maintain a written completion tracker and do not mark unfinished pages as completed.
+
+Do not silently stop after writing only the first few sections.
+
+---
+
+# FINAL AUTHORING DIRECTIVE
+
+Write Part 00 as a complete, substantial, research-backed, professionally edited introduction to The AI-Native Engineer.
+
+The reader should finish Part 00 understanding:
+
+- What AI-native engineering means.
+- Why modern software engineering is changing.
+- How traditional and AI-powered engineering connect.
+- What different professional roles involve.
+- How to think about engineering.
+- How to learn through this book.
+- How to work responsibly with AI.
+- How the FDE mindset works.
+- Which technologies and tools they will encounter.
+- How projects connect to portfolios and professional opportunities.
+- How to prepare before starting Part 01.
+
+**Depth, accuracy, completeness, and educational value are more important than generating content quickly.**
+
+Research first. Plan carefully. Write in depth. Verify everything. Integrate the complete content into the existing website.
+
+Start with project inspection and research, then execute the entire Part 00 authoring task.

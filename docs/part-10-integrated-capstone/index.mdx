@@ -1,0 +1,53 @@
+---
+id: "index"
+title: "Part 10: Integrated Capstone"
+sidebar_label: "Part 10 — Integrated Capstone"
+slug: "/part-10-integrated-capstone"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-10">
+
+Part 10 is the final exam that is not an exam. **One challenge, end to end:** take a real business problem from a whiteboard to a production system that a real user can run — with the engineering judgment Parts 00–09 taught you applied under constraint.
+
+The capstone is deliberately not a checklist of technologies. It is the one project where you decide the problem, the architecture, the trade-offs, and the finish line — and then defend all four with working software.
+
+## Chapter 42 — From Real Problem to Production Product
+
+**36 focused hours**, organized in three gates:
+
+| Gate | What happens there | Lesson |
+| :-- | :-- | :-- |
+| **42.1 Discovery, Specification & System Blueprint** | Pick a real problem with a real owner; quantify the pain; architect the solution (data model, API surface, agent decision) | [42.1.1](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-1-discovery-specification-and-system-blueprint/42-1-1-identifying-a-real-business-problem) · [42.1.2](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-1-discovery-specification-and-system-blueprint/42-1-2-architecture-data-model-and-ai-agent-spec) |
+| **42.2 Full-Stack & AI Implementation** | Build the deterministic spine first; add agents, MCP tools and guardrails only when justified — then test everything | [42.2.1](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-2-full-stack-and-ai-implementation/42-2-1-building-the-core-application-and-backend-services) · [42.2.2](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-2-full-stack-and-ai-implementation/42-2-2-integrating-agents-mcp-tools-and-guardrails) |
+| **42.3 Production Deployment & Launch** | Harden, observe, deploy, hand over — and prove the metric moved | [42.3.1](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-3-production-deployment-and-launch/42-3-1-testing-observability-and-security-hardening) · [42.3.2](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-3-production-deployment-and-launch/42-3-2-shipping-to-production-and-delivering-outcomes) |
+
+## The Reference Implementation
+
+This repository ships a runnable reference spine at **`examples/chapterhouse-capstone/`** — a nightly booking-to-payment reconciliation service for a fictional yoga studio chain ("Brightside Yoga"). It runs offline against in-process PostgreSQL (PGlite), has **23 passing tests** (integration + unit, including webhook replay detection, studio isolation, schema guards and amount-mismatch detection), ships a small gated demo dashboard, and demonstrates the exact discipline the capstone demands: deterministic core, explicit mismatch verdicts, cron-gated machine routes with timing-safe comparison, signed replay-protected webhooks, structured logs, and honest README limitations.
+
+Read it as the floor, not the ceiling: your capstone proves you on **your** problem, not on ours.
+
+## What You Will Produce
+
+- A PRD for a real (or realistically simulated) business problem, with the pain quantified
+- A system blueprint: DDL, API surface, ADR for the riskiest decision, agent-or-no-agent verdict with justification
+- A deployed application with migrations, a seed, and a demo a stranger can click through
+- An eval story for every AI component — and a written justification for any AI you rejected
+- A one-page handover pack: runbook, architecture note, known limitations, client next steps
+- A before/after metric, measured honestly
+
+## Exit Criteria — Part 10 Is Complete When You Can
+
+- [ ] Defend every major architectural decision on your capstone with one honest paragraph each
+- [ ] Show a production URL (or a reproducible local run for offline environments) that survives your own red-team pass
+- [ ] Hand the repository to a stranger and have them set it up in under 15 minutes
+- [ ] Prove the target metric moved — or state honestly why not
+- [ ] Name the three things you would change with another month
+
+## After the Capstone
+
+You have finished the book's curriculum. What remains is practice: six real builds, shipped with the discipline you now own. The capstone is the rehearsal; your career is the performance.
+
+</BookNodePage>

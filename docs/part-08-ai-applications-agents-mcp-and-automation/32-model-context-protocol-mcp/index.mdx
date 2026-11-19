@@ -1,0 +1,31 @@
+---
+id: "index"
+title: "32. Model Context Protocol (MCP)"
+sidebar_label: "32. Model Context Protocol (MCP)"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32">
+
+Every chapter so far hand-wired tools into one SDK. That does not scale past one agent and one vendor — and it is why **MCP** exists: one open protocol between tool consumers (hosts) and tool providers (servers). Chapter 32 teaches the protocol, then has you build and harden a real ShopCore MCP server.
+
+**Verified November 2026:** protocol revision **`2026-07-28`** (modelcontextprotocol.io/specification); Python SDK **`mcp` 2.3.0** on PyPI (v2 line — `FastMCP` renamed `MCPServer`; serves both 2025-era and 2026-07-28 clients); TypeScript SDK **`@modelcontextprotocol/sdk` 1.32.2** (v1.x, maintenance, spec up to 2025-11-25) with v2 stable as `@modelcontextprotocol/server` / `@modelcontextprotocol/client`; registry **registry.modelcontextprotocol.io** is live. SSE transport is deprecated (since 2025-03-26); Streamable HTTP is the remote transport. Chapter numbering: 32.1 is the protocol; 32.2 is building and securing servers.
+
+## Chapter 32 Structure
+
+- **32.1 Protocol Architecture & Primitives:** why MCP exists, hosts/clients/servers, stdio vs Streamable HTTP (+ deprecated SSE retirement path), the lifecycle of a tool call end-to-end, and the three primitives — tools, resources, prompts — with ShopCore examples.
+- **32.2 Building & Securing MCP Servers:** scaffold → implement → Inspector-test → register in Claude Desktop → deploy Streamable HTTP with bearer auth; then the security chapter most tutorials skip: OAuth 2.1, audience restriction, scopes, sandboxing, supply chain, and a leaked-token rotation runbook.
+
+## How to Work Through This Chapter
+
+1. Type the server in 32.2.1 yourself; do not paste it. The Inspector session at the end is the "aha" moment.
+2. 32.2.2 is not optional hardening — it is the difference between a demo server and one you let a production agent touch.
+3. Postmaster and HelpBot (Chapters 28–30) are the running examples throughout; keep `postmaster/` open.
+
+Prerequisites: Chapters 29–31, Python 3.11+ (SDK v2 docs) or Node 18+/20+, and the Postgres `orders` table from Part 04.
+
+**Hours honesty.** Budget 6–8 focused hours. The protocol is small; the OAuth and ops sections earn their time.
+
+</BookNodePage>

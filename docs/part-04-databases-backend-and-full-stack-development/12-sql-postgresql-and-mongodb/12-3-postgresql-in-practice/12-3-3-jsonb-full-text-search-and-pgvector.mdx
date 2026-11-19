@@ -1,0 +1,160 @@
+---
+id: "12-3-3-jsonb-full-text-search-and-pgvector"
+title: "12.3.3 JSONB, Full-Text Search and pgvector"
+sidebar_label: "12.3.3 JSONB, FTS & pgvector"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-3-jsonb-full-text-search-and-pgvector"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s3-t3">
+
+PostgreSQL is not just rigid rows and columns: **JSONB** holds semi-structured documents, **tsvector** gives you real full-text search, and **pgvector** adds AI-grade similarity search — all inside the same ACID database you already know. This lesson is where ShopCore's product catalog grows beyond fixed columns.
+
+## 1. JSONB — Documents Inside Relational Tables
+
+Keep stable facts relational (`sku`, `price_cents`, `stock_qty`); put variable attributes in a `JSONB` column. ShopCore's product specs differ wildly per category: a keyboard has `switch` and `backlit`; a book has `author` and `isbn`.
+
+### Add the column and index
+
+```sql
+ALTER TABLE products ADD COLUMN specs JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- GIN index: serves containment queries (@>) — e.g. find every wireless product
+CREATE INDEX idx_products_specs_gin ON products USING GIN (specs);
+```
+
+### Write and read JSONB
+
+```sql
+UPDATE products SET specs = '{"switch": "tactile", "wireless": true, "battery_hours": 40}'::jsonb WHERE sku = 'KB-01';
+UPDATE products SET specs = '{"switch": "linear", "wireless": false}'::jsonb            WHERE sku = 'MS-02';
+UPDATE products SET specs = '{"author": "Rebecca J.", "pages": 336}'::jsonb             WHERE sku = 'BK-03';
+
+-- Extract one field (-> gives JSON, ->> gives text)
+SELECT sku, specs->>'switch' AS switch FROM products;
+
+-- Containment query: products whose specs include wireless=true (uses the GIN index)
+SELECT sku, title FROM products WHERE specs @> '{"wireless": true}'::jsonb;
+
+-- Key existence and full equality
+SELECT sku FROM products WHERE specs ? 'author';
+SELECT sku FROM products WHERE specs @> '{"switch": "tactile"}'::jsonb;
+```
+
+### Rules that keep JSONB honest
+
+| Do | Don't |
+| :-- | :-- |
+| Varying, sparse, per-record attributes | Identity/foreign keys (`user_id`, `order_id`) — always relational |
+| Data you filter with `@>` (GIN-indexable) | Money fields (`price_cents` is relational — join and aggregate well) |
+| `specs->>'x'` read-time display | Highly nested 10k-deep documents (wrong tool; use MongoDB) |
+| `CHECK (jsonb_typeof(specs) = 'object')` if you want a guardrail | Storing required fields in JSONB and skipping `NOT NULL` |
+
+Why JSONB and not JSON? JSONB is **binary** — parsed once, stored decomposed, supports real indexes. Plain `JSON` stores the raw text — slower reads, no GIN indexes. Always choose JSONB.
+
+## 2. Full-Text Search — Built In, Better Than ILIKE
+
+`WHERE title ILIKE '%key%'` can't use an index and matches substrings naively ("keyboard" also matches nothing useful). Postgres FTS tokenizes and stems: `'running'` matches `'run'`, `'keyboards'` matches `'keyboard'`.
+
+### Generated tsvector column (best practice)
+
+```sql
+ALTER TABLE products
+  ADD COLUMN search_vec TSVECTOR
+  GENERATED ALWAYS AS (
+    to_tsvector('english', coalesce(title, '') || ' ' || coalesce(sku, '') || ' ' || coalesce(title, ''))
+  ) STORED;
+
+CREATE INDEX idx_products_search ON products USING GIN (search_vec);
+```
+
+### Search it
+
+```sql
+SELECT title, ts_rank(search_vec, query) AS rank
+FROM products, plainto_tsquery('english', 'mechanical keyboard') AS query
+WHERE search_vec @@ query
+ORDER BY rank DESC;
+```
+
+- `plainto_tsquery('english', 'mechanical keyboard')` turns the user's words into an ANDed stem query — exactly right for search boxes.
+- `@@` is the "matches" operator; `ts_rank` orders by relevance.
+- For typo tolerance you'd add `pg_trgm` (`CREATE EXTENSION pg_trgm;` + `gin_trgm_ops` index) — mention it to your future self before building typo-tolerant search.
+
+Verify with `EXPLAIN ANALYZE` — you should see `Bitmap Index Scan on idx_products_search`, not `Seq Scan`.
+
+## 3. pgvector — AI Vector Search Inside Postgres
+
+pgvector adds a native vector column and similarity operators. This is how you'd power "find products similar to this description" for ShopCore with no second database — the same RAG pattern used in Parts 07–08 of this book.
+
+### Step 0 — pgvector must be installed first
+
+`CREATE EXTENSION vector;` **fails with `extension "vector" is not available`** unless the pgvector package is installed:
+
+- **Windows (EDB installer):** Stack Builder (start menu → Application Stack Builder → PostgreSQL 18 → Add-ons, tools and utilities → select **pgvector** ("vector extension")) — or download the pgvector release and use `nmake`/prebuilt DLLs; simplest legal route on Windows is the EDB Stack Builder add-on.
+- **macOS:** `brew install pgvector` (then `psql -c 'CREATE EXTENSION vector;'`) or Postgres.app ≥ 2.7 which bundles pgvector.
+- **Ubuntu/Debian:** `sudo apt install postgresql-18-pgvector`
+- **Fedora:** `sudo dnf install pgvector_18`
+- **Hosted:** Neon and Supabase both ship pgvector pre-installed — just run `CREATE EXTENSION vector;`.
+
+### Step 1 — enable and create
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE doc_chunks (
+  id         BIGSERIAL PRIMARY KEY,
+  source     TEXT NOT NULL,          -- e.g. 'product-kb-01'
+  content    TEXT NOT NULL,
+  embedding  vector(1536) NOT NULL   -- match your embedding model's dimension
+);
+```
+
+1536 = OpenAI `text-embedding-3-small` dimensions (any dimension works; it's the column's declared size).
+
+### Step 2 — index and query
+
+```sql
+CREATE INDEX idx_doc_chunks_hnsw ON doc_chunks
+  USING hnsw (embedding vector_cosine_ops);
+
+-- Semantic search: top 5 nearest chunks to a query embedding.
+-- Replace '[0.1, 0.2, ...]' with a real embedding vector from your app code.
+SELECT source, content,
+       1 - (embedding <=> '[0.1, ...]'::vector) AS similarity
+FROM doc_chunks
+ORDER BY embedding <=> '[0.1, ...]'::vector
+LIMIT 5;
+```
+
+`<=>` is cosine distance (HNSW's native opclass); `<->` is L2. Cosine is the right default for text embeddings.
+
+### AI use cases, concretely
+
+| Use case | Embedding input | Query at runtime |
+| :-- | :-- | :-- |
+| "Similar products" | Product title + description | Current product's embedding, `LIMIT 4` |
+| Support docs Q&A (RAG) | Help center article chunks | User's question embedding |
+| Duplicate listing detection | Listing description | New listing embedding, similarity threshold 0.9 |
+| Semantic product search | Catalog descriptions | Shopper's natural-language query |
+
+You already have everything SQL offers — keep vectors in the same DB until you outgrow ~10M vectors, then reconsider a dedicated store (12.4.6).
+
+## 4. Practice
+
+**Guided exercise.** Add `specs` JSONB + GIN index, set specs for all 3 products, and run the `@>` containment query — expected output: `KB-01`. Then create `search_vec` and search `'keyboard'` — expect 1 row, `ts_rank` > 0.
+
+**Independent exercise.** Write a query returning products where `specs` contains the key `battery_hours` (operator `?`). Then add a second product of category `Books` with `specs = {"author": ...}` and re-run.
+
+**Challenge.** Check whether pgvector is available in your install: `SELECT * FROM pg_available_extensions WHERE name = 'vector';` If the row exists, `CREATE EXTENSION vector;` and create the `doc_chunks` table. If not, write the apt/Stack Builder command that would fix it (per your OS from section 3, Step 0).
+
+**Assessment checklist**
+
+- [ ] I added a JSONB column, GIN index and containment query to ShopCore.
+- [ ] I know the 4 things JSONB is good at and the 2 it must never hold.
+- [ ] I replaced an ILIKE search with tsvector + GIN and saw the index used.
+- [ ] I installed (or can install) pgvector and enabled the extension.
+- [ ] I understand where pgvector fits in an AI-native product (Parts 07–08).
+
+</BookNodePage>

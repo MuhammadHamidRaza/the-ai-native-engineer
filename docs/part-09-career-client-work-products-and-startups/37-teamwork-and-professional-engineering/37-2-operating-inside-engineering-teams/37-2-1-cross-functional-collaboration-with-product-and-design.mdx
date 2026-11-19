@@ -1,0 +1,87 @@
+---
+id: "37-2-1-cross-functional-collaboration-with-product-and-design"
+title: "37.2.1 Cross-Functional Collaboration with Product & Design"
+sidebar_label: "37.2.1 Cross-Functional Collaboration with Product & Design"
+slug: "/part-09-career-client-work-products-and-startups/37-teamwork-and-professional-engineering/37-2-operating-inside-engineering-teams/37-2-1-cross-functional-collaboration-with-product-and-design"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-37-s2-t1">
+
+Most failed products die of one disease: engineering, product, and design each did their job perfectly — and nobody checked they were building the same thing. This lesson is the working protocol for making sure that never happens on your team: shared definitions of done, read-the-spec-before-the-meeting, feedback without ego, and escalation paths when the three disciplines disagree.
+
+## 1. The Three-Way Contract
+
+Product decides **what and why**; design decides **how it looks and flows**; engineering decides **how it's built and whether it's viable**. Every failure in that triangle traces to one blurred line:
+
+| Failure mode | Blame seen | Actual cause |
+| :-- | :-- | :-- |
+| "Design is not feasible" | Engineering stonewalling | Feasibility was never discussed in discovery |
+| "Engineering built the wrong thing" | PM didn't write clear specs | Engineering never read the spec or asked |
+| "Design keeps changing its mind" | Design is erratic | Trade-offs surfaced too late in the cycle |
+
+The fix is boring and non-negotiable: **a shared artifact with the same definition of done on all three desks, reviewed before build starts.**
+
+## 2. The Read-Before-Build Protocol
+
+For anything beyond a trivial change, require three artifacts *before* code:
+
+1. **PRD section** — problem, scope, success metric, out-of-scope list (Part 00.10 covers PRDs fully; Chapter 40 teaches product discovery).
+2. **Design link** — Figma/mock with all states (empty, loading, error, edge cases), not just the happy path screenshot.
+3. **Definition of Done** — written checklist agreed by all three:
+
+```text
+DoD for Cart-WS (from RFC-042):
+- [ ] Client connects to /ws/cart within 300ms of page load
+- [ ] Cart updates render within 100ms of server push
+- [ ] Fallback to 5s polling on socket failure (manual test: kill ws)
+- [ ] Empty cart state matches design 04-empty (dated 2026-11-12)
+- [ ] Error toast matches design 07-error-offline
+- [ ] Latency metric cart_ws_update_ms < 150 p95 in staging
+- [ ] Feature flag CART_WS_ENABLED; rollback = flag off + redeploy client
+```
+
+No DoD → no start. The cost of one aligned 30-minute review beats a week of rework, every single time.
+
+## 3. Feedback Without Ego — The Engineer's Side
+
+Design/PM will push back on your constraints. Good faith rules:
+
+- **Constraints are stated as costs, not refusals.** "WebSocket can't guarantee ordering across reconnects without a sequence number; we'll need a resync call on reconnect" lands. "Can't do it" does not.
+- **Offer the nearest viable alternative** whenever you reject an ask. "Not 60fps on low-end Android — but 30fps with skeleton screens is achievable in the same sprint."
+- **Quantify ambiguity.** "What happens to the cart when the user's session expires mid-checkout?" — one sharp question that saves an entire error-state design pass.
+- **Never design the UI.** Flag states/flows you are unsure about; suggest mechanics; don't pixel-push. It reads as stepping on design's turf and produces worse UI.
+
+## 4. The Engineer's Review Role (Not a Rubber Stamp)
+
+You are the only discipline in the room that can see the failure modes. Use it:
+
+- **State machines over screens.** For every flow, ask: what happens on error at each step? Who recovers it? Where does the user land?
+- **Data shape first.** "Does the API return `lastModifiedAt` so the UI can show 'saved just now'? If not, that's a backend change, not a frontend polling hack."
+- **Performance budgets in DoD.** If the PRD doesn't set latency/size budgets, add them. "Cart page ≤ 120 KB JS shipped" is a requirement engineering owns.
+- **Observability is a feature.** Every launch needs: a metric for the thing the user cares about, an alert on it, and a dashboard link. If the launch plan lacks it, write it.
+
+## 5. When Disciplines Disagree — The Escalation Ladder
+
+1. **Clarify the goal** — restate what the user outcome is; usually both sides want the same thing with different mechanisms.
+2. **Give data** — prototypes > opinions. A 1-hour spike often dissolves a week of debate ("will this render at 60fps?" — measure it).
+3. **Present options with trade-offs** — two designs, one page each, with cost/risk/timeline on both; let the accountable caller decide with full information.
+4. **Document the decision** — in the doc/PR, not chat. "Chose X because Y; revisit if Z changes."
+
+If it reaches step 3, the decision is product's (scope/UX) or engineering's (technical risk) call depending on which side the trade lands on — **product decides what the user sees; engineering decides what ships safely.** Never hold the decision hostage.
+
+## 6. Cadence That Works
+
+- **Sprint planning**: engineering reads PRD + designs beforehand; arrives with feasibility notes, not just estimates.
+- **Mid-sprint check-in**: 15 minutes, "on track / at risk / blocked", flagged early.
+- **Design review before merge**: engineer walks the actual build through the design states with PM/design — the gap between mock and implementation always exists; catching it pre-merge is free.
+- **Launch review**: metrics confirmed live, flag rollout, docs updated.
+
+## 7. Exercise
+
+From your current sprint, pick one feature. Write the three-way DoD for it (10–15 checkboxes, covering UI states, API/contract, latency, flag, rollback). Circulate it to your PM/design counterpart and incorporate their corrections. Keep the final version as a template for your next three features.
+
+**Acceptance criteria.** Your DoD covers: all UI states, API contract + error codes, at least one measurable budget, rollout/rollback, observability. Your PM or designer has seen and amended it.
+
+</BookNodePage>

@@ -1,0 +1,145 @@
+---
+id: "25-1-4-documents-pdfs-spreadsheets-and-presentations-with-ai"
+title: "25.1.4 Documents, PDFs, Spreadsheets and Presentations with AI"
+sidebar_label: "25.1.4 Documents, PDFs, Spreadsheets and Presentations with AI"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-1-ai-assistants-for-everyday-work/25-1-4-documents-pdfs-spreadsheets-and-presentations-with-ai"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s1-t4">
+
+The single highest-ROI AI skill most professionals never learn: handing the model a *document*, not a description of one. This lesson covers the exact upload click-paths, a worked document-Q&A task, spreadsheet help with verification, presentation outlines, and the honest limits that bite in production.
+
+## 1. Uploading a Document (Click Paths, November 2026)
+
+**ChatGPT:** in a chat, click the **+** (or paperclip) icon in the composer → *Upload file* → pick your PDF (Desktop/Drive). You can also drag a file onto the chat window. Limits vary by plan (free tier allows fewer and smaller files than Plus/Pro); the model then answers *"what's this document about?"* with the file in context.
+
+**Claude:** in the composer, click the **+** → *Upload file* (or drag onto the page). Claude is strong on long PDFs; on paid plans you can keep projects with the doc pinned.
+
+**Gemini:** in the Gemini app, click the **+** in the prompt bar → upload from device, or pick from Google Drive (Drive integration is Gemini's edge). Workspace plans get Gemini inside Docs/Sheets directly.
+
+Others (Perplexity, Copilot) follow the same pattern. File limits and types change often — if an upload fails, convert to a plain PDF or link the Drive/SharePoint URL instead.
+
+**API equivalent (why it matters):** when you need this in your own app, you send the file's bytes or text to the API. With OpenAI's Responses API you attach input files; with Anthropic's Messages API a PDF goes in a `{"type": "document", ...}` content block (base64 or Files API); Gemini takes the file via its Files API and references it in `contents`. We do not print exact field names here because they evolve monthly — see the official API reference for your provider before building (OpenAI: developers.openai.com/api/docs; Anthropic: platform.claude.com/docs; Google: ai.google.dev/gemini-api/docs). The principle is stable: **file in → model answers over it → you verify against the pages.**
+
+## 2. Worked Task — 30-Page Vendor Contract Q&A
+
+Scenario: procurement sends a 30-page MSAs PDF. Your task: before tomorrow's call, answer *"What does it say about termination, data return on exit, and price increases?"*
+
+**Step 1.** Upload the PDF (§1). Ask:
+
+```text
+This is the vendor MSA. Answer only from the document. For each of:
+(1) termination notice period and rights for convenience,
+(2) data return / deletion obligations on exit,
+(3) mechanism and cap for price increases,
+quote the clause verbatim with its section and page number, then give me
+a one-line plain-English reading. If a topic is NOT addressed, say so explicitly.
+```
+
+**Step 2 (described output).** You get three sections, each with a quoted clause (e.g., "§9.2 (p.17): 'Either party may terminate on 60 days' written notice…'"), a plain-English line, and possibly "price increases: see §12.1 (p.23), CPI-linked, capped at 8% — **not** addressed for year 1."
+
+**Step 3 — verify like you mean it.** Open page 17 and 23. Read the actual clauses. Check that "not addressed" is really absent (search the PDF for "increase", "uplift"). If the model quoted a clause with slightly different numbers than the page shows — you are looking at the tool failing, and you just caught it before legal did.
+
+**Why this works and when it doesn't.** §6.
+
+## 3. Spreadsheets — Formulas and Analysis
+
+AI is excellent at *proposing* spreadsheet work and mediocre at *being* the spreadsheet. Use for design review, not autopilot.
+
+**Worked example.** You have columns A–D: `OrderDate`, `Region`, `Sales`, `Rep`. Ask:
+
+```text
+I have an Excel sheet: A=OrderDate, B=Region, C=Sales, D=Rep.
+(1) Give me an Excel formula for month-over-month sales growth by Region,
+    cell-safe for blanks;
+(2) An Excel table or pivot recipe for top-3 reps per region by revenue;
+(3) The 4 checks I should run on the Sales column before trusting it
+    (types, outliers, negatives, duplicates).
+Explain each formula in one line. I will paste results into my sheet and verify.
+```
+
+You may receive `=IFERROR((SUMIFS(...)-SUMIFS(...))/SUMIFS(...),"")`-style formulas and a pivot recipe. **Verify every formula on 3 known rows** (hand-compute one; check the formula agrees). Never apply an AI-suggested formula to 40,000 rows before a spot check — one wrong relative reference corrupts the whole column silently.
+
+**Bonus — realistic good uses:** explaining what a gnarly legacy formula does (paste it in — it's formulas, not secrets), writing a VBA/Apps Script macro skeleton, generating test data for a new sheet, translating SQL ↔ spreadsheet logic.
+
+**Power-user move:** upload the workbook (all three assistants can read xlsx) and ask for *analysis*: trends, anomalies, "what changed MoM and why might that be." But the model reads a snapshot of values; formulas you haven't recalculated may be stale — force recalculation in the sheet first.
+
+## 4. Presentations — Outline → Slides → Reality Check
+
+**Step 1 — outline:**
+
+```text
+Audience: exec staff, 20 minutes, no deep technical knowledge.
+Topic: why we are moving support tooling from Zendesk to the new stack.
+Produce: 10-slide outline, each slide with (a) one-line headline (assertion,
+not topic), (b) the 2–3 bullets, (c) speaker note with the number or example.
+End with the "ask" slide: what approval do I need from this room?
+```
+
+**Step 2 — draft into Slides/PowerPoint:** paste the outline into Google Slides' Gemini features, PowerPoint's Copilot, or ChatGPT-generated slide text. Or export the outline and build manually — the outline is the valuable artifact.
+
+**Step 3 — verify:** every number on every slide must trace to a source (your metrics doc, the vendor quote). Charts: redraw your own from verified data rather than pasting model-invented "illustrative" charts. Speaker notes are where AI shines; make the room say things the deck shouldn't.
+
+**Honest limits:** the assistant has no taste budget constraints for *your* audience; it will happily produce 34 slides. Enforce the 20-minute limit yourself. And any stat it invents — market sizes, ROI percentages — must be replaced with your real numbers or cut.
+
+## 5. The Honest Limits (Bookmark This)
+
+- **200-page PDFs:** modern models have large contexts (Gemini ~1M tokens; Claude 1M; GPT-5 listed 400K) and can *find* things, but reasoning about it degrades with distance from the question — needle-style retrieval is strong; nuanced synthesis of page 3 with page 187 is unreliable. Fix: **chunk the work** — ask per-section questions, then ask for cross-section synthesis.
+- **Hallucinated citations/figures inside documents:** page numbers, clause numbers and quoted text are invented more often than you would like, especially when the topic is absent from the document. Fix: every answer must carry page refs, and you check at least the load-bearing ones.
+- **Scanned PDFs:** if the text layer is missing, a model sees an image, not text — accuracy drops sharply. Run OCR first (Acrobat, Google Docs, or your OS).
+- **Spreadsheets with formulas:** models can misread computed vs stored values; recalc first.
+- **No access to your drive/mail unless explicitly integrated** (Gemini+Workspace, Copilot+M365) — and even then, permissions are the user's own.
+- **Export fidelity:** models produce markdown/text; formatting fidelity into the final doc/deck is yours to fix.
+
+## 6. API Equivalent in One Glance
+
+The same workflow, programmatically (Node, sketch):
+
+```js
+import fs from "node:fs";
+import OpenAI from "openai";
+const openai = new OpenAI();
+const buf = fs.readFileSync("contract.pdf").toString("base64");
+const res = await openai.responses.create({
+  model: "gpt-6-astra",  // or gpt-5-mini for cost
+  input: [
+    { role: "user", content: [
+      { type: "input_text", text: "Summarize termination clauses with page refs." },
+      { type: "input_file", filename: "contract.pdf", file_data: `data:application/pdf;base64,${buf}` },
+    ] },
+  ],
+});
+console.log(res.output_text);
+```
+
+Field names (`input_file`, `file_data`) are verified against the OpenAI files/input guidance as of Nov 2026 but APIs evolve — confirm against developers.openai.com/api/docs before shipping. (**CLAIM TO VERIFY: exact current file-input payload shape for Responses API.**) The same pattern exists in the Anthropic and Gemini APIs; any provider lets you build your own "ask my documents" tool over their Files API.
+
+## 6.5 API Cost of the Worked Task — What This Feels Like on a Meter
+
+Total tokens for the contract Q&A: ~30 pages × ~700 tokens/page ≈ 21K input + ~1.5K output per question × 3 questions ≈ 64K input + 4.5K output. On a mid-tier model at $2/$10 per 1M (e.g., Claude Sonnet 5.5 / GPT-6 Sol-class): ≈ **$0.17** for the whole analysis — cheaper than the coffee next to your keyboard. On Haiku/Luna-class: ≈ **$0.02**. The expensive part of this workflow is your verification time, which is why we practice it — not the tokens. If the same PDF gets 50 questions a day, enable prompt caching (§25.2.2) — the 21K-token prefix gets charged at ~10% after the first call.
+
+## 7. A Second Worked Example — The Invoice Batch
+
+Task: attach a folder of 40 invoice PDFs; extract `{vendor, date, total, currency}` as CSV.
+
+**The manual way:** 40 × upload + prompt + copy-paste = an hour of drudgery with a 3% transcription-error rate. **The AI way (chat, small scale):** upload 5 at a time, ask for a CSV per batch, verify three totals by hand, spot-check one per batch. **The API way (real scale):** a 30-line Node script calls the API per file with a strict JSON schema (25.2.3), writes rows to a spreadsheet, and flags any invoice where `total` doesn't match `sum(line_items)` for human review. The first version takes you an afternoon; the time saved in month two pays for it forever. This is the bridge from "AI user" to "AI engineer" and this chapter's Section 25.2 is how you build it.
+
+## 8. Practice and Assessment
+
+**Guided exercise.** Upload any 10-page PDF you own (a manual or report). Ask for the three key numbers in it. Verify.
+
+**Independent exercise.** Paste a monster formula from a legacy sheet; get the explanation; rewrite it cleanly; verify equivalence on 5 rows.
+
+**Challenge.** Produce a full outline → 8-slide deck on a real initiative, every stat sourced, including the "ask" slide, and present it to a rubber-duck audience.
+
+**Assessment checklist**
+
+- [ ] I can upload a PDF to all three major assistants and say which differs in Drive integration.
+- [ ] I always demand page references and verify at least the load-bearing ones.
+- [ ] I spot-check AI formulas on known rows before filling down.
+- [ ] I recalc spreadsheets before uploading for analysis.
+- [ ] I know when to chunk a 200-page document and how.
+
+</BookNodePage>

@@ -1,0 +1,178 @@
+---
+id: "03-3-1-reading-stack-traces-and-logs"
+title: "03.3.1 Reading Stack Traces and Logs"
+sidebar_label: "03.3.1 Reading Stack Traces and Logs"
+slug: "/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-3-debugging-and-ai-assisted-learning/03-3-1-reading-stack-traces-and-logs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-03-s3-t1">
+
+Watch a new learner hit a 22-line red error wall in FastAPI, Next.js, or React: their eyes bounce blindly over mentions of `node_modules/next/dist/...` or `site-packages/starlette/routing.py`, panic sets in (*"Everything is broken inside Next.js!"*), and they scroll nowhere near the single readable line hiding inside their own `src/` file telling them **`TypeError: Cannot read properties of undefined (reading 'cents') at src/pricing.ts:18:24`**.
+
+Every runtime crash hands you a **Call Stack Trace** (`02.2.2`)—a snapshot of the exact chain of active function calls leading straight to the failure line! Knowing **which end of the trace to read first in Python vs. JavaScript**, how to filter framework noise down to *your* code frames, and how to read **structured runtime & browser logs** solves half of everyday bugs in under thirty seconds.
+
+## 1. Plain-English Intuition: Rewinding Breadcrumbs After a Fall
+
+Imagine dropping a crate inside a three-story warehouse:
+- **Floor 1 (`main / HTTP handler`):** Manager handed the crate to Supervisor B.
+- **Floor 2 (`parse_invoice()`):** Supervisor B handed it to Worker C.
+- **Floor 3 (`compute_tax()`):** Worker C stepped onto a broken floorboard (`ZeroDivisionError` / `TypeError`) and dropped the crate!
+
+A **Stack Trace** is simply the exact floor-by-floor chain (`Floor 1 ↔ Floor 2 ↔ Floor 3`) captured the microsecond Worker C fell. Notice **two crucial truths**:
+1. **The runtime crash happened at the innermost frame (`Floor 3`)**—yet sometimes Worker C was completely innocent because **Floor 2 (`parse_invoice()`) passed `None` or `0` down!** Always inspect **both** the exact failing frame AND the immediate caller inside *your* codebase!
+2. **Python and JavaScript print that exact same chain in OPPOSITE vertical orders!** Mixing up top-vs-bottom wastes beginners minutes on every error.
+
+## 2. Python Tracebacks (`Bottom-Up`) vs. JavaScript/Node Stacks (`Top-Down`)
+
+Compare how **Python** and **Node.js / Chrome** format the *exact same 3-level call failure*:
+
+```text
+PYTHON TRACEBACK ("Most recent call LAST" -> Read BOTTOM UP!)
+---------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/main.py", line 12, in handle_request       <-- Caller #1 (Oldest frame)
+    total = calculate_total(items)
+  File "/app/billing.py", line 8, in calculate_total    <-- Caller #2
+    return compute_average(total_cents, len(items))
+  File "/app/math_util.py", line 3, in compute_average  <-- EXACT CRASH SITE!
+    return amount / count
+ZeroDivisionError: division by zero                     <-- ERROR TYPE & MESSAGE!
+---------------------------------------------------------------------
+
+NODE.JS / JAVASCRIPT STACK TRACE ("Most recent call FIRST" -> Read TOP DOWN!)
+---------------------------------------------------------------------
+TypeError: Cannot read properties of undefined (reading 'toUpperCase')  <-- ERROR TYPE & MESSAGE!
+    at formatCode (/app/src/pricing.ts:4:18)             <-- EXACT CRASH SITE!
+    at applyCoupon (/app/src/checkout.ts:19:12)          <-- Caller #2
+    at processOrder (/app/src/api.ts:42:9)               <-- Caller #1
+    at node:internal/process/task_queues:105:5           <-- Runtime internal (ignore first!)
+---------------------------------------------------------------------
+```
+
+Memorize that visual symmetry permanently:
+- **Python (`Traceback`):** **Read the VERY LAST line first** (`ZeroDivisionError: division by zero`), look one frame above it for the crash line (`math_util.py:3`), then walk **upward** to find the nearest frame inside *your* project!
+- **JavaScript / TypeScript (`Error`):** **Read the VERY FIRST line first** (`TypeError: ...`), look immediately below it (`pricing.ts:4`), and walk **downward** skipping `node_modules/` / `node:internal/` frames until you hit *your* code!
+
+*(Modern Python `3.11+`–`3.15` even highlights exact failing sub-expressions with **`~~~~^^^^`** caret underlines straight underneath the exact broken dictionary key or variable on the failing line!)*
+
+## 3. Filtering Signal From Framework Noise (`First-Party Frame Hunting`)
+
+Real frameworks (`FastAPI`, `Starlette`, `Next.js`, `React`) wrap your code inside middleware, routers, and async task schedulers—producing 40-line stack traces where 35 lines belong to third-party packages inside `.venv/lib/...` or `node_modules/...`.
+
+Train your eye to run a **3-Second Frame Filter**:
+1. **Read the Exception Class + Error Message word-for-word** (`KeyError: 'workspace_id'`, `ECONNREFUSED 127.0.0.1:5432`, `ZodError`, `SyntaxError: Unexpected token '<'`).
+   *(Pro tip: `SyntaxError: Unexpected token '<'` in JSON parsing almost ALWAYS means an API returned an HTML `404`/`500`/`login` page starting with `<!DOCTYPE html>` instead of JSON!)*
+2. **Scan past `site-packages/` and `node_modules/`** straight to the **topmost/bottommost frame pointing into your own `src/` or `app/` folder**! Only suspect a framework bug *after* verifying your own caller frame passed clean valid arguments.
+3. **Check Chained Causes (`"The above exception was the direct cause..."` / `err.cause`):** Both Python and modern JS chain underlying DB/network causes beneath wrapper errors—scroll to see **both** the outer error and the original root cause!
+
+## 4. Reading Application Logs & Browser DevTools Without Guessing
+
+Not every failure crashes loudly with a red stack trace—slow queries, rejected `403` calls, and missing webhook triggers show up inside **Structured Logs (`backend`)** and **Browser DevTools (`frontend`)**:
+
+### Reading Backend Structured JSON Logs (`Ch 22`)
+Well-engineered services emit single-line JSON events rather than vague `"Error occurred"` strings:
+```json
+{"ts":"2026-11-15T14:22:09Z","level":"error","runId":"run_9f3a","workspaceId":"ws_12","stage":"pdf_fetch","status":502,"durationMs":3012,"msg":"Upstream storage timeout"}
+```
+Notice how **five fields** answer every triage question in two seconds: **when** (`ts`), **which request trace** (`runId`), **which tenant** (`workspaceId`), **which step failed** (`stage`), and **how long before failing** (`durationMs = 3012ms` → proves a `3-second` timeout tripped cleanly!).
+
+### Reading Browser DevTools (`Frontend + Network`)
+When clicking a button on localhost does "nothing," open **Chrome/Edge/Firefox DevTools (`F12` or `Cmd+Opt+I`)** and inspect **two tabs every single time**:
+1. **Console Tab:** Catches unhandled JS runtime exceptions, React state errors, and strict CORS refusal diagnostics (`Access to fetch ... blocked by CORS policy`).
+2. **Network Tab (`Filter: Fetch/XHR`, check `Preserve log`!):** Click the failing red request (`400`, `401`, `403`, `422`, `500`), and inspect **Headers** (`URL`, `Method`, `Status`), **Payload** (what your browser *actually* sent—did you accidentally pass `undefined` in `/api/users/undefined`?!), and **Response** (exact JSON validation message from your backend!).
+
+### Decoding Log Severity Levels & Correlation IDs (`traceId` / `runId`)
+Production backends handle thousands of concurrent requests interleaved across shared stdout streams. If fifty users trigger database queries simultaneously, isolated `print("starting payment")` lines interleave into unreadable soup. Well-structured engineering logs solve both problems using **consistent severity levels** and a per-request **Correlation ID** (`runId`, `requestId`, or W3C `traceId`):
+
+| Log Level | When Engineers Emit It | Real Example |
+| :--- | :--- | :--- |
+| **`DEBUG`** | Verbose diagnostic variables disabled in normal production traffic | Cache key lookup miss details during local troubleshooting |
+| **`INFO`** | Normal lifecycle milestones worth auditing | Server boot on `:8000`, job completed in `412ms`, migration applied |
+| **`WARN`** | Recoverable anomaly that did not fail the request yet | Upstream API retried after transient `429`, fallback config used |
+| **`ERROR`** | Request or task failed and requires attention | Unhandled `500`, database constraint violation, invalid webhook signature |
+| **`FATAL`** | Process cannot continue safely and is terminating | Missing required database secret at startup, unrecoverable port conflict |
+
+Whenever debugging multi-step workflows (`HTTP request -> background worker -> LLM tool call`), copy the failing `runId` (`"run_9f3a"`) and filter your logs strictly by that ID (`grep run_9f3a app.log`). Instantly, ten thousand noisy lines collapse into the exact chronological story of **one** failing execution.
+
+## 5. Async Stack Traces, Exception Chains & TypeScript Source Maps
+
+Modern web and AI backends rarely execute cleanly in one synchronous top-to-bottom function chain. Instead, functions `await` network I/O, yield across the event loop (`Part 02`), or compile from TypeScript (`src/checkout.ts`) into minified JavaScript bundles (`dist/checkout.js`). Three mechanics keep your traces readable:
+
+- **Async Stack Tagging (`await` Chains):** Because awaiting a network call suspends the active function and frees the CPU thread (`01.2.2`), naive call stacks once lost every caller above an `await`. Modern Node.js (`v16+`–`v22`) and Chrome DevTools capture **async frames (`async processOrder`)** automatically across `await` boundaries so you still trace back to the originating HTTP route!
+- **Source Maps (`.js.map`):** If a browser or Node crash reports `at Object.onClick (bundle.js:1:48291)` instead of TypeScript lines, **source maps are missing or disabled**. Running Node with `--enable-source-maps` (or building Next.js/Vite with sourcemaps enabled) translates compiled byte offsets automatically back into readable `src/components/Invoice.tsx:42:11` coordinates!
+- **Python Exception Groups & Chained Tracebacks (`raise ... from err`):** When an outer wrapper catches `httpx.ConnectTimeout` and re-raises `BillingGatewayError("Charge failed") from err`, Python prints **both** tracebacks connected by `"The above exception was the direct cause of the following exception"`. Always read **the top exception first** inside a chained Python trace—that is the root hardware/network cause, whereas the bottom one is your application's high-level wrapper!
+
+## 6. Runnable Lab: Trigger, Read & Diagnose Python & Node Stack Traces Live
+
+Run both tiny diagnostic exercises in your terminal (`Python` then `Node`) to practice locating exact failing frames, `^^^^` markers, and JSON/HTML mismatch clues firsthand:
+
+```bash
+# 1. Python 3.11+ multi-frame Traceback + Chained Exception (`raise ... from err`)
+python3 - << 'EOF'
+def extract_tax(record: dict) -> int:
+    return record["pricing"]["tax_cents"]  # Watch Python highlight exact missing key!
+
+def process_packet(packet: dict) -> int:
+    return extract_tax(packet)
+
+try:
+    process_packet({"id": "inv_42", "pricing": {}})
+except KeyError as err:
+    import traceback
+    traceback.print_exc()
+EOF
+```
+
+```bash
+# 2. Node.js stack trace + classic `Unexpected token '<'` HTML-instead-of-JSON trap
+node - << 'EOF'
+function parseApiBody(rawText) {
+  return JSON.parse(rawText);
+}
+function loadWorkspace() {
+  const html404 = "<!DOCTYPE html><html><body>404 Not Found</body></html>";
+  return parseApiBody(html404);
+}
+try {
+  loadWorkspace();
+} catch (err) {
+  console.error(err.stack);
+}
+EOF
+```
+
+Look closely at both outputs:
+- Python points straight down to `return record["pricing"]["tax_cents"]` with exact `KeyError: 'tax_cents'` (`and caret markers ~~~~^^^^^^^^^^^^^ in interactive Python 3.11+!`).
+- Node.js prints `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` right at `at parseApiBody`—immediately telling you `loadWorkspace` fed HTML into a JSON parser instead of checking `res.ok` / `Content-Type` first!
+
+## 7. Failure Modes & Common Pitfalls
+
+- **Debugging stale logs or yesterday's running server:** Seeing log timestamps from 10 minutes ago or wondering why `console.log("NEW CHECK")` never printed usually means an old background process (`PID`) still holds port `:3000` (`01.2.2`), or you edited a different file than the one running! Always verify timestamps and restart cleanly.
+- **Swallowing exceptions (`catch (e) {}` / `except: pass`):** Writing bare empty catch blocks destroys stack traces completely—turning loud, 10-second fixable bugs into invisible data corruption weeks later! Always log the error with context/trace ID or rethrow cleanly.
+- **Logging sensitive secrets (`Authorization`, `GEMINI_API_KEY`, raw passwords) in error dumps:** Never dump `process.env` or full request headers blindly into shared stdout/error trackers (`03.2.3`). Log safe request identifiers (`runId`, `userId`, HTTP status, error code).
+
+## 8. Hands-On Practice Exercises
+
+1. **Read Frame Direction Under Pressure:** Given the two short traces below, identify **for each trace**: (a) the exact filename & line where execution halted, (b) the caller function that passed bad data in, and (c) the single fastest hypothesis to check first:
+   - *Trace A (Python):* `File "app.py", line 30, in route -> File "services.py", line 14, in normalize_price -> TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'`
+   - *Trace B (JS):* `TypeError: items.map is not a function at OrderList (OrderList.tsx:22:18) at Dashboard (Dashboard.tsx:48:5)`
+2. **Practice DevTools Network Inspection on Any Public Page:** Open your browser DevTools (`Network → Fetch/XHR` or `Doc`), reload `https://example.com` or any web page, click the main request, and confirm where **Request Method (`GET`)**, **Status (`200`)**, **Remote Address (`IP:443`)**, and **`Content-Type` response header** appear visually.
+3. **Trace a Chained Error & Correlation Log:** Take the Python lab above, wrap the `KeyError` inside `raise RuntimeError("Invoice import failed") from err`, run it, and note which exception prints first vs. second. Then write a 3-line JSON log stream (`runId="run_01"` and `runId="run_02"` interleaved) and isolate only `run_02` events with `grep` (`03.1.2`).
+
+## Key Takeaways
+
+- **Stack traces map exact call history to the crash:** read **Python tracebacks bottom-up** (last line first) and **JavaScript/Node stacks top-down** (first line first), skipping framework noise straight to *your* application frames.
+- Always read the **full error class + message** (`Unexpected token '<'` = HTML returned instead of JSON; `ECONNREFUSED` = nothing listening on target port), and follow **chained causes** (`raise ... from err`) plus **source maps**.
+- Pair **structured backend logs (`level`, `runId`, `stage`, `durationMs`)** with **Browser DevTools (`Console` + `Network Preserve log`)** so client-to-server failures resolve cleanly from observable evidence.
+
+## Official Primary References
+
+- [Python Official Tutorial — Errors and Exceptions (`docs.python.org/3/tutorial/errors.html`)](https://docs.python.org/3/tutorial/errors.html)
+- [Chrome DevTools — Network Activity & Console Debugging (`developer.chrome.com/docs/devtools`)](https://developer.chrome.com/docs/devtools)
+- [Node.js Error Handling, Async Stacks & Source Maps (`nodejs.org/api/errors.html`)](https://nodejs.org/api/errors.html)
+
+**Next Topic:** [03.3.2 Systematic Isolation and Reproduction](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-3-debugging-and-ai-assisted-learning/03-3-2-systematic-isolation-and-reproduction)
+
+</BookNodePage>

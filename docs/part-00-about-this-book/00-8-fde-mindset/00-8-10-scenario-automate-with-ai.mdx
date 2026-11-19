@@ -1,0 +1,101 @@
+---
+id: "00-8-10-scenario-automate-this-manual-workflow-with-ai"
+title: "00.8.10 FDE Scenario: Automate This Manual Workflow with AI"
+sidebar_label: "00.8.10 Scenario: Automate a Manual Workflow"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-10-scenario-automate-with-ai"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-10">
+
+The second most common FDE message — and the one that fails most often when done naively:
+
+> **"We have a manual process eating 20 hours a week. Can you add AI to it?"**
+
+The correct answer is rarely "yes, here's a chatbot". It is almost always **a deterministic pipeline with AI at the edges, human approval in the middle, and an eval suite before anyone calls it done.** Work it in order.
+
+## 1. The Client Request, Verbatim
+
+> "Every Monday our ops team downloads CSV exports from three systems, reconciles ~400 invoices by hand against POs, flags mismatches, and emails approvers. It takes two people 4 hours each. Can you automate this with AI?"
+
+**Delivery constraint:** 3 weeks. No data may leave the building ("everything stays on-prem/VPC"). One engineer, part-time, for the build.
+
+## 2. Discovery Questions — The Written Set
+
+1. **Current steps, verbatim:** walk me through one invoice, start to finish. Where does it enter, who touches it, what do they actually do with it?
+2. **The matching rule:** how does a human decide "match" vs "mismatch"? Write it down as rules first — 80% of matching is usually deterministic (PO number + amount ± 1% + vendor name fuzzy-equal).
+3. **The exceptions:** what share of the 400 need judgment? Which ones? (This decides whether AI is even needed.)
+4. **Output:** who consumes the result, in what format, where does it go? Who approves?
+5. **Error cost:** what happens when a wrong flag auto-approves a bad invoice? Who is accountable?
+6. **Data:** schemas of the three CSVs; sample files; are PO numbers consistent across systems?
+7. **Constraints:** data residency (on-prem/VPC confirmed), budget, who maintains this after you leave?
+8. **Success:** what does "done" look like — hours saved? error rate? QBR metric?
+
+**Hidden requirements:**
+- "AI" here means "we heard of GPT"; the real ask is **eliminate the 4-hour slog without breaking financial controls**.
+- The unmatched 10–15% must route to a human with context, not vanish into a confidence threshold.
+- Auditability is non-negotiable (it's financial data): every auto-decision must be explainable and reversible.
+
+## 3. Decompose Into Deterministic vs Probabilistic — Before Choosing Tools
+
+| Step | Deterministic | AI-assisted (justify it) |
+| :-- | :-- | :-- |
+| Parse 3 CSVs, join on PO number | 100% — strict schema validation | Never |
+| Exact/near match (PO + amount + vendor fuzzy) | 85–90% of 400 — rules + fuzzy string match | No |
+| Amount within tolerance? | 100% deterministic | No |
+| Vendor name variants ("Acme Ltd" vs "ACME LIMITED") | Normalize + alias table | Optionally embedding similarity as fallback signal — logged |
+| Mismatch reason classification for the exception queue | Keywords → 70% coverage | Yes — classify into `{price, qty, vendor, missing PO, duplicate}` for the human queue |
+| Email draft to approver for exceptions | Approved template with slots filled by fields | Yes — draft only, human sends |
+| Approve/reject decision | **Never AI.** Human signs. | Never |
+
+This table is the deliverable of discovery step 3 — show it to the client before writing a line of code. Their reaction ("actually 95% of it is rules") tells you the real project size.
+
+## 4. The Build — Layers, Not a Prompt
+
+1. **Deterministic core:** parse + validate + join + match (pure functions, unit-tested). Handles ~85-90% with zero model involvement.
+2. **AI edge (only where judgment is genuinely needed):** the exception classifier and the email draft. Small model, structured output (`{category, confidence, rationale}`), temperature 0.
+3. **Human approval gate:** the exception queue UI shows the invoice, the PO, the mismatch, the AI's classification + rationale, and Approve/Reject/Needs-info buttons. **Nothing posts, nothing emails, nothing is marked paid without a click.**
+4. **Audit log:** every invoice: original values, rule/AI decision, who/what decided, timestamp — one row, immutable.
+5. **Eval before go-live:** hand-label 100 historical invoices (50 matched, 50 mismatched + 10 adversarial). Measure precision/recall **of the exception classifier**. Target: ≥ 0.9 precision (false approvals are the expensive error) — measure, don't guess.
+
+## 5. Guardrails That Actually Matter (Not the Prompt Ones)
+
+- AI output is **data, never instructions** — the classifier cannot trigger any action beyond writing a category string.
+- **Human signature is the control.** The model cannot mark anything approved, paid, or sent.
+- **Scope cap:** the tool may only touch the three CSVs and the exception queue — no email sending, no payment API.
+- **Kill switch:** one env var (`RECON_AI_ENABLED=0`) turns every AI step off and routes 100% to the human queue — the process must still work if the model disappears.
+- **Idempotency:** re-running the Monday job on the same CSVs must not duplicate queue entries (key = invoice_id).
+
+## 6. Verification You Can Show the Client
+
+```text
+Historical backtest: 400 invoices (Q3), blind-run.
+Auto-resolved by rules: 341 (85.3%). Correct: 339. False auto-approvals: 0.
+Exception queue: 59. AI classification correct: 54/59 (91.5%); 5 misclassified
+  → all caught by human review before any payment (as designed).
+Estimated time saving: 7.6 hrs/week → ~3.8 hrs/week (this is an estimate,
+  labelled as such — true ROI measured in week 2, not promised now).
+```
+
+## 7. Rollout and Handover
+
+- **Week 1:** shadow mode — tool runs but everything still goes through human hands; compare outputs.
+- **Week 2:** rules-only mode with AI suggestions shown (non-binding).
+- **Week 3+:** full flow with human approval active; weekly 30-min review of the exception queue for the first month.
+- Handover: runbook (how to reprocess a week, how to rotate the alias table, how to read the audit log), kill-switch location, owner named.
+
+## 8. What This Scenario Teaches About FDE Work
+
+| Skill | Where It Shows Up |
+| :-- | :-- |
+| Saying "not with AI" where rules win | §3 — the honest scoping table wins trust |
+| Human-in-the-loop as architecture | §5 — approval gates are load-bearing, not decoration |
+| Measuring before promising | §6 — backtest numbers, labeled estimates |
+| Degrading gracefully | §5 kill switch — the business never depends on the model |
+
+**Exercise.** A client asks you to "use AI to answer inbound customer emails end to end." Write your discovery questions (8), your deterministic/AI decomposition table, three guardrails that cannot be overridden, and the eval you would demand before go-live.
+
+**Acceptance criteria.** Your decomposition table assigns at least two steps explicitly to deterministic code, names who approves any money-moving action, and your eval has a numeric pass bar.
+
+</BookNodePage>

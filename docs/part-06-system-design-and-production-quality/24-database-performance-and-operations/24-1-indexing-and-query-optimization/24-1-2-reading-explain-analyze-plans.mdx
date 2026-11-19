@@ -1,0 +1,156 @@
+---
+id: "24-1-2-reading-explain-analyze-plans"
+title: "24.1.2 Reading EXPLAIN ANALYZE Plans"
+sidebar_label: "24.1.2 Reading EXPLAIN ANALYZE Plans"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations/24-1-indexing-and-query-optimization/24-1-2-reading-explain-analyze-plans"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24-s1-t2">
+
+Indexes are hypotheses. `EXPLAIN ANALYZE` is the experiment. This lesson teaches the plan anatomy cold: every node type you will actually see in ShopCore, what `loops` and `shared hit` mean, the row-underestimation trap that produces catastrophic plans, and how to sample real production plans without turning on full query logging.
+
+## 1. Anatomy of a Real Plan
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT o.id, o.status, o.total_cents, count(i.id) AS items
+FROM orders o
+JOIN order_items i ON i.order_id = o.id
+WHERE o.user_id = 42 AND o.status = 'paid'
+GROUP BY o.id
+ORDER BY o.id DESC
+LIMIT 20;
+```
+
+Typical output — read it line by line (numbers below are illustrative; shared hits/reads depend on your cache):
+
+```text
+Limit  (cost=412.33..412.38 rows=20 width=24)
+       (actual time=1.210..1.214 rows=20 loops=1)
+  ->  Sort  (cost=412.33..415.11 rows=1113 width=24)
+             (actual time=1.209..1.211 rows=20 loops=1)
+        Sort Key: o.id DESC
+        Sort Method: top-N heapsort  Memory: 27kB
+        ->  GroupAggregate  (cost=... rows=1113 ...)
+              Group Key: o.id
+              ->  Nested Loop  (cost=... actual time=0.058..1.042 rows=87 loops=1)
+                    ->  Index Scan using idx_orders_user_status on orders o
+                          (cost=0.42..230.15 rows=25 width=16)
+                          (actual time=0.031..0.412 rows=23 loops=1)
+                          Index Cond: ((user_id = 42) AND (status = 'paid'))
+                          Buffers: shared hit=29
+                    ->  Index Scan using idx_order_items_order_id on order_items i
+                          (cost=0.29..7.10 rows=3 width=16)
+                          (actual time=0.010..0.021 rows=4 loops=23)
+                          Index Cond: (order_id = o.id)
+                          Buffers: shared hit=46
+Planning Time: 0.183 ms
+Execution Time: 1.268 ms
+```
+
+The five signals that matter:
+
+1. **cost vs actual time** — cost is the planner's abstract estimate in page-fetch units; `actual time` is measured ms. Large gaps = planner misinformation (§5).
+2. **rows** (est) vs **rows** (actual) — off by 10×? The join order and algorithm downstream of this node are guesses built on a lie.
+3. **loops** — the node runs this many times; multiply per-loop time by loops to see real cost. A "cheap" 0.5 ms nested-loop node with loops=10,000 is your bottleneck.
+4. **Buffers: shared hit vs read** — `hit` = pages served from `shared_buffers` (fast); `read` = physical disk. Buffers are the difference between "index is used" and "index is fast."
+5. **Planning Time vs Execution Time** — if planning > execution, your query is trivial and your plan cache/schema might be the problem (very common with huge `IN (...)` lists).
+
+## 2. Node Decisions — Seq Scan vs Index Scan vs Bitmap
+
+| Node | What it does | Reach for it when | Red flag |
+| :-- | :-- | :-- | :-- |
+| **Seq Scan** | Read every page in order | Table is small; you need most rows | Filter removes > 90% of rows — you need an index |
+| **Index Scan** | B-Tree seek + random heap fetch | High selectivity (few rows out) | Fetching > ~5–10% of rows via index = random I/O worse than seq scan |
+| **Bitmap Index Scan → Bitmap Heap Scan** | Collect matching row locations, then read heap in page order | Medium selectivity; multiple indexes combined (`bitmapand`/`bitmapor`) | Lossy bitmap + recheck on huge sets |
+| **Index Only Scan** | Index-only answer (see 24.1.1 §3) | Covering index; visibility map hot | `Heap Fetches` high — run VACUUM |
+
+**Nested Loop vs Hash Join:** nested loop re-scans the inner side per outer row — great when outer rows are few and inner has an index (our §1 example); catastrophic at 100k outer rows without an inner index. **Hash Join** builds one hash table of the smaller relation and probes it — the default for big unordered sets; needs `work_mem` big enough to keep the build in memory (`Sort Method: external merge` or hash batch count > 1 = you are spilling to disk — raise `work_mem` or reduce rows). **Materialize** caches a subtree's rows once for re-use across loop iterations — usually a win, occasionally a memory bomb.
+
+**Rows Removed by Filter:** seq scan reading 2M rows to return 12, with 1,999,988 removed — this line is the planner telling you your WHERE needs an index.
+
+## 3. Row Underestimation — Where Plans Go to Die
+
+PG estimates rows from statistics (`ANALYZE` samples). When estimates are off by 10–1000×:
+
+- The planner picks nested loop over hash join (inner "only" 3 rows) → inner runs 50,000 times.
+- It picks the "smaller" side of a join backwards → hash build spills.
+- Sort goes to disk.
+
+Fix ritual: `ANALYZE orders;` — if the estimate fixes itself, the stats were stale. If not, `default_statistics_target` (per-column: `ALTER TABLE orders ALTER COLUMN status SET STATISTICS 1000;` then `ANALYZE`) for skewed value distributions like `status` (95% 'paid', 2% 'pending'). Estimates are sampled, not counted — a never-analyzed table is a coin flip every plan.
+
+## 4. Four Real ShopCore Queries — Before/After
+
+Timings below are **typical characterisations from local seeded runs, not guarantees** — hardware, cache state and row counts move them; always capture your own.
+
+| # | Query | Before | After | Fix |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | Orders by user + status + recent | Seq Scan, 84 ms, 2.1M rows read | Index Scan `idx_orders_user_status_created`, 0.6–2 ms | §24.1.1 §2 composite ESR |
+| 2 | Catalog full-text search ("organic cotton tee") | Seq scan + filter, 30–120 ms | Bitmap Heap Scan on `idx_products_search`, 1–4 ms | GIN on stored `tsvector` |
+| 3 | `orders ⋈ order_items` detail | Nested Loop, inner seq scans, 200+ ms | Nested Loop over `idx_order_items_order_id`, 3–8 ms | FK index (the #1 miss) |
+| 4 | Pending-orders queue (`status='pending'`) | Seq Scan, 60–90 ms | Index Scan `idx_orders_pending` partial, < 1 ms | Partial index — 0.5% of rows |
+
+For each, the artifact you keep is the **before/after plan pair**, not a claim of "it's faster now."
+
+## 5. `auto_explain` — Production Sampling, Safely
+
+Never `log_statement = 'all'` in production; you will drown and leak PII. Instead, sample slow plans server-side:
+
+```bash
+# postgresql.conf or ALTER SYSTEM SET ... (restart required for shared_preload_libraries)
+shared_preload_libraries = 'pg_stat_statements, auto_explain'
+auto_explain.log_min_duration = '100ms'   # only plans slower than 100 ms
+auto_explain.sample_rate = 0.1            # sample 10% of qualifying statements (docs: F.3 auto_explain)
+auto_explain.log_analyze = true
+auto_explain.log_buffers = true
+# pg_stat_statements.track = 'all'
+```
+
+With `log_analyze`, auto_explain runs EXPLAIN ANALYZE on sampled statements — **only enable on statements you control execution cost of**; heavy 100 ms+ production queries will pay for the measurement. Start with `sample_rate` low.
+
+## 6. `pg_stat_statements` — The Query You Forgot You Had
+
+```sql
+SELECT substring(query, 1, 80) AS q,
+       calls,
+       round(total_exec_time::numeric, 1) AS total_ms,
+       round(mean_exec_time::numeric, 2)  AS mean_ms,
+       rows
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 10;
+```
+
+`total_exec_time` is the ranking that finds your real problem: the 2 ms query called 400,000 times/day outranks the 800 ms report called twice. `pg_stat_statements_reset()` zeroes the counters — reset after deploys to compare apples to apples. (On PG 13+, the column is `total_exec_time`; on ≤ 12 it was `total_time`.) If the module isn't loaded, `shared_preload_libraries` must include it and the server restarted.
+
+## 7. Troubleshooting Table
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Est rows off by 100× | Stale/missing stats; skewed distribution | `ANALYZE`; raise statistics target |
+| `work_mem` spill (`external merge`) | Sort/hash exceed memory | Raise `work_mem` per role/session, not globally |
+| Fast in psql, slow in app | App pooled connections see cold `shared_buffers`? no — app sends different params/types | Compare literal SQL from logs; `PREPARE`/`EXECUTE` type coercion traps |
+| Nested Loop with loops=50k | Outer too big for nested loop | Hash join; fix stats; add inner index |
+| Buffers mostly `read`, few `hit` | Working set doesn't fit `shared_buffers` | Raise buffers; smaller indexes (partial); better query shape |
+| Plan flips between runs | Parameter sniffing / generic plans | `plan_cache_mode = force_custom_plan` (PG 12+) per session |
+
+## 8. Practice
+
+**Guided.** Enable `pg_stat_statements` locally; run the app + k6 read mix for 2 minutes; export §6's top-10; name the two biggest `total_exec_time` contributors.
+
+**Independent.** Capture before/after plans for §4 queries 1 and 3. Annotate every node with one sentence on what the executor is doing. Commit to your notebook.
+
+**Challenge.** Deliberately make stats lie: `UPDATE orders SET status='archived' WHERE random() < 0.999; ANALYZE orders;` then run the §1 query and watch the plan change. Revert the data, re-analyze, verify the plan recovers. Write down what the planner knew and when.
+
+**Assessment checklist**
+
+- [ ] I can read `actual time`, `loops`, `Buffers shared hit/read`, and estimate-vs-actual rows unaided.
+- [ ] I know exactly when Seq Scan beats an index and can say why.
+- [ ] I can explain nested loop vs hash join and spot the loops trap.
+- [ ] I can diagnose and fix row underestimation (`ANALYZE`, statistics target).
+- [ ] I have produced a before/after plan pair from my own database.
+- [ ] I know where `auto_explain` and `pg_stat_statements` fit in production and their safety limits.
+
+</BookNodePage>

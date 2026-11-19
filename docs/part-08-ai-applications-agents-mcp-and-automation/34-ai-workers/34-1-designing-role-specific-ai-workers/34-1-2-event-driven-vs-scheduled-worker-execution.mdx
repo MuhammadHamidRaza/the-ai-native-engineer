@@ -1,0 +1,119 @@
+---
+id: "34-1-2-event-driven-vs-scheduled-worker-execution"
+title: "34.1.2 Event-Driven vs Scheduled Worker Execution"
+sidebar_label: "34.1.2 Event-Driven vs Scheduled Worker Execution"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-2-event-driven-vs-scheduled-worker-execution"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-34-s1-t2">
+
+Workers wake up two ways: something happens, or the clock strikes. Choosing wrongly costs you either latency (scheduled polling for a 2-second-critical event) or wasted spend (event machinery for a weekly report). This lesson covers the models, the durability machinery, and the decision for each ShopCore worker.
+
+## 1. The Three Execution Models
+
+| Model | Wake mechanism | Latency | ShopCore example |
+| :-- | :-- | :-- | :-- |
+| **Event-driven** | Webhook / queue / trigger node (Gmail Trigger, Slack Trigger, Kafka/SQS → n8n Webhook) | Seconds | Inbox Triage: new support email arrives → worker runs now |
+| **Scheduled** | Cron/interval (Schedule Trigger) | Up to the interval | Research Brief: Mondays 07:00; AR Nudge: daily 08:00 |
+| **Webhookless / poll** | Worker calls out on a timer to check state | Interval-bound | Legacy vendor without webhooks; prefer their API + schedule |
+
+Rule of thumb: **event-driven when the world tells you, scheduled when you must ask the world.** Never poll on 1-minute intervals what arrives by webhook — you will burn quota and learn to ignore alerts.
+
+Latency and cost comparison on a typical week (500 support tickets, 60 due invoices, 6 competitor scans):
+
+| Approach | p90 freshness | Executions/mo | Failure blast |
+| :-- | :-- | :-- | :-- |
+| Triage via webhook | ~5s | ~2,200 event runs | One ticket lost to DLQ, visible immediately |
+| Triage via 5-min polling | ~150s + missed bursts | ~8,600 polls | Silent backlog during a quiet hour, then a flush |
+| AR via webhook on invoice create | instant | ~60 | Misses nudges for invoices already overdue at rollout |
+| AR via daily cron + lookback | next 08:00 | ~30 | Catch-up query heals missed runs automatically |
+
+The right-hand column is why scheduled + lookback is the correct durability shape for AR: it self-heals. Real-time matters for Triage, not for invoice nudges.
+
+## 2. Durability: Queues, Backoff, Dead Letters
+
+Event-driven workers die mid-flight. Durability is engineered, not hoped for:
+
+```text
+source --> queue (durable) --> worker (retry w/ backoff) --> side effect
+                                  |
+                                  +--> failure x N --> dead-letter queue (DLQ) --> human triage
+```
+
+Concrete mechanics:
+
+- **At-least-once delivery** is the default — assume duplicates. Side effects keyed by idempotency id (`invoice_id + touch_number`), enforced by a unique constraint.
+- **Exponential backoff with jitter**: 30s → 2m → 10m → 1h → DLQ. Cap retries (3–5). Never retry non-idempotent payment/sends blindly — retry the *read*, not the *send*, without an idempotency key.
+
+Concrete backoff schedule for the AR worker's Postgres→billing-API hop:
+
+```text
+attempt 1: immediate            → fail (ECONNRESET)
+attempt 2: retry after 30s + jitter(0-10s)
+attempt 3: retry after 2m  + jitter
+attempt 4: retry after 10m + jitter
+attempt 5: retry after 60m + jitter → DLQ + page #ops-alerts
+```
+
+Between attempts 2–4 the invoice row stays `status='open', nudged=false`; the daily lookback query picks it up tomorrow if the process dies entirely — two independent safety nets (retry scheduler and cron healer) so a crashed deploy cannot strand an invoice forever.
+- **Dead-letter queue**: items that exhaust retries land here and page the owner. A DLQ nobody reads is a landfill — review it weekly.
+- **Queue-backed execution in n8n**: single-instance Community Edition executes inline; queue mode (Redis, multi-worker) is Business/Enterprise. For ShopCore Community-scale, durability comes from n8n's execution retry + your Postgres idempotency table, not from queue mode. (CLAIM TO VERIFY for your edition: exact queue-mode licensing — see 33.2.2.)
+- **Catching up after downtime**: scheduled jobs must define "what if I missed yesterday?" — answer: run on startup with a "lookback window" query (`WHERE due_date < now() - 7d AND nudged = false`), not "skip missed days".
+
+## 3. The Decision, Per Worker
+
+| Worker | Model | Why |
+| :-- | :-- | :-- |
+| Inbox Triage | **Event-driven** (Gmail Trigger / webhook) | Freshness SLA 60s; email volume is bursty; polling lags and double-counts |
+| AR Nudge | **Scheduled** (daily 08:00 + catch-up query) | Money logic batches naturally overnight; idempotent per invoice per day |
+| Research Brief | **Scheduled** (weekly cron) | No natural event; expensive multi-step run; delivers Monday 08:00 |
+
+Hybrid: Research Brief emits an internal "brief ready" event; the human review queue consumes it. Keep events internal; customer-facing sends always pass the gate.
+
+Edge cases to decide up front, per worker:
+
+| Situation | Decision |
+| :-- | :-- |
+| Vendor webhook arrives twice for one invoice | Idempotency key on `source + invoice_id + event_type`; second write is a no-op logged as `skipped:duplicate` |
+| Webhook arrives before ShopCore row exists (race) | Retry window 15 min with backoff; then DLQ — never block the sender |
+| Cron slot arrives while prior run still active | Skip-and-alert (don't pile up) or single-flight lock in Redis; pick one, document it |
+| Scheduled job during deploy freeze | Jobs check a read-only `maintenance` flag and exit quietly rather than half-run |
+| DST spring-forward skips 02:00 | Schedule on UTC internally (`TZ=UTC`), render local times only in messages |
+
+## 4. Kill-Switch Implementation Patterns
+
+1. **Feature flag row** in Postgres (`feature_flags(key, value)`), checked as the worker's first node — usable even when n8n is down, by anyone with DB access.
+2. **Workflow activation toggle** in n8n — fine for scheduled, weak for webhooks already in flight.
+3. **Env var** `WORKERS_AR=0` read at container start — strong, but requires redeploy to flip.
+
+Best practice: flag **and** n8n toggle; the flag is the 60-second kill, the toggle prevents new runs during the incident.
+
+## 5. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Missed runs after deploy/restart | No catch-up window | Add startup lookback query; alert if `last_run < today 00:00` |
+| Duplicate nudges | Retry without idempotency key | Unique `(invoice_id, touch_no)` constraint; upsert |
+| Webhook storm DDoS-ish load | No ingress limits | Reverse-proxy rate limit; signature verification; DLQ for junk |
+| Cron drift after timezone change | `GENERIC_TIMEZONE` unset | Pin TZ; log TZ on every run; re-check schedules after DST |
+| DLQ grows silently | No review process | Weekly DLQ review on the on-call agenda |
+
+## 6. Practice
+
+**Guided.** Add the catch-up lookback query to your AR Nudge workflow and simulate "yesterday's run never happened" by backdating a test invoice.
+
+**Independent.** Implement idempotency: create the unique constraint; send the same webhook payload twice; verify one ticket only.
+
+**Challenge.** Build a DLQ table + Slack alert: force 5 consecutive failures (bad API endpoint) and confirm the alert fires once (not 5 times) with the payload excerpt and execution link.
+
+**Checklist**
+
+- [ ] I chose event vs schedule deliberately for each worker and can defend it
+- [ ] Side effects are idempotent under at-least-once delivery
+- [ ] Backoff + DLQ exist; the DLQ has a named reviewer
+- [ ] Kill-switch tested: flag flip stops new runs within 60 seconds
+- [ ] Catch-up/lookback logic handles downtime gracefully
+
+</BookNodePage>

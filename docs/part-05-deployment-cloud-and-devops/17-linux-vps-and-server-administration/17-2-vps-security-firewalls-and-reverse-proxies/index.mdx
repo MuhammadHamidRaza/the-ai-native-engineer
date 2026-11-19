@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "17.2 VPS Security, Firewalls & Reverse Proxies"
+sidebar_label: "17.2 VPS Security, Firewalls & Reverse Proxies"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s2">
+
+**Subchapter 17.2** puts a hard shell around your server and a polite front door on your API. It is the difference between a VPS and a *lonely, well-guarded* VPS — and it ends with TLS automatically issued by Caddy or terminated at nginx you configure yourself.
+
+## Lessons in Subchapter 17.2
+
+1. **[17.2.1 Ports, UFW Firewalls and SSH Hardening](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-1-ports-ufw-firewalls-and-ssh-hardening):** The ports that matter (22/80/443), `ufw` default-deny with numbered rules, `sshd_config` hardening (`PermitRootLogin no`, key-only auth, `MaxAuthTries`), `fail2ban`, and — critically — **lockout recovery** via the provider console.
+2. **[17.2.2 Reverse Proxies with Nginx and Caddy](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-2-reverse-proxies-with-nginx-and-caddy):** nginx as a reverse proxy for the Node API on `:4000` (`proxy_pass`, server blocks, `proxy_set_header`, WebSocket headers), `nginx -t` + reload, and the Caddy two-line alternative with automatic HTTPS — plus `curl` verification from inside and outside.
+
+Work 17.2.1 before 17.2.2. A reverse proxy means nothing on a box whose ports and sshd are unexamined — and one bad sshd line is all it takes to lose shell access. This subchapter is the one to do slowly.
+
+</BookNodePage>

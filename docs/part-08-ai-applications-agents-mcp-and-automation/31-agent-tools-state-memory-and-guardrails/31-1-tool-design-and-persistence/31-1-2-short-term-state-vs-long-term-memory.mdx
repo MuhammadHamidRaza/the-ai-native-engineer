@@ -1,0 +1,162 @@
+---
+id: "31-1-2-short-term-state-vs-long-term-memory"
+title: "31.1.2 Short-Term State vs Long-Term Memory"
+sidebar_label: "31.1.2 Short-Term State vs Long-Term Memory"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-1-tool-design-and-persistence/31-1-2-short-term-state-vs-long-term-memory"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-31-s1-t2">
+
+Every agent demo has one implicit memory: the context window. Every production agent needs three. Collapsing them into "the prompt" is how ShopCore's Postmaster once quoted a refund policy from four tickets ago as if it were a fresh customer preference. This lesson splits state into three kinds, decides what may persist, and builds a small namespaced memory store with a delete button.
+
+## 1. The Three States (and Why the Split Matters)
+
+| State | Lives in | Survives | Owner | Example |
+| :-- | :-- | :-- | :-- | :-- |
+| **Conversation state** | Context window / run object | One run (or one thread) | The runner | "Customer asked about ORD-2026-004417, wants refund for damaged item" |
+| **Working state** | Scratch files / task-scoped store | The task, then discarded | Your code | Intermediate plan, extracted line items, partial refund calculation |
+| **Persistent state** | Postgres / memory store | Forever (until TTL/delete) | Your schema | Customer tier, preferred contact channel, "always ships to locker B" |
+
+Rules of thumb:
+
+- If it is only needed to finish *this run*, it is conversation state — never persist it.
+- If it is needed to resume a *multi-step task* (an approval wait, a nightly batch), it is working state — persist to a task row with a TTL, delete on completion.
+- If it would *change how the agent behaves for this user next month*, it is persistent state — deliberate write, user-visible, deletable.
+
+## 2. What Belongs in the Context Window vs Postgres vs Vector Memory
+
+ShopCore concrete:
+
+| Fact | Where | Why |
+| :-- | :-- | :-- |
+| Ticket text + last 3 messages | Context window | Needed now; cheap; nothing else needs it |
+| `orders`, `customers`, `refunds` rows | Postgres — read on demand | Source of truth; must not be memorized or paraphrased |
+| Policy docs (returns, shipping) | Postgres + pgvector (Chapter 28) | Grounding; cite, never recall |
+| "Customer prefers email over phone" | Persistent memory (this lesson) | Behavior-shaping; user may correct it; must be deletable |
+| "ORD-2026-004417 refunded 2026-11-02" | Postgres (refunds table) — **never** memory | A fact that changes; memorizing stale facts is a bug class |
+| Payment card / address / full name | **Nowhere agent-readable** except the DB it already lives in | PII discipline; the model gets `order_id`, not the card |
+| "Customer is angry; be careful" | Conversation state only | Ephemeral mood, not a profile |
+
+**The one-line test:** *Would a wrong copy of this fact cause a wrong action next week?* If yes, it must live in one place with one truth — Postgres — and be retrieved fresh. If no, memory may cache it.
+
+## 3. The Memory Injection Pattern (Retrieve-on-Demand)
+
+Never stuff the memory store into the system prompt. Retrieve the few facts relevant to *this* ticket, inject them as a labeled block, and cite their IDs so they can be corrected or deleted:
+
+```python
+def build_context(user_id, ticket_text):
+    facts = db.execute(
+        "SELECT fact_id, fact FROM agent_memory "
+        "WHERE user_id = %(u)s AND (pinned OR expires_at > now()) "
+        "  AND fact ILIKE %(q)s "               # or vector similarity over fact
+        "ORDER BY pinned DESC, last_used_at DESC NULLS LAST LIMIT 5",
+        {"u": user_id, "q": f"%{like_terms(ticket_text)}%"}).mappings().all()
+    if not facts:
+        return ""
+    block = "<remembered_facts note='user-editable; cite [mem:fact_id]; ignore if stale'>\n"
+    block += "\n".join(f"[mem:{f.fact_id}] {f.fact}" for f in facts)
+    return block + "\n</remembered_facts>"
+```
+
+The `<remembered_facts>` delimiter does double duty: the model treats it as *data* (not instructions — see 31.2.1), and your citation checker can verify every `[mem:...]` reference.
+
+**When NOT to memorize:** PII of any kind, anything older than its TTL, preferences expressed in anger ("never email me again" typed at 2 AM — store it flagged `needs_confirmation` or not at all), one-off logistics ("out until Friday"), and anything derived from a single ticket without user confirmation.
+
+## 4. Implementation Sketch — Namespaced Store with TTL, Pin, Forget
+
+SQLite for dev, Postgres for prod; same schema:
+
+```sql
+CREATE TABLE IF NOT EXISTS agent_memory (
+  fact_id      TEXT PRIMARY KEY,          -- mem_<uuid>
+  user_id      TEXT NOT NULL,             -- namespace: the tenant AND the person
+  agent        TEXT NOT NULL DEFAULT 'postmaster',   -- namespace: the agent
+  fact         TEXT NOT NULL CHECK (length(fact) <= 280),
+  pinned       BOOLEAN NOT NULL DEFAULT false,
+  source       TEXT NOT NULL,             -- 'user_explicit' | 'inferred_confirm'
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ,
+  expires_at   TIMESTAMPTZ NOT NULL DEFAULT now() + interval '180 days',
+  deleted_at   TIMESTAMPTZ                -- soft delete; hard delete by cron
+);
+CREATE INDEX IF NOT EXISTS idx_mem_user ON agent_memory (user_id, agent)
+  WHERE deleted_at IS NULL;
+```
+
+Endpoints (FastAPI sketch, mirrors in Express):
+
+```python
+@app.post("/v1/memory")           # write — always from explicit user statement or confirmed inference
+def remember(user: str, body: RememberBody): ...
+
+@app.get("/v1/memory")            # list — the user's own facts only, never another's
+def list_memory(user: str): ...
+
+@app.post("/v1/memory/{fact_id}/pin")
+def pin(fact_id: str, user: str): ...
+
+@app.delete("/v1/memory/{fact_id}")          # the GDPR hook — see §5
+def forget(fact_id: str, user: str):
+    db.execute("UPDATE agent_memory SET deleted_at = now() WHERE fact_id=%s AND user_id=%s",
+               (fact_id, user))
+    audit("memory_deleted", user_id=user, fact_id=fact_id)
+```
+
+TTL enforced at read time (`expires_at > now()`) *and* swept nightly. Retrieval updates `last_used_at`; facts unread for 90 days decay out of results even before expiry.
+
+## 5. GDPR Right-to-Delete
+
+"Delete my data" must cascade: (1) hard-delete `agent_memory` rows for the user (not soft — actual rows); (2) tombstone their `correlation_id`s in `agent_traces` and `refunds.audit` if those stores are in scope of your erasure policy (anonymize, don't break money-movement legal retention — check your jurisdiction; financial records often *must* be retained, and retention law wins); (3) delete HelpBot chat logs; (4) return a deletion receipt with a timestamp. Wire it as one `erase_user(user_id)` procedure with an audit log entry — not four manual steps someone forgets at 11 PM before the regulator call.
+
+## 6. The Retrieval Loop, End to End
+
+```text
+Ticket: "where is my package? it said locker B last time"
+  │
+  ▼
+build_context(user, ticket)
+  │  SELECT fact_id, fact ... LIMIT 5   -> [mem:m_118] prefers locker B; [mem:m_94] tier gold
+  ▼
+Prompt = policy + ticket + <remembered_facts> block
+  ▼
+Model: calls get_customer_tier (fresh) + lookup_shipment_status(order_id)
+  ▼
+Answer: "Your gold-tier order ships to locker B..."  [cites mem:m_118]
+  ▼
+User corrects: "actually I moved, locker A now"
+  ▼
+Agent proposes memory update -> user confirms -> UPDATE agent_memory m_118
+```
+
+Note the flow: retrieval *informs*, tools *verify*, user *confirms* the write. Memory never silently rewrites itself from conversation.
+
+## 7. Common Mistakes & Troubleshooting
+
+| Mistake | Consequence | Fix |
+| :-- | :-- | :-- |
+| Memory facts copied into the system prompt | Cost, stale facts, prompt bloat | Retrieve-on-demand only; delimiter block |
+| Model writes its own memories | Hallucinated preferences persist forever | Writes only via confirmed endpoint; schema-validated ≤ 280 chars |
+| "Remember everything" fact dump | PII in logs; irrelevant recall | Allowlist fact *types*; `source` required |
+| No per-user namespace | Cross-tenant leak in shared Postgres | `user_id` + `agent` in every query; RLS policies in prod |
+| Soft-delete only, forever | GDPR erasure is not erasure | Nightly hard-delete of `deleted_at < now() - 7 days` |
+| Memory cited without ID in output | Unverifiable claims | Require `[mem:ID]` citation; audit checker flags missing IDs |
+
+## 8. Practice
+
+**Guided exercise.** Create `agent_memory` in SQLite; seed 3 facts for `user_1`; build `build_context` and print the injected block for two different tickets.
+
+**Independent exercise.** Implement `POST /v1/memory` and `DELETE /v1/memory/{id}` in Express against Postgres; confirm listing never shows another user's facts.
+
+**Challenge.** Add a "forget everything about ORD-2026-004417" flow: find referenced `[mem:...]` IDs in a ticket thread and delete exactly those rows, with an audit entry.
+
+**Assessment checklist**
+
+- [ ] I can name the three state kinds and give a ShopCore example of each.
+- [ ] I retrieve memory on demand inside a delimited block instead of prompt-stuffing.
+- [ ] My memory store has per-user namespaces, TTL, pin, and a real delete path.
+- [ ] I can say what must never be memorized (PII, stale ops facts, unconfirmed anger).
+- [ ] I know the GDPR erase flow touches memory *and* derived stores, and retention law may override.
+
+</BookNodePage>

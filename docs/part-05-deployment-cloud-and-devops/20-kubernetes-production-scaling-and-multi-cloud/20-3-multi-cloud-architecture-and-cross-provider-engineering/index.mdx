@@ -1,0 +1,28 @@
+---
+id: "index"
+title: "20.3 Multi-Cloud Architecture & Cross-Provider Engineering"
+sidebar_label: "20.3 Multi-Cloud Architecture & Cross-Provider Engineering"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-3-multi-cloud-architecture-and-cross-provider-engineering"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s3">
+
+**Subchapter 20.3** is where the chapter gets honest. "Multi-cloud" is the most abused buzzword in infrastructure marketing — usually meaning "we run one cloud, but our Kubernetes is portable in theory." Real multi-cloud has real bills, real failure domains and real value. This subchapter teaches you to price the difference and choose deliberately.
+
+## Lessons in Subchapter 20.3
+
+1. **[20.3.1 Multi-Cloud Strategy, Portability, Egress and Lock-In](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-3-multi-cloud-architecture-and-cross-provider-engineering/20-3-1-multi-cloud-strategy-portability-egress-and-lock-in):** The portability taxonomy (code / data / infra / ops), a worked egress-cost analysis with real per-GB numbers across AWS/Azure/GCP, a lock-in scorecard you can apply to any managed service, the "multi-cloud tax" (everything runs twice, costs more, fails differently), and the narrow cases where multi-cloud is rational — regulatory, latency, negotiation leverage — vs cargo-cult.
+
+2. **[20.3.2 Practical Multi-Cloud Deployment Lab](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-3-multi-cloud-architecture-and-cross-provider-engineering/20-3-2-practical-multi-cloud-deployment-lab):** Deploy the *same* ShopCore image to two environments — local kind (and optionally a cloud path) — same manifests, same image, verify both, compare latency, and then **tear everything down**. Includes a documented cost table and budget-alert-first setup; teardown is a required lab step, not an optional tidy-up.
+
+## How to Work Through Subchapter 20.3
+
+1. Do 20.3.1 before any cloud spend — it is the lesson that tells you whether you need multi-cloud at all. For most teams, the answer is "no; single cloud, portable architecture."
+2. The 20.3.2 lab runs two environments from one repo. Have Docker, kind and Helm ready from 20.1; the cloud portion is **optional** and gated on a billing alert.
+3. If you do the optional cloud lab: set the budget alert **first**, note the control-plane fee and egress in the cost table as you go, and execute the teardown checklist before closing the browser tab.
+
+Prerequisites for this subchapter: 20.1 and 20.2 (you need the ShopCore deployment working locally and understand probes/HPA), Chapter 19 (cloud billing, IAM, teardown discipline), Part 04's Docker/image workflow. No cloud resources are required for the core lab; the optional managed-cloud path costs real (small, bounded) money and is torn down within the same session.
+
+</BookNodePage>

@@ -1,0 +1,42 @@
+---
+id: "index"
+title: "17. Linux, VPS & Server Administration"
+sidebar_label: "17. Linux, VPS & Server Administration"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17">
+
+Managed platforms (Chapter 16) are the right default — until you need a process that never sleeps, a cron job with a filesystem, a WebSocket server on your own IP, or simply the professional knowledge of what a server actually is. This chapter gives you a real Linux server: your own, secured by you, administered by you.
+
+**Chapter 17 (`12 Focused Hours`)** starts from zero — even if the word "terminal" has only ever meant PowerShell — and ends with ShopCore running on a real VPS behind an nginx reverse proxy with TLS, survived by a reboot, monitored by `journalctl`. You will not learn Linux as trivia; you will learn it as the operating environment for [Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment) (Docker), Chapter 19 (CI/CD) and everything after.
+
+## Chapter 17 Structure
+
+- **17.1 Linux Basics, SSH & System Administration:** WSL2 on Windows, the shell, SSH key pairs (ed25519) and server access, the filesystem hierarchy, users/groups/sudo, `chmod`/`chown`, `apt` packages, processes, **systemd** units and `journalctl` — ending with a real Node unit file for ShopCore's API.
+- **17.2 VPS Security, Firewalls & Reverse Proxies:** Ports and `ufw` (default deny, numbered rules, lockout recovery via provider console), SSH hardening (`sshd_config`: no root login, key-only auth after verification, `MaxAuthTries`), `fail2ban`, and reverse proxies — **nginx** (`proxy_pass`, server blocks, WebSocket headers) and **Caddy** (two-line Caddyfile, automatic HTTPS) in front of the ShopCore API.
+- **17.3 VPS Operations & Real Server Deployment:** Choosing a provider (Hetzner / DigitalOcean / AWS Lightsail, approximate prices, Nov 2026), zones and images, in-place upgrades, `unattended-upgrades`, snapshots vs backups, a restore drill, and the full go-live checklist: DNS → TLS → deploy → verify → rollback.
+
+## What You Will Be Able to Do After This Chapter
+
+- Open a shell on any Linux server within minutes: `ssh`, keys, config aliases, agent.
+- Read and write the filesystem without fear: paths, ownership, permissions, packages.
+- Keep a Node app alive across crashes and reboots with a systemd unit, and read its logs with `journalctl`.
+- Configure a firewall and sshd so the internet's background radiation of bots cannot log in.
+- Terminate TLS at a reverse proxy you configured by hand — and explain every line.
+- Take a backup, and actually test restoring it — the only backup that counts.
+
+## How to Work Through This Chapter
+
+1. If you are on Windows, do WSL2 setup in 17.1.1 first — every subsequent command assumes a Linux shell (or notes where PowerShell differs).
+2. Do not rent anything until 17.2.1 §5 (lockout recovery) is understood. One wrong `sshd_config` line + `ufw deny 22` can lock you out; the provider console is the undo button — know where it is before you need it.
+3. Use a throwaway VPS for 17.2–17.3 (a €5 class instance for a weekend; destroy it after). Budget safety: set a billing alert/limit at signup; Hetzner/DO/Lightsail bill hourly — a forgotten instance still costs money every month.
+4. Deploy ShopCore's API to the VPS only after it runs locally under systemd (17.1.3) — debug on the box you control, not over SSH on a stranger's network.
+
+Prerequisites: [Chapter 16](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting) (hosting models and DNS — you need a domain pointing at your VPS for TLS), plus the ShopCore project from Part 04. No prior Linux experience is assumed; comfort with the command line from Part 03 is.
+
+**Hours honesty.** 12 focused hours covers the happy path plus one failure drill (lockout recovery in 17.2.1 is worth the time alone). If you already use Linux daily, skim 17.1.1–17.1.2 and slow down for 17.2 — security is where "I've done this before" gets people locked out.
+
+</BookNodePage>

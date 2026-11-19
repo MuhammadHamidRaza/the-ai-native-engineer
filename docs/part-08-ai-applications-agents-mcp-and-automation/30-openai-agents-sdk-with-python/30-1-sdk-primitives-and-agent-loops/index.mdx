@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "30.1 SDK Primitives & Agent Loops"
+sidebar_label: "30.1 SDK Primitives & Agent Loops"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-1-sdk-primitives-and-agent-loops"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30-s1">
+
+**Subchapter 30.1** gets you from zero to a running agent loop: install, constructor, instructions, models, the three runner entry points, streaming, and the context object that carries your DB session, policy flags and correlation ID through every call.
+
+## Lessons in Subchapter 30.1
+
+1. **[30.1.1 Defining Agents, Instructions and Models](/book/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-1-sdk-primitives-and-agent-loops/30-1-1-defining-agents-instructions-and-models):** `pip install openai-agents`, the current `Agent(…)` constructor, the Postmaster triager on `gpt-5.6-luna`, tracing by default, and a 10-line "hello, agent" you run end-to-end.
+2. **[30.1.2 Runners, Streaming Events and Context Objects](/book/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-1-sdk-primitives-and-agent-loops/30-1-2-runners-streaming-events-and-context-objects):** `Runner.run` vs `run_sync` vs `run_streamed`, the streaming event surface, `RunContextWrapper` with a dataclass context, `output_type` with Pydantic, and honest failure modes (context bleed, shared mutable state).
+
+Work 30.1.1 before 30.1.2 — the runner makes no sense until the agent exists.
+
+</BookNodePage>

@@ -1,0 +1,127 @@
+---
+id: "15-1-1-requirements-architecture-and-repository-layout"
+title: "15.1.1 Requirements, Architecture and Repository Layout"
+sidebar_label: "15.1.1 Requirements & Architecture"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-1-foundations-and-data-layer/15-1-1-requirements-architecture-and-repository-layout"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s1-t1">
+
+**Chapter 15 is not a tutorial dump.** You will build **ShopCore** — a working online store — in nine milestones, exactly like a real contract: requirements → schema → backend → auth → frontend → tests → ship. Each milestone has complete instructions, expected outputs, and a checklist. Do them in order.
+
+This is where Chapters 11–14 converge: the ER diagram, the queries, the API design, Git flow — all of it becomes one application.
+
+## 1. What We're Building — Product Requirements
+
+**ShopCore** — an online store with these capabilities:
+
+| # | User story | Acceptance |
+| :-- | :-- | :-- |
+| 1 | As a visitor, I can browse the catalog (list products, view details) | Public `GET /api/v1/products` |
+| 2 | As a customer, I can register and log in | `POST /api/v1/auth/register`, `/login`, `/logout`, `GET /auth/me` |
+| 3 | As a customer, my catalog browsing is unrestricted, but checkout requires login | Protected write routes |
+| 4 | As a customer, I can add products to a cart and place an order | `POST /api/v1/cart/items`, `POST /api/v1/orders/checkout` |
+| 5 | My orders are mine alone — IDOR-proof | `WHERE user_id = $1` everywhere |
+| 6 | Admins can add/update products; customers cannot | Role check + ownership |
+| 7 | Catalog search finds products by keyword | `tsvector` from 12.3.3 |
+| 8 | Admins can view a sales dashboard | `GET /api/v1/admin/sales` (aggregate query) |
+| 9 | The store survives bad input | Zod validation + 400s |
+| 10 | CI proves the build works | Lint + typecheck + `npm test` (14.3) |
+
+**Out of scope (deliberately):** payments (a `payments` table exists — stub provider `manual`), image upload CDN, multi-tenancy. You can extend later — shipping beats scoping perfectly.
+
+## 2. System Architecture
+
+```text
+┌─────────────┐      HTTPS       ┌──────────────────┐   SQL    ┌────────────┐
+│ React +     │ ───────────────> │ Express 5 API    │ ───────> │ PostgreSQL │
+│ Vite (SPA)  │  fetch() +       │ port 4000        │  pg Pool │ shopcore   │
+│ port 5173   │  HttpOnly cookie │ all /api/v1/*    │          │ 11.1.3     │
+└─────────────┘                  └──────────────────┘          └────────────┘
+                                       │ Node API :4000 also serves /uploads or static in prod
+                                       ▼
+                              Browser dev tools: Application → Cookies → session (HttpOnly)
+```
+
+- **Dev:** two processes — `npm run dev` in `apps/web` (Vite :5173), `npm run dev` in `apps/api` (Express :4000); Vite proxies `/api` → `:4000` so the SPA can use relative URLs.
+- **Prod:** build SPA (`npm run build`) → Express serves `apps/web/dist` statically — one origin, no CORS, same cookie.
+
+## 3. Repository Layout — Exact Files
+
+```text
+shopcore/
+├── .gitignore                  # node_modules, .env, dist
+├── README.md                   # final deliverable (15.4.2)
+├── docker-compose.yml          # optional: Postgres for teammates
+└── apps/
+    ├── api/
+    │   ├── .env.example        # DATABASE_URL= ... (commit placeholder)
+    │   ├── package.json        # express, pg, cors, helmet, zod, cookie-parser — scrypt via node:crypto (built-in)
+    │   ├── src/
+    │   │   ├── server.js       # listen + startup checks
+    │   │   ├── app.js          # helmet, cors, cookieParser, routes, 404, boundary
+    │   │   ├── config.js       # env parsing (PORT, DATABASE_URL, SESSION_TTL)
+    │   │   ├── db/pool.js      # pg Pool from 13.2.4
+    │   │   ├── db/migrations/  # 001_init.sql (= 11.1.3 DDL), 002_seed.sql
+    │   │   ├── lib/
+    │   │   │   ├── crypto.js   # scrypt hash/verify (13.3.1)
+    │   │   │   ├── errors.js   # AppError
+    │   │   │   └── session.js  # create/validate/destroy sessions
+    │   │   ├── middleware/
+    │   │   │   ├── requireAuth.js
+    │   │   │   ├── requireRole.js
+    │   │   │   └── validate.js
+    │   │   └── routes/
+    │   │       ├── auth.js      ├── products.js  ├── cart.js  ├── orders.js  └── admin.js
+    │   └── tests/
+    │       └── products.test.js # supertest + disposable DB (14.3.1)
+    └── web/
+        ├── package.json        # react, react-dom, vite
+        ├── vite.config.js      # dev proxy /api → localhost:4000
+        └── src/
+            ├── main.jsx  ├── App.jsx  ├── api.js  ├── pages/  └── components/
+```
+
+Every file has a job; nothing in this tree is decorative. `db/migrations/001_init.sql` is exactly the DDL from [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema) plus the `schema_migrations` ledger from [12.3.1](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-1-schemas-constraints-and-migrations).
+
+## 4. Build Order — The Nine Milestones
+
+| # | Milestone | Lesson | Proof |
+| :-- | :-- | :-- | :-- |
+| 1 | Requirements & architecture | this page | You can explain the diagram from memory |
+| 2 | Database design & migration | 15.1.2 | `\dt` shows 7 tables; seed verifies |
+| 3 | Backend skeleton + DB connection | 15.2.1 | `/health` returns ok; pool pings |
+| 4 | Auth: register/login/session/roles | 15.2.2 | Register in curl; cookie set |
+| 5 | Catalog + cart + orders APIs | 15.2.3 | Checkout creates an order atomically |
+| 6 | Frontend scaffold + API client | 15.3.1 | Catalog renders from API |
+| 7 | Shop UI: catalog, cart, checkout | 15.3.2 | Click-through E2E |
+| 8 | Tests + CI | 15.4.1 | `npm test` green |
+| 9 | Security pass + README + ship | 15.4.2 | Pre-ship checklist all ✓ |
+
+## 5. Conventions Used Throughout
+
+- **JavaScript (ES Modules), not TypeScript** — production pragmatism for a book you finish; types appear via JSDoc where valuable. Swap to `tsx` + strict TS anytime.
+- **Money is integer cents.** Never floats. Display formats `$1,290.00`.
+- **IDs are `BIGINT`.** Never strings-as-ids.
+- **Every write is Zod-validated.** Every query parameterized.
+- **Timestamps are `TIMESTAMPTZ`.** No naive Dates crossing the wire without ISO strings.
+- **One source of truth:** `db/migrations/` — never pgAdmin "just edit" in dev and forget.
+
+## 6. Practice
+
+**Guided exercise.** Create the `shopcore/` folder tree above by hand (touch the files), `git init`, first commit `chore: project scaffold`. Create `.gitignore` first — verify `git status` shows no `node_modules` path after you `npm create vite@latest` later.
+
+**Independent exercise.** Write the one-paragraph README mission statement: who ShopCore serves, what it does, what stack, how to run. You will grow it into the final README in 15.4.2.
+
+**Challenge.** Draw the request flow for "customer checks out" on paper: click → fetch → route → validate → transaction → response → UI update. Put every file name from the tree on the arrows.
+
+**Assessment checklist**
+
+- [ ] I can state all 10 user stories and what "done" means for each.
+- [ ] I can draw the architecture diagram from memory with ports and cookie flow.
+- [ ] I know every file's job in the repo tree and why migrations live in git.
+- [ ] I chose conventions (cents, BIGINT, Zod, `.env`) and can defend them.
+
+</BookNodePage>

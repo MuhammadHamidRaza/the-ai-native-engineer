@@ -1,0 +1,141 @@
+---
+id: "16-3-1-deploying-frontend-apps-on-vercel-netlify-and-cloudflare"
+title: "16.3.1 Deploying Frontend Apps on Vercel, Netlify and Cloudflare"
+sidebar_label: "16.3.1 Deploying Frontend Apps on Vercel, Netlify and Cloudflare"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-3-managed-platform-and-full-stack-deployment/16-3-1-deploying-frontend-apps-on-vercel-netlify-and-cloudflare"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s3-t1">
+
+Three platforms can take the ShopCore Vite SPA from your git repo to a global HTTPS URL in under ten minutes each. This lesson walks the **exact clicks** (as of Nov 2026 — dashboards drift, the flow does not), shows how env vars and custom domains work on each, and ends with a rollback you will perform on purpose.
+
+> **Cost safety first.** Stay on the free tiers for this lesson: **Vercel Hobby** (personal, non-commercial use — a portfolio store demo qualifies), **Netlify Free** (300 credits/mo hard limit — each production deploy costs 15), **Cloudflare Pages Free** (500 builds/mo, static requests unmetered). No card is required on any of them. If you attach a card anywhere, set a spend cap/alert on day one. Limits are approximate — verify at [vercel.com/pricing](https://vercel.com/pricing), [netlify.com/pricing](https://www.netlify.com/pricing), [developers.cloudflare.com/pages/platform/limits](https://developers.cloudflare.com/pages/platform/limits).
+
+## 0. Shared Prerequisites
+
+1. ShopCore repo pushed to GitHub (from [15.4](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping)).
+2. `npm run build` succeeds locally and `npx vite preview` serves `dist/` without errors ([16.1.1](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-1-deployment-fundamentals-and-hosting-models/16-1-1-local-to-production-builds-ports-env-vars-and-cors)).
+3. Decide the env var now: `VITE_API_URL=https://<your-api-host>` (you get the API URL from 16.3.2 — use a placeholder, redeploy after).
+
+## 1. Vercel — Import, Preset, Env Vars
+
+1. Sign up at [vercel.com](https://vercel.com) with GitHub → authorize Vercel GitHub App (install on your account, not "all repositories" unless you mean it).
+2. Dashboard → **Add New… → Project** → find the ShopCore repo → **Import**.
+3. Framework preset: **Vite** is auto-detected (Vercel reads `vite.config.js`). If not: Framework = `Vite`, Build Command = `npm run build`, Output Directory = `dist`.
+4. **Environment Variables**: add `VITE_API_URL` → `https://shopcore-api.onrender.com` (placeholder until 16.3.2). Select **Production, Preview, Development** as applicable.
+5. **Deploy**. Watch the build log — expect `vite v7.x.x building for production...` then `✓ built in ...`. The first URL is `https://<project>-<hash>.vercel.app` (preview) with the stable production alias `https://<project>.vercel.app`.
+6. **Custom domain:** Project → **Settings → Domains** → add `shopcore.dev` (+ `www`). Vercel shows the DNS records to create: usually `A 76.76.21.21` on apex or a `CNAME cname.vercel-dns.com` on `www` (values can change — **use exactly what your dashboard shows**, not this page). Create them at your DNS host ([16.2.2](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-2-dns-records-nameservers-and-propagation)), wait for the green "Valid Configuration".
+
+**Preview URLs:** every git push to a non-production branch (or PR) gets `https://<project>-<branch>-<hash>.vercel.app` — free QA before merge. Production deploys happen on pushes to `main` (configurable).
+
+## 2. Netlify — The Equivalent
+
+1. Sign up at [netlify.com](https://www.netlify.com) with GitHub.
+2. **Add new site → Import an existing project → GitHub** → authorize → pick ShopCore.
+3. Build settings: **Build command** `npm run build`, **Publish directory** `dist`, Base directory blank (repo root). Netlify detects Vite; verify.
+4. **Site configuration → Environment variables**: add `VITE_API_URL` same as above.
+5. **Deploy site**. URL: `https://<random-name>.netlify.app` — rename under **Domain management → Options → Edit site name** or attach a custom domain the same way as Vercel (they will name the exact CNAME/A for you, e.g. `apex-loadbalancer.netlify.app` or a Netlify-managed DNS suggestion; again — use their dashboard values).
+6. Every push to `main` redeploys production; pushes to other branches create **Deploy Previews** (0 credits) and branch deploys.
+
+Netlify CLI (optional): `npm i -g netlify-cli`, then `netlify deploy --build --prod` from the repo — same result, scripted.
+
+## 3. Cloudflare Pages — Git Integration
+
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com) (free; no card).
+2. **Workers & Pages → Create application → Pages → Connect to Git** → authorize GitHub → pick ShopCore.
+3. Build settings: framework preset **Vite**, build command `npm run build`, output directory `dist`.
+4. **Environment variables (Production)**: `VITE_API_URL` = API URL.
+5. **Save and Deploy**. URL: `https://<project>.pages.dev`. For a custom domain (bare apex), the domain must use Cloudflare nameservers (see [16.2.1](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-1-domain-ownership-registrars-and-transfers)) — Pages creates the CNAME automatically inside your Cloudflare zone; otherwise attach `www` via CNAME.
+
+Cloudflare Pages is unmetered for static bandwidth — the pragmatic choice when bandwidth bills would dominate. Its trade-off: Functions (if you add server code later) draw from the Workers Free quota (100k requests/day), and the "start new projects with Workers" wording on Cloudflare's site is their current direction.
+
+## 4. Verify What You Shipped
+
+```powershell
+curl -I https://<your-app>.vercel.app
+```
+
+Expected (abbreviated):
+
+```text
+HTTP/2 200
+content-type: text/html; charset=utf-8
+cache-control: public, max-age=0, must-revalidate
+x-vercel-cache: HIT
+```
+
+Then check a hashed asset — it must be long-lived:
+
+```powershell
+curl -I https://<your-app>.vercel.app/assets/index-a1b2c3d4.js
+# expect: cache-control: public, max-age=31536000, immutable
+```
+
+Open the site in a private window **with DevTools → Network open**: confirm `200` for HTML, hashed assets with year-long cache, and **zero console errors** (the CORS/env-var classics from 16.1.1 live here). Test the checkout flow end to end once deployed — SPA served by CDN + API elsewhere is exactly the topology that surfaces CORS.
+
+A 30-second scripted smoke test you can re-run after every deploy:
+
+```powershell
+$u = "https://<your-app>.vercel.app"
+(curl -sI $u).StatusCode                                   # expect 200
+(curl -sI $u).Headers["content-type"]                      # expect text/html
+$asset = [regex]::Match((curl -s $u), 'assets/index-[A-Za-z0-9_-]+\.js').Value
+(curl -sI "$u/$asset").Headers["content-type"]             # expect application/javascript
+```
+
+On Netlify/Cloudflare Pages the same sequence applies with the host's URL. Note that it deliberately checks *your* origin, not the API — the SPA→API hop is verified in 16.3.2 after `VITE_API_URL` goes live.
+
+## 5. Same Repo, Three Hosts — Quick Comparison
+
+| | Vercel | Netlify | Cloudflare Pages |
+| :-- | :-- | :-- | :-- |
+| **Best at** | Framework-aware builds, preview UX | Forms + identity ecosystem | Unmetered static bandwidth |
+| **Build** | Vite/Next auto-detected preset | `npm run build` + `dist` | Preset or manual |
+| **Deploy trigger** | Push to connected branch | Push / CLI | Push to connected branch |
+| **Preview URLs** | Automatic per branch/PR | Deploy Previews (0 credits) | Unlimited preview deploys |
+| **Custom domain** | Settings → Domains; assign CNAME/A | Domain management; guided | CNAME (www) or zone nameservers (apex) |
+| **Rollback** | Deployments → Promote to Production | Deploys → Publish deploy | Deployments → Rollback |
+| **Free ceiling** | 100 deploys/day, 100 GB transfer | 300 credits/mo (hard) | 500 builds/mo; static requests unmetered |
+
+You do not need to run all three — pick one. This table is here so that when the free tier bends (traffic spike, commercial use on Vercel), you know the two adjacent exits.
+
+## 6. Rollback — the Fifteen-Minute Skill
+
+All three platforms keep prior deployments:
+
+- **Vercel:** Project → **Deployments** → ⋯ on an older good deploy → **Promote to Production** (or `vercel rollback` with CLI).
+- **Netlify:** **Deploys** → pick the last good deploy → **Publish deploy**. (Rollbacks cost 0 credits.)
+- **Cloudflare Pages:** **Deployments** → ⋯ → **Rollback to this deployment**.
+
+**Do this now on a throwaway commit:** push a visible change (e.g., change the footer text), confirm it deploys, then roll back. Two minutes, and the word "rollback" stops being scary forever.
+
+## 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Build fails: `vite: not found` | devDependencies not installed | Don't set `npm install --production`; platform needs dev deps; check Node version setting |
+| `✓ built` but site is blank | Wrong output dir or `base` path | Output Directory = `dist`; custom-domain root deploys want `base: '/'` |
+| Env var undefined in prod | Set in dashboard but never redeployed | Change var → redeploy (Vite inlines at build time); check spelling `VITE_API_URL` |
+| Custom domain "pending" forever | DNS record wrong / propagation | `nslookup -type=A yourdomain` from 16.2.2; use the exact values the dashboard generated |
+| "Site not available" (Netlify) | 300 credits exhausted | Wait for cycle reset or upgrade; check **Usage & billing** |
+| Old assets after deploy | Browser cache | Hashed names changed? Hard-refresh; verify HTML references new hashes |
+
+## 8. Practice
+
+**Guided exercise.** Deploy ShopCore SPA to Vercel exactly as §1. Record the three URLs (preview, production, custom domain) and the date. `curl -I` each and file the outputs in your notes.
+
+**Independent exercise.** Repeat the deploy on Netlify *or* Cloudflare Pages (your pick). Note where the UX is better/worse, and what the free-tier usage dashboard shows after your deploy.
+
+**Challenge.** Ship a deliberately broken commit (`fetch('http://nonexistent/')` in checkout), watch it deploy "successfully", then roll back. Write three sentences: what broke, how you noticed, how long the revert took.
+
+**Assessment checklist**
+
+- [ ] My SPA is reachable at a public HTTPS URL with zero console errors.
+- [ ] `VITE_API_URL` is set in the platform dashboard, never committed.
+- [ ] I understand preview vs production URLs and which branch feeds which.
+- [ ] I performed a rollback and verified the site recovered.
+- [ ] I stayed on a free tier and know my usage limits.
+
+</BookNodePage>

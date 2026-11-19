@@ -1,0 +1,151 @@
+---
+id: "31-1-1-designing-idempotent-agent-tools"
+title: "31.1.1 Designing Idempotent Agent Tools"
+sidebar_label: "31.1.1 Designing Idempotent Agent Tools"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-1-tool-design-and-persistence/31-1-1-designing-idempotent-agent-tools"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-31-s1-t1">
+
+An agent that retries an ambiguous tool call is not being defensive — it is being *normal*. The network drops the response, the model sees a timeout, the runner re-invokes the tool. If the tool is not idempotent, Tuesday's duplicate $89 refund emails itself to finance by Wednesday. This is the same discipline as [13.4.1 Background Jobs and Idempotency](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency), applied to a caller that *chooses* its retries probabilistically.
+
+## 1. What Idempotency Means for an Agent
+
+**Idempotent operation:** performing it N times (N >= 1) has the same observable effect as performing it once. HTTP semantics: `GET`, `PUT`, `DELETE` are defined idempotent; `POST` is not. Your agent tools are all effectively `POST` — but you can design them to *behave* like `PUT` by making the write keyed.
+
+The agent-specific failure mode is worse than the webhook case: the model cannot tell "the refund succeeded but the response was lost" from "the refund never happened". Your code must make those indistinguishable cases harmless:
+
+```text
+Agent run           Your tool              Postgres            Stripe
+-----------         -----------           ---------           -------
+issue_refund(k=A) -> INSERT refunds k=A -> row 501 -> refund ch_123 OK
+...response lost to a proxy timeout...
+issue_refund(k=A) -> INSERT refunds k=A -> ON CONFLICT DO NOTHING
+                                     -> no row; read-back returns row 501
+                  -> return "duplicate: refund 501 (unchanged)"
+```
+
+Exactly-once delivery does not exist. What you build is **at-least-once delivery + exactly-once effect**, and the effect-guard lives in the database, never in the prompt.
+
+## 2. Idempotency Keys Everywhere
+
+An **idempotency key** is a caller-supplied unique token for one logical operation. The rule from Part 04 holds: the server that receives the write owns the dedupe, stored under a `UNIQUE` constraint so racing retries lose the race harmlessly.
+
+Two key designs:
+
+| Design | Example | Pros | Cons |
+| :-- | :-- | :-- | :-- |
+| **Natural key** | `cart_id`, or `(order_id, 'refund')` | Semantics built-in; human-meaningful in audits; survives key-rotation bugs | One key per *kind* of operation; needs a design discussion per tool |
+| **Synthetic key** | `idem_7f3a...` (UUID from the agent run) | Universal; one column for all tools | Meaningless in logs; must be composed **in code**, never by the model |
+
+Compose keys in code from stable run identity: `key = f"{correlation_id}:{tool}:{order_id}:{amount_cents}"` hashed. The Postmaster composes `idem_…` inside `issue_refund` from `(correlation_id, order_id, amount_cents, reason)` — the model never sees or invents the key (30.2.1, §6).
+
+## 3. The Dedupe Table (DDL)
+
+One generic table beats per-tool hacks:
+
+```sql
+-- Postgres
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  key            TEXT PRIMARY KEY,
+  tool           TEXT NOT NULL,
+  response_json  JSONB NOT NULL,   -- cached outcome to replay on retry
+  status         TEXT NOT NULL CHECK (status IN ('in_flight', 'done')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_idem_created ON idempotency_keys (created_at);
+-- For refunds specifically (already exists from 30.2.1):
+ALTER TABLE refunds ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE;
+```
+
+Pattern: `INSERT ... ON CONFLICT DO NOTHING RETURNING ...`; if no row returns, someone else already ran this exact key — read back the stored response and return it. If the operation has a side effect outside Postgres (Stripe), store the **provider's** key too (Stripe accepts an `Idempotency-Key` header — pass your key straight through; they dedupe for 24h).
+
+## 4. Worked Example — `issue_refund`, No LLM Required
+
+Python (the Chapter 30 stack), with the dedupe in one transaction:
+
+```python
+def issue_refund_impl(db, *, order_id, amount_cents, reason, key):
+    with db.begin() as tx:
+        # 1. Try to claim the key first — atomic, race-safe
+        claimed = tx.execute(
+            "INSERT INTO idempotency_keys(key, tool, response_json, status) "
+            "VALUES (%s, 'issue_refund', '{}'::jsonb, 'in_flight') "
+            "ON CONFLICT (key) DO NOTHING RETURNING key", (key,)).scalar()
+        if not claimed:
+            row = tx.execute(
+                "SELECT response_json FROM idempotency_keys WHERE key = %s",
+                (key,)).mappings().one()
+            cached = row["response_json"]
+            return cached.get("text", "duplicate: already processed")
+        # 2. Business invariants (paid total, caps) — unchanged from 30.2.1
+        paid = check_refund_allowed(tx, order_id, amount_cents)  # raises on violation
+        # 3. The side effect — Stripe with the same key
+        stripe_id = stripe_refund(paid.stripe_charge_id, amount_cents, idem_key=key)
+        # 4. Record the outcome for replay
+        text = f"refund_issued stripe={stripe_id} amount_cents={amount_cents}"
+        tx.execute("UPDATE idempotency_keys SET status='done', response_json=%s "
+                   "WHERE key=%s", ({"text": text, "stripe_id": stripe_id}, key))
+        return text
+```
+
+Node/Express equivalent for the TypeScript services:
+
+```js
+const { rows } = await db.query(
+  `INSERT INTO idempotency_keys(key, tool, response_json, status)
+   VALUES ($1, 'issue_refund', '{}'::jsonb, 'in_flight')
+   ON CONFLICT (key) DO NOTHING RETURNING key`, [key]);
+if (rows.length === 0) {
+  const { rows: r } = await db.query(
+    `SELECT response_json FROM idempotency_keys WHERE key = $1`, [key]);
+  return r[0].response_json.text;             // replay cached outcome
+}
+```
+
+Test it without a model in the loop: call the impl twice with the same key, assert one Stripe call (stub it), assert the second call returns the cached text. That is a unit test, not an eval.
+
+**PUT vs POST semantics, in one line:** if your tool can be expressed as "set the state to X" (PUT-like), prefer that shape over "perform action X" (POST-like) — `set_refund_status(order_id, 'refunded')` retries cleanly for free; `issue_refund` needs the key machinery. Give every mutating tool the key; PUT-shaping is bonus.
+
+## 5. Read-Before-Write — Usually an Anti-Pattern
+
+`SELECT` to check "already done?" then `INSERT` is a check-then-act race: two concurrent retries both see "not done", both insert. The correct primitive is the unique constraint + `ON CONFLICT` — enforce at write time, not read time. Read-before-write is *necessary* only when (a) you need the data to compute the key, or (b) the invariant spans rows you cannot lock cheaply (e.g., "cumulative refunds must stay within the paid total" — then `SELECT ... FOR UPDATE` on the order row, or a serializable transaction).
+
+## 6. The Tool-Level Exactly-Once Illusion & Pitfalls
+
+- **Side-effect caching of non-deterministic tools.** Never cache/replay results of tools whose value depends on *when* they ran (`get_shipping_quote`, `check_inventory`). Idempotency-key replay is for *effect* tools; read tools are naturally idempotent — just let them re-run.
+- **Key composed by the model.** Random keys = zero dedupe. Compose in code; let the model supply only *domain* inputs (order_id, amount, reason).
+- **In-memory dedupe.** A `set()` in the tool process dies on restart and never spans replicas. Always Postgres (or Redis with `SET NX` + TTL, if you accept the weaker durability).
+- **Caching the error path.** If the tool failed *before* the effect, do not mark `done` — mark `in_flight`, let the retry re-attempt, and let the provider's own idempotency (Stripe) be the backstop.
+- **TTL hygiene.** `idempotency_keys` grows forever otherwise: `DELETE FROM idempotency_keys WHERE created_at < now() - interval '30 days'` on a nightly cron.
+
+## 6.5 Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| "Duplicate refunds every Monday morning" | Cron retries the nightly payout job without a key | Natural key per order; only the effect is retried, never the decision |
+| Key collision across unrelated operations | Key composed from `order_id` alone | Include tool name and amount: `tool:order_id:amount_cents`, hashed |
+| "Duplicate: already processed" but nothing happened | First attempt crashed *after* claim, before effect; cached `in_flight` replayed forever | Store literal outcome text; on `in_flight` older than N minutes, return "error: unknown outcome — verify manually" |
+| Retry succeeds, customer still charged twice | Stripe call had no `Idempotency-Key` header | Pass your key through to the provider; their dedupe is 24h — yours is forever |
+| Table 40 GB, queries slow | No TTL/archival on `idempotency_keys` | Nightly purge > 30 days; partial index on `status='in_flight'` |
+| Webhook fires twice from your own receiver | Your retry logic + provider's retry logic both active | One side owns retries (usually you); the other must be idempotent — see 13.4.1 |
+
+## 7. Practice
+
+**Guided exercise.** Add `idempotency_keys` to your local Postgres; wrap `issue_refund` to use it; kill the process mid-run and re-invoke — confirm one Stripe stub call.
+
+**Independent exercise.** Give `open_dispute_ticket` a natural key `(order_id, evidence_hash)` and a `UNIQUE(dispute_ticket_natural_key)` column; prove double-submit collapses.
+
+**Challenge.** Simulate the proxy-timeout retry storm: 20 concurrent `issue_refund` calls, one key. Assert exactly one refund row and 19 replays.
+
+**Assessment checklist**
+
+- [ ] I can explain why exactly-once delivery is impossible and what exactly-once *effect* means.
+- [ ] My dedupe lives in Postgres under a `UNIQUE` constraint, not in memory or in a prompt.
+- [ ] I compose idempotency keys in code from run identity, never from model output.
+- [ ] I know when read-before-write is justified (row lock / serializable) vs a race.
+- [ ] I never cache or replay non-deterministic read tools.
+
+</BookNodePage>

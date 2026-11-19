@@ -1,0 +1,118 @@
+---
+id: "37-1-2-estimating-work-and-managing-expectations"
+title: "37.1.2 Estimating Work and Managing Expectations"
+sidebar_label: "37.1.2 Estimating Work and Managing Expectations"
+slug: "/part-09-career-client-work-products-and-startups/37-teamwork-and-professional-engineering/37-1-communication-and-technical-ownership/37-1-2-estimating-work-and-managing-expectations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-37-s1-t2">
+
+Every engineering estimate disappoints someone. The professional skill is not producing accurate ones — it is **separating the estimate from the promise** and making uncertainty explicit so the person who needs the answer can make a correct decision.
+
+This lesson teaches the estimation routines that make senior engineers trusted: decomposition, comparison, risk-adjusted ranges, and expectation management when reality disagrees with the original number.
+
+## 1. Why Estimates Are Always Wrong — and Why That's OK
+
+Hofstadter's Law: *"It always takes longer than you expect, even when you take into account Hofstadter's Law."* The loop behind it: unknown unknowns in code reveal themselves only while doing the work. You cannot estimate what you have not explored. Two implications:
+
+1. **The first honest answer to "how long?" is always a range, not a number.**
+2. **The most accurate time to estimate is after a spike**, not before one.
+
+## 2. Estimation That Works: Four Routines
+
+### A. Decompose ruthlessly
+
+"Change the checkout flow" is unestimable. Break it into named pieces until each piece is recognizable from past work:
+
+```text
+Checkout revamp:
+  1. Audit current cart/checkout code (2 files? 8?)          → 0.5–1d
+  2. Add idempotency key column + unique index (migration)    → 0.5d
+  3. Stripe PaymentIntent creation route                       → 1–2d
+  4. Success/cancel pages + redirect state machine             → 0.5d
+  5. Webhook handler (payment_intent.succeeded)                → 1d
+  6. Receipt email (template + send + test)                    → 0.5–1d
+  7. E2E test with Playwright (happy + declined card)          → 0.5d
+  8. Staging smoke + feature flag                              → 0.5d
+  9. Rollout monitoring 24h                                     → 0.25d
+```
+
+Anything under half a day of uncertainty explodes accuracy. Anything with no history gets flagged as a **risk**, not estimated.
+
+### B. Anchor to reference classes
+
+Estimate the *class* of work, not the work:
+
+| Class of work | Reference duration (this team) |
+| :-- | :-- |
+| Simple CRUD endpoint + test | 0.5–1d |
+| DB migration + backfill | 1–3d (backfill size dependent) |
+| New third-party integration | 2–5d |
+| Auth/security change | 2–4d (review overhead dominates) |
+| Unfamiliar framework area | ×1.5–2 base estimate |
+
+This beats gut feel because repeated classes regress toward their mean even when the gut's call is off.
+
+### C. Three-point (PERT) estimates
+
+For each decomposed piece, give optimistic/likely/pessimistic; expected = (O + 4M + P)/6:
+
+| Piece | O | M | P | E |
+| :-- | --: | --: | --: | --: |
+| Audit | 0.5 | 0.75 | 1 | 0.75 |
+| PaymentIntent | 1 | 1.5 | 3 | 1.67 |
+| Webhook | 0.5 | 1 | 2 | 1.08 |
+
+Total = 0.75 + 0.5 + 1.67 + 0.5 + 1.08 + 0.75 + 0.5 + 0.5 + 0.25 ≈ **7d**; report "6–9 days" not "7.5".
+
+### D. Buy down uncertainty with spikes
+
+If two pieces carry real uncertainty (e.g., "does Stripe Elements need a different CSP header?"), time-box a 2–4h spike that answers only that. After the spike, the estimate is reliable; before it, the estimate is a guess wearing a suit.
+
+## 3. Communicating the Estimate
+
+What you say is the product. The pattern:
+
+> "I've broken this into audit, payment intent, webhook, UI, tests. **Best case 6 days, likely 8, worst 11** if the CSP change cascades. The riskiest unknown is the PaymentIntent route — I'm spiking it tomorrow morning and I'll re-estimate after that. It'll be feature-flagged so rollout can pause anytime."
+
+Every element of that is deliberate:
+
+- **Range, not point** — lets the reader plan against worst case without negotiating you down.
+- **Named risks** — transfers calibrated information, not vague "it depends".
+- **Timeboxed spike** — converts unknown to known before commitment.
+- **Flag** — preserves the option to stop, which is what makes Friday delivery credible.
+
+## 4. When You Will Miss — Managing Mid-Flight
+
+Miss-detection beats heroics. Two rules:
+
+1. **Raise the flag at 25% of the estimate, not 90%.** "At the current pace this lands Thursday" on Tuesday morning is a planning conversation. The same sentence on Thursday is a crisis.
+2. **Offer options, never just bad news.** "We can (a) ship core flow minus receipts Friday, (b) full scope Monday, or (c) cut the webhook and fire receipts inline. My recommendation is (a). Your call."
+
+The options must be real: descoping, adding hands (note: **adding people to a late task makes it later** — Brooks' Law — except for genuinely parallel work like writing tests), or moving the date.
+
+## 5. Working With Estimates From Others
+
+- Ask for the decomposition, not the number. If the decomposition is hand-wavy, the number is decoration.
+- Ask what makes it *longer* — the answer reveals the risk list.
+- Never reward the smallest estimate; reward the most honest one.
+
+## 6. Common Failure Modes
+
+| Failure | Symptom | Fix |
+| :-- | :-- | :-- |
+| Anchoring on the heroic phase | One person "knows it's 2 days" | Decompose or spike |
+| Sandbagging disguised as honesty | Padded estimates everywhere | Track estimates vs actuals; adjust by team velocity |
+| Estimates without dependencies | "We'll be done when the API lands" | Estimate includes deps or explicitly excludes them |
+| Negotiating after someone already planned around it | "Can you just…?" | Range + explicit options; no silent scope changes |
+| Silent overruns | Discovered on deadline day | 25%-of-estimate checkpoint review |
+
+## 7. Exercise
+
+Pick the next feature on your plate. Produce: (1) decomposition into named pieces, (2) PERT three-point estimate per piece, (3) a Slack/email message to your lead delivering the range with named risks and a spike plan, and (4) the checkpoint date at which you'll re-confirm the date.
+
+**Acceptance criteria.** Your message contains a range (not a point), at least one named risk, at least one alternative if the date moves, and a re-check date within a week.
+
+</BookNodePage>

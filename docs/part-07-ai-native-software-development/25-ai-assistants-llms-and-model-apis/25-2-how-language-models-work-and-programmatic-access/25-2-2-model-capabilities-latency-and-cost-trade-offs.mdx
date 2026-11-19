@@ -1,0 +1,147 @@
+---
+id: "25-2-2-model-capabilities-latency-and-cost-trade-offs"
+title: "25.2.2 Model Capabilities, Latency and Cost Trade-offs"
+sidebar_label: "25.2.2 Model Capabilities, Latency and Cost Trade-offs"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-2-how-language-models-work-and-programmatic-access/25-2-2-model-capabilities-latency-and-cost-trade-offs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s2-t2">
+
+Every model choice in production is a negotiation between three goods that never all peak together: **capability**, **latency**, and **cost**. This lesson gives you the triangle, the tier map, real API access patterns for the three providers, and the levers — caching, batching, RAG vs fine-tune — that move you off the bad corner of the triangle.
+
+> **Edition-maintenance rule.** Everything in this page stamped "November 2026" is a **snapshot, not a promise**. Model names, prices, context windows and deprecation dates in this lesson drift monthly. Before relying on any of these numbers: (1) re-check the official pricing and model pages (developers.openai.com/pricing, platform.claude.com/docs, aistudio.google.com/pricing); (2) keep the date you checked in your own notes; (3) treat any price you can't re-verify as **CLAIM TO VERIFY** and design around the uncertainty. The November 2026 snapshot below has not been re-verified for later editions.
+
+## 1. The Triangle
+
+```
+            CAPABILITY (reasoning, coding, instruction-following)
+                   /\
+                  /  \
+                 /    \
+                /      \
+          LATENCY ──────── COST
+```
+
+Pick two, mostly. Deep-research-style reasoning at frontier prices over slow connections is maximal capability, bounded wallet. A small model answering sentiment analysis 100k times a day is minimal cost and latency. Almost nobody wants maximum of all three — but *everybody* accidentally buys expensive latency when a mid-tier model would do.
+
+"Latency" splits into two different numbers vendors report separately:
+- **Time-to-first-token (TTFT):** how long until the stream starts. Dominated by queueing + prefill of your input. Streaming exists precisely to hide this (25.2.4).
+- **Total latency / throughput:** until the last token. Dominated by output length × tokens per second.
+
+A 10k-token prompt prefills slowly (high TTFT) even on a fast model. Conversely a 30-token answer feels instant. Design UIs around TTFT; design SLAs around total.
+
+## 2. The Tier Map (November 2026, verified against official docs)
+
+| Tier | OpenAI (API) | Anthropic (API) | Google (API) | Typical use |
+| :-- | :-- | :-- | :-- | :-- |
+| **Frontier** | `gpt-6.2-astra` ($8/$40, Nov 17 2026 flagship), `gpt-6-astra` ($10/$50), `gpt-5.5` ($5/$30) | `claude-fable-5-2` ($8/$40), `claude-opus-5-5` ($4/$20) | `gemini-4-carbon` ($2/$10 intro through Nov 30 2026, then $4/$20), `gemini-4-argon` ($2/$10 intro through Nov 30 2026, then $4/$20) | Agents, hard reasoning, long-horizon tasks, code review |
+| **Mid** | `gpt-6.2-sol` ($2/$10), `gpt-6-sol` ($2/$10), `gpt-6.1-terra` ($1/$5), `gpt-5.4` ($2.50/$15), `gpt-5` ($1.25/$10, deprecated) | `claude-sonnet-5-5` ($2/$10), `claude-sonnet-5` ($2/$10) | `gemini-4-hydrogen` ($1.50/$7.50), `gemini-3.8-flash` ($0.75/$3.75 intro through Dec 31 2026, then $1.50/$7.50), `gemini-3.1-pro-preview` ($2/$12 ≤200k) | The default workhorse: 80% of production traffic |
+| **Small** | `gpt-6-luna` ($0.10/$0.50), `gpt-5-mini` ($0.25/$2), `gpt-5-nano` ($0.05/$0.40) | `claude-haiku-5-5` ($0.10/$0.50 ≤100K prompt; above that $0.50/$2.50) | `gemini-3.5-flash-lite` ($0.30/$2.50), `gemini-3.1-flash-lite` ($0.25/$1.50) | Classification, extraction, routing, high-volume simple work |
+
+All prices per 1M tokens (input/output). Cached input and batch pricing are roughly 50–90% cheaper — see §5. Long-context surcharges (>272K on OpenAI; Haiku 5.5 above 100K) apply. Sources: developers.openai.com/api/docs/pricing; platform.claude.com/docs/en/about-claude/pricing; aistudio.google.com/docs/pricing. **Verified November 18, 2026. These drift monthly; the shape (frontier ≈ 10–50× small-tier cost) is stable; the decimals are not.**
+
+## 3. When to Pick Which — A Decision Rule
+
+1. **Start small; promote on evidence.** Route every request to the cheapest tier that passes your eval on *your* cases. Only promote a slice of traffic to a bigger tier if the eval says so.
+2. **Hard ceiling test:** if a mistake costs a rollback, a refund or a lawyer, use frontier and verify. If a mistake costs a regenerated paragraph, use mid/small.
+3. **Reasoning-effort knobs:** GPT-5/6-class models take `reasoning.effort` (minimal→high); Gemini 3/4 and Claude expose thinking budgets/effort similarly. Turning effort up buys capability with latency and hidden reasoning-token cost — not free.
+4. **Latency-critical UX** (autocomplete, voice): small tier + short outputs + streaming; or non-stream with strict `max_output_tokens`.
+5. **Bulk offline jobs:** Batch API, any tier, 50% off.
+
+## 4. API Access Shape — curl Against the Real Endpoints
+
+**OpenAI** — Responses API (recommended; Chat Completions `POST /v1/chat/completions` remains supported):
+
+```bash
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-6-sol","input":"Say hello in one line."}'
+```
+
+**Anthropic** — Messages API (note the required `anthropic-version` header; check the docs for the current value — the example below uses the one shown in current docs):
+
+```bash
+curl https://api.anthropic.com/v1/messages \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2026-10-21" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-sonnet-5-5","max_tokens":100,"messages":[{"role":"user","content":"Say hello in one line."}]}'
+```
+
+**Google** — Gemini API:
+
+```bash
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent" \
+  -H "x-goog-api-key: $GEMINI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"contents":[{"parts":[{"text":"Say hello in one line."}]}]}'
+```
+
+Response bodies differ in shape, but all three give you text + token accounting (`usage` / `usageMetadata` / response-level token counts). SDKs (`openai`, `@anthropic-ai/sdk`, `@google/genai`) normalize this and are what you should use past the first curl. Windows note: `$ENV_VAR` in PowerShell is `$env:VAR_NAME`; in bash `$VAR_NAME` — or use WSL2 and stop thinking about it.
+
+## 5. The Levers — Caching, Batch, RAG, Fine-Tune
+
+- **Prompt caching.** Repeated prefixes (system prompts, few-shot examples, house style, a big document re-queried many times) are charged at ~10% of input price and skip prefill latency. OpenAI: automatic on supported models (`cached_tokens` in usage); Anthropic: explicit `cache_control` breakpoints or automatic top-level caching; Gemini: implicit caching (paid tier) with optional explicit context caching. Big win when the same 30K-token document is queried 50 times.
+- **Batch API.** Both OpenAI and Anthropic offer ~50% off for within-24h turnaround; Gemini's paid tier includes context caching and Batch as well. Ideal for evals, bulk classification, nightly digests.
+- **Fine-tuning** teaches *style/format/routing*, not facts. Use it when you have hundreds of (input → ideal output) examples, prompt engineering has plateaued, and the task is stable. Cost: data prep + training + hosting evals. **RAG** (retrieve → stuff → answer) teaches *facts on demand* and stays current without retraining — the default for company knowledge. **Prompting** itself is the cheapest lever and should always be exhausted first, with an eval suite to prove it (Chapter 26).
+- **Context-caching the document instead of RAG** is the sweet spot for under-100-page single-document workflows in 2026: cache the 60K-token PDF once, ask 20 questions at ~0.1× input price each.
+
+## 6. Worked Decision — A Support-Ticket Classifier
+
+Requirement: label 30k tickets/month as `{billing, bug, feature, other}`; p95 under 800ms; budget $50/month; EU data preferred.
+
+Step 1: capability need = trivial (classification with 4 labels) → small tier. Step 2: candidates — `gpt-6-luna`, `claude-haiku-5-5`, `gemini-3.5-flash-lite`. Step 3: volume math at ~400 input + 5 output tokens per ticket: ~12M input tokens/month. Haiku 5.5: ~$1.20 input + $0.075 output ≈ **$1.3/month**; luna ≈ $1.2; flash-lite ≈ $3.6. All comfortably under budget; cost stops deciding. Step 4: EU preference → shortlist Mistral Small (EU) or an enterprise Claude/Gemini EU endpoint — confirm DPA. Step 5: run 200 labeled historical tickets through the shortlist; pick the highest F1; lock it in with a regression eval. Latency: small tiers at this length are typically sub-second; **measure on your region, don't trust spec sheets.**
+
+## 6.5 A Latency Teardown — Why the First Token Feels Slow
+
+Decompose a 1.2s response into: DNS + TCP/TLS (~30–80ms unless you keep-alive), auth + routing (~10–30ms), **queue wait** (0ms at quiet times, seconds at peak, provider-dependent), **prefill** of your 20K-token context (dominant: 20K tokens prefill at ~5–10K tokens/s on mid tiers → 2–4s, hidden if cached to ~10%), then decode at ~50–150 tokens/s for outputs. Consequences: long prompts = high TTFT; long outputs = high total latency; both shrink with caching and smaller models — but decode speed barely moves across frontier tiers. If your UI feels sluggish, measure TTFT separately from total duration before tuning the model.
+
+## 7. Worked Migration — From Chat Playground to Production API in Three Moves
+
+You validated a prompt in the ChatGPT playground; now it goes into CI. Move 1: find the exact API equivalent (playground shows the curl) and port it verbatim with `$OPENAI_API_KEY` from env — never paste keys into code. Move 2: pin the model **snapshot** you evaluated (e.g., a dated model ID) instead of the rolling alias, so a silent provider upgrade doesn't regress your evals. Move 3: wrap the call in your retry-and-validate shell from 25.2.3/25.2.1, add `usage` logging, and set a monthly budget alert at the provider console. Do these three and you will spend more time on product than on firefighting.
+
+## 7.5 A Costed Comparison — 100k Calls a Month, Three Strategies
+
+Assume 1,000 input + 300 output tokens per call, ~100M input + 30M output tokens/month.
+
+| Strategy | Models | Monthly API cost (illustrative, Nov-2026 list) |
+| :-- | :-- | :-- |
+| Every call on flagship | `gpt-6-astra` ($10/$50) | ≈ $1,000 + $1,500 = **$2,500** |
+| Mid-tier default | `gpt-6-sol` ($2/$10) | ≈ $200 + $300 = **$500** |
+| Small + escalate 5% to flagship | 95% `gpt-6-luna` ($0.10/$0.50), 5% `gpt-6-astra` | ≈ $9.5 + $125 ≈ **$135** |
+| Same as above + Batch API (50% off) | Batch where tolerable | ≈ **$68–250** |
+| Same + cached prefix (30% cache hit) | Caching | shaves input cost further ~30% |
+
+The pattern repeats everywhere: **route by difficulty, batch what tolerates delay, cache what repeats, and let only the hard 5% touch the flagship.** Output length is your biggest invisible lever — a system prompt that says "answer in under 50 words" routinely saves more than any model swap. Verify your own numbers against the linked pricing pages before budgeting; prices move and SKU names change (GPT-5 was deprecated toward GPT-6 within months of launch).
+
+## 7.8 A Model-Routing Decision Record Template
+
+```text
+Task / route / why / fallback / eval link / review date
+e.g. Support triage → claude-haiku-5-5 → "labels-only, verified on 200 historical tickets, F1 0.91"
+    → fallback claude-sonnet-5-5 on confidence<0.6 → evals/triage.jsonl → review 2026-12-17
+```
+Six lines, committed to the repo. Without it, every model change in production is archaeology; with it, you can answer "why is this the model?" in seconds. Review monthly — providers move SKUs (GPT-5 → GPT-6 happened inside 2026), and your router config should move with them.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| API 401 | Key invalid/expired/wrong env var | `echo $env:OPENAI_API_KEY`; regenerate key; never hardcode |
+| API 404 model | Account/project lacks that model; name typo'd | List models via the provider's list endpoint; use exact ID from docs |
+| 429 | Rate limit or quota exhausted | Backoff with jitter; check usage dashboard; upgrade tier; batch |
+| Context-length error | Input+output > window | Count with §25.2.1 methods; chunk; summarize; use bigger tier |
+| Output worse on Fridays | Provider silently shifted model under the same name; your prompt was load-bearing | Pin model snapshot if offered (`...-2025-08-07`); run evals on release cadence |
+
+## 9. Assessment Checklist
+
+- [ ] I can draw the triangle and place a real task in the right corner.
+- [ ] I read both latency numbers (TTFT vs total) and design UIs around the right one.
+- [ ] I made curl calls to at least two providers this month.
+- [ ] I priced a monthly workload in minutes using current list prices.
+- [ ] I know when to reach for caching, Batch, RAG and fine-tuning respectively.
+
+</BookNodePage>

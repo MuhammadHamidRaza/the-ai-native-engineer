@@ -1,0 +1,164 @@
+---
+id: "12-4-2-your-first-database-with-compass-and-mongosh"
+title: "12.4.2 Your First Database with Compass and mongosh"
+sidebar_label: "12.4.2 CRUD with Compass & mongosh"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-2-your-first-database-with-compass-and-mongosh"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4-t2">
+
+Time to use MongoDB for real. We rebuild ShopCore's **order document** model — because Orders are the one place embedding wins — with both the GUI (Compass) and the shell (`mongosh`), so you can do everything twice and never be stranded.
+
+MongoDB stores **BSON** (binary JSON + types like `ObjectId`, `Date`, `Decimal128`). A document may look like:
+
+```json
+{
+  "_id": "64f1...",                  // ObjectId, auto-generated
+  "userId": "ada@example.com",       // we use the natural key here — you'll see why below
+  "status": "paid",
+  "createdAt": "2026-11-16T10:00:00.000Z",
+  "items": [
+    { "sku": "KB-01", "title": "Mechanical Keyboard", "qty": 1, "unitPriceCents": 12900 },
+    { "sku": "MS-02", "title": "Ergonomic Mouse",     "qty": 2, "unitPriceCents": 5900 }
+  ]
+}
+```
+
+## 1. Switch to the Database — GUI or Shell
+
+**Compass:** select `shopcore_docs` in the left sidebar → you see your `orders` collection.
+**mongosh:**
+
+```javascript
+use shopcore_docs          // switches or creates on first write
+show collections           // empty until first write
+db                         // prints: shopcore_docs
+```
+
+## 2. Insert Documents — `insertOne` / `insertMany`
+
+### Shell
+
+```javascript
+db.orders.insertOne({
+  userId: "ada@example.com",
+  status: "paid",
+  createdAt: new Date(),
+  items: [
+    { sku: "KB-01", title: "Mechanical Keyboard", qty: 1, unitPriceCents: 12900 },
+    { sku: "MS-02", title: "Ergonomic Mouse",     qty: 2, unitPriceCents: 5900  },
+  ],
+});
+// Output: { acknowledged: true, insertedId: ObjectId("...") }
+
+db.orders.insertMany([
+  { userId: "grace@example.com", status: "pending", createdAt: new Date(),
+    items: [ { sku: "MS-02", qty: 1, unitPriceCents: 5900, title: "Ergonomic Mouse" } ] },
+  { userId: "linus@example.com", status: "paid",    createdAt: new Date(),
+    items: [ { sku: "BK-03", qty: 1, unitPriceCents: 4500, title: "Systems Architecture" } ] },
+]);
+```
+
+### Compass
+
+Collection `orders` → **Documents** tab → **Insert Document**. The JSON editor opens with `{}`. Paste the `insertOne` document body (without the surrounding `db.orders.insertOne(...)`) and **Insert**. It appears instantly in the grid; click the pencil icon on any cell to edit inline — Compass rewrites the document atomically.
+
+## 3. Read Documents — `find`, Filters, Projections, Sorting
+
+| Goal | mongosh | Compass |
+| :-- | :-- | :-- |
+| All documents | `db.orders.find()` | Documents tab (green **Find** with `{}`) |
+| Filter equality | `db.orders.find({ status: "paid" })` | Filter field: `{ status: "paid" }` |
+| Multiple conditions (AND) | `find({ status: "paid", userId: "ada@example.com" })` | Same object |
+| Comparison operators | `find({ "items.unitPriceCents": { $gt: 5000 } })` | Same syntax in filter |
+| In list | `find({ status: { $in: ["paid", "shipped"] } })` | Same |
+| Project (select fields) | `find({}, { userId: 1, status: 1, _id: 0 })` | Project field: `{ userId: 1, status: 1, _id: 0 }` |
+| Sort + limit | `find({ status: "paid" }).sort({ createdAt: -1 }).limit(10)` | Sort field / Limit input |
+| Count | `db.orders.countDocuments({ status: "paid" })` | Shows `N Documents` at top |
+
+Operators you must know: `$eq` (default), `$ne`, `$gt`, `$gte`, `$lt`, `$in`, `$exists`, `$regex`.
+
+```javascript
+// "Ada's line items only": projection + element match
+db.orders.find(
+  { userId: "ada@example.com" },
+  { items: 1, status: 1, _id: 0 }
+);
+
+// Orders containing at least one KB-01 (embedded array query)
+db.orders.find({ "items.sku": "KB-01" });
+```
+
+Compass shows the same results as cards/JSON; toggle **Columns** view for a table-like grid and the **Schema** tab for field types inferred from real data — invaluable before writing aggregation code.
+
+## 4. Update Documents — `updateOne` / `updateMany` / `$set` / `$inc`
+
+```javascript
+// Replace a field — always $set, never bare replacement object (that wipes other fields!)
+db.orders.updateOne({ userId: "ada@example.com" }, { $set: { status: "shipped" } });
+
+// Increment a matched array element's qty atomically (positional operator needs a matching query on the array)
+db.orders.updateOne(
+  { userId: "grace@example.com", "items.sku": "KB-01" },   // positions $ to the KB-01 element
+  { $inc: { "items.$.qty": 1 } }
+);
+
+// Set a field on many documents
+db.orders.updateMany({ status: "pending" }, { $set: { reviewFlag: true } });
+```
+
+Compass: hover a document → pencil → change `status` value → **Update**; or use the **Filter** + **Update Many** panel for bulk edits.
+
+**Critical habit:** always include a filter on updates. `db.orders.updateMany({}, { $set: { x: 1 } })` rewrites every document in the collection.
+
+## 5. Delete Documents — `deleteOne` / `deleteMany`
+
+```javascript
+db.orders.deleteOne({ userId: "linus@example.com" });
+db.orders.deleteMany({ status: "cancelled" });
+```
+
+Compass: trash icon on the document; or select many → bulk delete. `drop()` deletes the whole collection (`db.orders.drop()`) — use deliberately.
+
+## 6. ObjectIds — What `_id` Actually Is
+
+`_id` defaults to an **ObjectId**: a 12-byte value = 4-byte timestamp + 5-byte random + 3-byte counter. You rarely need it directly, but know:
+
+```javascript
+var id = db.orders.findOne()._id;
+typeof id;                      // "object" — ObjectId, not a string!
+id.getTimestamp();              // when the document was created (UTC)
+```
+
+In app code (`mongodb` Node driver), use `new ObjectId("64f1...")` to convert — comparing raw strings to ObjectIds silently matches nothing and is the #1 Mongo beginner bug.
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `MongoServerError: Unauthorized` | Local default install has no auth — if you enabled auth, authenticate (`mongosh -u admin -p --authenticationDatabase admin`) |
+| Update matched 0 docs | Filter wrong; run `find` with the same filter first to see it matches |
+| `BSONTypeError: ObjectId` | You passed a string where ObjectId required — `new ObjectId(str)` |
+| Document vanished after update | You passed a plain replacement object instead of `{ $set: {...} }` — restore from backup/seed |
+| Compass shows raw JSON every time, want table | Settings → **Columns** view toggle |
+| `ECONNREFUSED 27017` | Service down — see 12.4.1 step 6 |
+
+## 8. Practice
+
+**Guided exercise.** In `mongosh`: switch to `shopcore_docs`, insert one new order (your own `userId`), find it, `$set` its `status` to `shipped`, then delete it. Repeat the same steps in Compass with the mouse. You should feel both paths now.
+
+**Independent exercise.** Using a filter and projection, list only `userId`, `status` for paid orders, sorted newest first, limited to 5. Write the query from memory, then verify in Compass's filter bar.
+
+**Challenge.** Add an `ObjectId` field reference: create `db.customers` with `{ _id: ObjectId("66f0..."), email: "ada@example.com" }` — insert an order referencing that `_id` as `customerId` (this is the *referenced* modeling style — 12.4.3 compares both). Query all orders with `find({ customerId: thatId })`.
+
+**Assessment checklist**
+
+- [ ] I inserted, found, projected, sorted, updated and deleted documents in mongosh.
+- [ ] I repeated each operation in Compass's UI.
+- [ ] I know `$set` vs document replacement and why bare replacement is dangerous.
+- [ ] I understand ObjectIds and never compare them to plain strings.
+- [ ] I can filter, project and sort in both tools without reference.
+
+</BookNodePage>

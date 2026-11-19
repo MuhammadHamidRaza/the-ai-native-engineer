@@ -1,0 +1,80 @@
+---
+id: "05-3-2-discriminated-unions-for-domain-state"
+title: "05.3.2 Discriminated Unions for Domain State"
+sidebar_label: "05.3.2 Discriminated Unions for Domain State"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-3-type-safe-application-contracts/05-3-2-discriminated-unions-for-domain-state"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s3-t2">
+
+Consider how many UI and workflow bugs come from modeling state with separate booleans:
+`{ isLoading: boolean; error: string | null; data: Task[] | null }`.
+Nothing stops code from entering an impossible combination like `isLoading: true` AND `error: "Failed"` AND `data: [...]` at the same time! **Discriminated unions** make impossible states unrepresentable.
+
+## 1. Replacing Boolean Soup with Tagged States
+
+Give every union variant a shared literal discriminant field (commonly `status`, `kind`, or `type`):
+
+```typescript
+export type AsyncState<T> =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: T }
+  | { status: "error"; message: string; retryable: boolean };
+```
+
+Look what happens inside any `switch (state.status)`:
+- In `case "success":`, `state.data` is guaranteed to exist (`T`), and `state.message` does not exist.
+- In `case "error":`, `state.message` and `state.retryable` exist, and `state.data` does not.
+
+## 2. Exhaustiveness Checking with `never`
+
+What happens six months later when someone adds `| { status: "empty" }` to `AsyncState<T>` and forgets to update three UI switches? Adding an `assertNever` helper makes the TypeScript compiler **refuse to compile** until every missing variant is handled:
+
+```typescript
+function assertNever(value: never): never {
+  throw new Error(`Unhandled union variant: ${JSON.stringify(value)}`);
+}
+
+export function renderStatusSummary(state: AsyncState<string[]>): string {
+  switch (state.status) {
+    case "idle":
+      return "Ready to search";
+    case "loading":
+      return "Loading results...";
+    case "success":
+      return `Loaded ${state.data.length} items`;
+    case "error":
+      return `Failed: ${state.message} (${state.retryable ? "retryable" : "fatal"})`;
+    default:
+      return assertNever(state); // Compile error if ANY status case is missing!
+  }
+}
+```
+
+## 3. Domain Events & State Transitions
+
+Discriminated unions also shine in React `useReducer` (`07.2.1`), payment workflows, and webhook processors:
+
+```typescript
+export type PaymentState =
+  | { kind: "pending"; invoiceId: string }
+  | { kind: "paid"; invoiceId: string; receiptUrl: string; paidAtIso: string }
+  | { kind: "failed"; invoiceId: string; reason: string };
+```
+
+You can never read `receiptUrl` on an unpaid invoice, and you can never omit `reason` on a failed payment.
+
+## 4. Practice Exercises
+
+1. Model an authentication session state as a discriminated union with three variants: `"anonymous"`, `"authenticating"`, and `"authenticated"` (containing `userId` and `role`), plus an exhaustive `switch` formatter with `assertNever`.
+2. Add a fourth `"expired"` variant and verify TypeScript immediately points to the exact line in your `switch` that needs updating.
+
+## Mastery Checklist
+
+- [ ] Models mutually exclusive async or domain states with a shared discriminant property (`status`/`kind`).
+- [ ] Uses a `never` exhaustiveness helper so new states cannot be silently ignored.
+
+</BookNodePage>

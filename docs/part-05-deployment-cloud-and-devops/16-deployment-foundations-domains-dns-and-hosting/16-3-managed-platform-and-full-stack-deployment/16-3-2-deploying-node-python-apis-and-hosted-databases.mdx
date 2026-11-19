@@ -1,0 +1,160 @@
+---
+id: "16-3-2-deploying-node-python-apis-and-hosted-databases"
+title: "16.3.2 Deploying Node, Python APIs and Hosted Databases"
+sidebar_label: "16.3.2 Deploying Node, Python APIs and Hosted Databases"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-3-managed-platform-and-full-stack-deployment/16-3-2-deploying-node-python-apis-and-hosted-databases"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s3-t2">
+
+A static SPA without an API is a brochure. This lesson deploys the ShopCore Express 5 API to **Render**, connects it to hosted Postgres on **Neon** (free tier, no card), and verifies the whole path with `psql` and `curl` from your own machine. Railway gets a mention as the credible alternative; the steps translate 1:1.
+
+> **Cost safety first.** Both platforms below run free without a card: Render Free web services (spins down after 15 min idle, ~1 min cold start, 750 instance-hours/mo per workspace) and Neon Free (100 CU-hours/project/mo, 1 GB storage/project, scale-to-zero after 5 min). Free Render Postgres *expires 30 days after creation* and is then deleted — which is why this lesson uses Neon. All limits are approximate as of **Nov 2026** and change; check [render.com/docs/free](https://render.com/docs/free) and [neon.com/pricing](https://neon.com/pricing). If you attach a card anywhere, set a spend limit/alert on day one — on Render that lives in **Dashboard → Settings → Billing → Spend limit**.
+
+## 0. Prerequisites
+
+1. ShopCore repo on GitHub with `server/` (or API root) containing `package.json` with a `start` script: `node server.js` — verify `npm test` is green.
+2. The API must read `process.env.PORT` (Render assigns one; your 16.1.1 code already does `process.env.PORT || 4000`).
+3. An HTTPS origin allowlist for CORS: include your Vercel/Netlify/Pages URL from 16.3.1 (and `http://localhost:5173` for local dev).
+4. A `/health` route returning `200` (ShopCore has one since milestone 3) — Render can poll it.
+
+## 1. Create the Hosted Database on Neon
+
+1. Sign up at [neon.tech](https://neon.tech) (GitHub SSO; no card for Free).
+2. **New Project** → name `shopcore`, region closest to your users (e.g., Frankfurt `eu-central-1` for EU, Northern Virginia for US East), Postgres version = latest offered.
+3. Neon creates a default database, usually `neondb`, and prints a connection string. There are **two** endpoints:
+   - **Direct** (`ep-cool-name-123456.eu-central-1.aws.neon.tech`) — for migrations, admin work.
+   - **Pooled** (`ep-cool-name-123456-pooler.eu-central-1.aws.neon.tech`) — PgBouncer-fronted; use this from the API for serverless-ish and bursty workloads.
+4. Copy the **pooled** string. It looks like:
+
+```text
+postgres://shopcore_owner:<password>@ep-cool-name-123456-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+```
+
+`sslmode=require` is not optional on Neon — connections without TLS are refused. Note the credentials are shown once; they live in your Neon project's **Connection Details** panel if you need them again.
+
+5. **Run your migrations against Neon** from your machine (this is the only step where you use the *direct* endpoint and real DDL):
+
+```powershell
+$env:DATABASE_URL="postgres://shopcore_owner:<password>@ep-cool-name-123456.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+npm run migrate     # your migration runner from Chapter 15 (001_init.sql, 002_...)
+```
+
+Expected: `001_init.sql applied`, `schema_migrations` ledger shows both migrations.
+
+## 2. Verify with `psql` From Your Machine
+
+Install psql if needed — see [12.1 Install & Run PostgreSQL](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-1-install-and-run-postgresql) (Windows: the EnterpriseDB installer includes it; or `winget install PostgreSQL.PostgreSQL`; macOS: `brew install libpq`; Debian/Ubuntu: `sudo apt install postgresql-client`).
+
+```powershell
+psql "postgres://shopcore_owner:<password>@ep-cool-name-123456-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+```
+
+Expected (abbreviated):
+
+```text
+psql (16.10, server 17.x)
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+neondb=> \dt
+             List of relations
+ Schema |       Name       | Type  |    Owner
+--------+-------------------+-------+--------------
+ public | products          | table | shopcore_owner
+ public | orders            | table | shopcore_owner
+ public | schema_migrations | table | shopcore_owner
+(12 rows)
+```
+
+`\dt` shows your tables — the schema landed. `\q` exits. If `psql` hangs or errors on TLS, the `-pooler` host with `sslmode=require` is the correct pair; strip `-pooler` when debugging connectivity because the direct endpoint simplifies error messages.
+
+## 3. Deploy the API to Render
+
+1. Sign up at [render.com](https://render.com) with GitHub (no card needed for Free).
+2. **New + → Web Service** → connect the ShopCore repo → **Connect**.
+3. Settings (this is the whole contract):
+   - **Name:** `shopcore-api` · **Region:** same region as Neon (latency) · **Branch:** `main`
+   - **Root Directory:** `server` if your API lives in a subfolder, else blank
+   - **Runtime:** Node · **Build Command:** `npm install` · **Start Command:** `npm start`
+   - **Instance Type:** **Free**
+   - **Health Check Path:** `/health`
+4. **Environment Variables** → add:
+   - `DATABASE_URL` = the **pooled** Neon string (paste whole, with `sslmode=require`)
+   - `NODE_ENV` = `production`
+   - `CLIENT_ORIGIN` = `https://<your-app>.vercel.app` (whatever CORS origin your Express code reads; if it hardcodes localhost, fix the code first — 16.1.1)
+5. **Create Web Service**. Build log should show `npm install` → start → `API listening on :<PORT>`. Your URL: `https://shopcore-api.onrender.com`.
+
+> **Railway, briefly:** Railway ([railway.com](https://railway.com)) builds from the same git repo with the same env-var contract — New Project → Deploy from GitHub repo → set `DATABASE_URL` → generate domain. As of late 2026 Railway gives new accounts a trial credit rather than a perpetual always-free instance; check [railway.com/pricing](https://railway.com/pricing) before you rely on it. Everything else in this lesson (pooled Neon string, `sslmode=require`, CORS, `/health`) is identical.
+
+## 4. Wire the SPA to the API and Redeploy
+
+Update the SPA's `VITE_API_URL=https://shopcore-api.onrender.com` in the Vercel/Netlify/Pages dashboard (16.3.1 §1–3) and **trigger a redeploy** — Vite inlines env vars at build time. Then:
+
+```powershell
+curl https://shopcore-api.onrender.com/health
+# {"status":"ok","db":"up"}
+
+curl https://shopcore-api.onrender.com/api/products | Select-Object -First 1
+# [{"id":1,"name":"..."}, ...]
+```
+
+First request after idle takes ~50–60 s on the free instance ("spinning up" page) — that is the free tier working as specified, not a bug. Subsequent requests are normal-speed. Open the deployed SPA and run a checkout: the browser now talks `https://shopcore.vercel.app` → `https://shopcore-api.onrender.com` → Neon. That is the full arc from Part 04's `localhost`.
+
+## 5. Connection Pooling, Briefly
+
+Your Express process opens a Postgres connection per query via `pg`. Under concurrency, every request holding one connection exhausts Postgres's `max_connections` (Neon free defaults are low). The `pg` answer is a **Pool**:
+
+```js
+import pg from 'pg';
+import fs from 'node:fs';
+
+// Best practice: pin the Neon CA so the connection is verified, not just encrypted.
+// Download the CA certificate from the Neon project dashboard, save it next to your API,
+// and reference it like this. Never commit it to git — .env it or inject it via your host's secrets.
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL, // e.g. postgresql://user:pass@...-pooler....aws.neon.tech/shopcore?sslmode=require
+  ssl: {
+    ca: fs.readFileSync(process.env.NEON_CA_CERT_PATH ?? './neon-ca.crt', 'utf8'),
+    rejectUnauthorized: true,   // verify the server cert — never disable this on a real database
+  },
+  max: 5,                                // free tiers: keep the pool small
+  idleTimeoutMillis: 10_000,
+});
+```
+
+**Why not `ssl: { rejectUnauthorized: false }`?** That encrypts the connection but skips verifying the server's certificate — anyone who can intercept the route to Neon (compromised Wi-Fi, malicious proxy, DNS spoof) can read or alter every query and every password hash passing through it. The "Neon presents a public CA" line is only true after it's rotated into a public chain; hosted providers change their CA issuers over time. Pin the CA file once and rotate it when the dashboard tells you to; that's fail-safe, not fail-open. If you cannot obtain the CA file, fall back to `ssl: { rejectUnauthorized: true }` at minimum — it at least pins you to *some* valid issuer — and open a support ticket to get the CA.
+
+Two layers keep you safe: **in-process** (`pg.Pool` reuses connections) and **Neon's `-pooler` endpoint** (PgBouncer multiplexes many short-lived client connections onto few server connections). Use both. For migrations, take a direct connection and `pool.end()` before exiting.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Deploy "live" but `/health` 502s | Start command wrong or crash on boot | Read logs in Render dashboard; run `npm start` locally with same env vars |
+| `password authentication failed` | Wrong/regenerated Neon password | Neon → Connection Details → reset password; update `DATABASE_URL`; redeploy |
+| `no encryption` / SSL errors | Missing `sslmode=require` | Add it to the string; in `pg` keep the `ssl` option |
+| `too many connections` | Pool unbounded or missing `-pooler` | `max: 5` + pooled endpoint; `idleTimeoutMillis` set |
+| SPA loads, API returns CORS 403 in browser console | Origin not in allowlist | Set `CLIENT_ORIGIN`; redeploy API; check exact scheme+host+port |
+| First hit after idle takes ~1 min | Free instance spin-down | Upgrade ($7/mo class) or accept for demos; keep `/health` warm only if terms allow |
+| Neon compute suspended for the month | 100 CU-hours exhausted | Wait for next cycle or upgrade (Launch, usage-based). Data is safe; queries cannot run |
+
+## 7. Practice
+
+**Guided exercise.** Do §1–§4 end to end. File the `psql \dt` output and the two `curl` transcripts as evidence.
+
+**Independent exercise.** Re-create `.env.example` for the API listing every variable (`DATABASE_URL`, `PORT`, `CLIENT_ORIGIN`, `NODE_ENV`) with fake values — the file teammates actually read.
+
+**Challenge.** Load-test honestly: 20 sequential `curl /api/products` against your free Render URL, record cold-start vs warm latency, and write three sentences on when you would move to the $7 class instance. (Do not use a load-testing tool against the free tier — it is rate-limited for your protection and theirs.)
+
+**Assessment checklist**
+
+- [ ] API answers `/health` with DB status over public HTTPS.
+- [ ] SPA talks to the API cross-origin with no console errors.
+- [ ] I ran migrations against hosted Neon from my machine and verified with `psql`.
+- [ ] I know why `-pooler` exists and what `max: 5` does.
+- [ ] I know the free-tier clocks: Render spin-down and Neon monthly CU-hours.
+
+</BookNodePage>

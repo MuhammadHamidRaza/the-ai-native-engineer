@@ -1,0 +1,196 @@
+---
+id: "20-1-2-ingress-probes-autoscaling-helm-and-local-cluster-lab"
+title: "20.1.2 Ingress, Probes, Autoscaling, Helm and Local Cluster Lab"
+sidebar_label: "20.1.2 Ingress, Probes, Autoscaling, Helm and Local Cluster Lab"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-1-kubernetes-and-helm-fundamentals/20-1-2-ingress-probes-autoscaling-helm-and-local-cluster-lab"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s1-t2">
+
+> **Verification status (November 2026):** the authoring pipeline for this book had **no container runtime or Kubernetes cluster available** — these commands were not executed end-to-end here; they were checked against the official documentation (kind, kubernetes.io, helm.sh, cloud-provider-kind) and marked as of Nov 2026. Run the lab on your machine; if a step fails, paste the exact error and the first fix to try is always kind get clusters + kubectl version --client + matching tool versions. The kubectl port-forward path in 20.1.2 works with zero moving parts and is the recommended first checkpoint.
+
+The previous lesson got the cluster up and the objects applied. This one makes the workload *operable*: probes that catch failure, an autoscaler that reacts to real load, HTTP routing into the cluster, and Helm — the package manager every real Kubernetes team uses — before the capstone lab deploys ShopCore end to end.
+
+## 1. Readiness vs Liveness Probes
+
+Both are health gates, but they answer different questions:
+
+| Probe | Question it answers | Failure consequence |
+| :-- | :-- | :-- |
+| **readiness** | "Can this pod serve traffic *right now*?" | Pod is removed from the Service's endpoints — no traffic until it recovers. **Not restarted.** |
+| **liveness** | "Is this pod wedged beyond hope?" | kubelet **kills and recreates** the container. |
+
+Rule of thumb: if retrying would help → readiness; if only a restart helps → liveness. Readiness on `/health` that checks DB connectivity; liveness on a cheap endpoint or `tcpSocket` that only fails when the process is genuinely stuck — never on a dependency (one slow database would cascade-restart every pod).
+
+```yaml
+livenessProbe:
+  httpGet: { path: /health, port: 4000 }
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
+readinessProbe:
+  httpGet: { path: /health/ready, port: 4000 }
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+ShopCore's API exposes `GET /health` (Chapter 15); if yours lacks a readiness path, use `tcpSocket: { port: 4000 }` for readiness — but add a real `/health` before production.
+
+## 2. Install Helm (v4)
+
+Helm templates Kubernetes YAML with variables (`values.yaml`) and tracks releases. Current stable is **Helm 4.x** (v4.3.2, November 2026); Helm 3 receives security fixes only, through **10 February 2027** ([helm.sh end-of-life post](https://helm.sh/blog/helm-v3-end-of-life)).
+
+**Windows:** `winget install Helm.Helm` · **macOS:** `brew install helm` · **Linux/WSL2:** `curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 && chmod 700 get_helm.sh && ./get_helm.sh` — then `helm version` in all cases.
+
+## 3. Ingress — The Honest State of Play (November 2026)
+
+**Ingress** routes HTTP(S) from outside the cluster into Services by host/path (`shopcore.example.com/api` → `shopcore-api` Service). It needs: (a) an Ingress *resource* declaring routes, and (b) an Ingress *controller* in the cluster that implements them.
+
+**Important:** **ingress-nginx was retired in March 2026** — no more releases or security fixes ([kubernetes.io blog, Nov 2025](https://kubernetes.io/blog/2025/11/11/ingress-nginx-retirement/)). Do not deploy it for anything new. Your options:
+
+1. **Gateway API** — the successor standard (`Gateway` + `HTTPRoute`). kind supports it natively through **cloud-provider-kind** (SIG Network's cloud controller for kind).
+2. **kind's native Ingress support** — also via cloud-provider-kind (v0.9.0+); no third-party controller required.
+3. **Cloud-native LBs / controller of your cloud** (e.g., a managed load balancer) in real clusters.
+4. **For pure local learning: `kubectl port-forward`** — zero moving parts, perfectly good for a lab.
+
+**Installing cloud-provider-kind** (try if you have Go, Homebrew, or Docker socket access; skip freely and use port-forward):
+
+```bash
+# Linux/macOS pkg managers: brew install cloud-provider-kind
+go install sigs.k8s.io/cloud-provider-kind@latest
+cloud-provider-kind                                 # keep running in a second terminal
+kubectl label node shopcore-control-plane node.kubernetes.io/exclude-from-external-load-balancers-
+```
+
+Then an Ingress resource gets an `ADDRESS` (`kubectl get ingress`) and answers on port 80. The Ingress YAML shape is stable regardless of controller:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: shopcore }
+spec:
+  rules:
+    - host: shopcore.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: shopcore-api
+                port: { number: 80 }
+```
+
+Because the controller landscape is in transition, this page does **not** pin you to one; port-forward below is the guaranteed-to-work path.
+
+## 4. Autoscaling — HPA with metrics-server in kind
+
+The **Horizontal Pod Autoscaler** scales replicas from CPU/memory (or custom metrics). It needs the **metrics-server**; kind's kubelet certs require one insecure flag (local learning only — never in production):
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl -n kube-system patch deploy metrics-server --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl top nodes   # wait ~60s until it prints real numbers
+```
+
+## 5. The Lab — Build, Load, Deploy, Verify, Hello Helm
+
+**Step 1 — build the image** (from [Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment), repo root of `shopcore-api`): `docker build -t shopcore-api:1.0.0 .`
+
+**Step 2 — load it into the kind cluster** (kind nodes cannot see your host's image store):
+
+```bash
+kind load docker-image shopcore-api:1.0.0 --name shopcore
+```
+
+**Step 3 — deploy** (`shopcore-api.yaml`, note `imagePullPolicy` — kind needs it):
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: shopcore-api, namespace: shopcore }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: shopcore-api } }
+  template:
+    metadata: { labels: { app: shopcore-api } }
+    spec:
+      containers:
+        - name: api
+          image: shopcore-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 4000 }]
+          readinessProbe: { httpGet: { path: /health, port: 4000 }, periodSeconds: 5 }
+          livenessProbe:  { httpGet: { path: /health, port: 4000 }, initialDelaySeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: shopcore-api, namespace: shopcore }
+spec:
+  selector: { app: shopcore-api }
+  ports: [{ port: 80, targetPort: 4000 }]
+```
+
+```bash
+kubectl apply -f shopcore-api.yaml -n shopcore
+kubectl rollout status deployment/shopcore-api -n shopcore
+kubectl port-forward -n shopcore svc/shopcore-api 8080:80
+# second terminal:
+curl -i http://localhost:8080/health
+```
+
+Expected: `{"status":"ok",...}` with HTTP 200.
+
+**Step 4 — HPA:**
+
+```bash
+kubectl autoscale deployment shopcore-api -n shopcore --cpu-percent=50 --min=2 --max=6
+kubectl get hpa -n shopcore -w
+```
+
+Generate load from another terminal: `kubectl run load --image=busybox --restart=Never -n shopcore -- /bin/sh -c "while true; do wget -q -O- http://shopcore-api/health; done"` — watch `REPLICAS` climb. Delete the load pod when done.
+
+**Step 5 — Helm from zero:**
+
+```bash
+helm create shopcore-chart        # scaffolds: Chart.yaml, values.yaml, templates/
+helm template shopcore-chart      # render to plain YAML — read every line; nothing is magic
+helm install shopcore shopcore-chart
+helm list
+helm uninstall shopcore
+```
+
+Your chart's `values.yaml` holds the knobs (`replicaCount`, `image.repository`, `image.tag`); `templates/deployment.yaml` consumes them via `{{ .Values.* }}`. This is the shape of every production chart you will ever read.
+
+**Teardown:** `kubectl delete ns shopcore && kind delete cluster --name shopcore`. Nothing bills; do it anyway — tidy machines are a habit.
+
+## 6. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `kubectl top` errors `Metrics API not available` | metrics-server not ready / missing flag | Wait 60–90s; confirm the `--kubelet-insecure-tls` patch landed in `kubectl -n kube-system get deploy metrics-server -o yaml` |
+| HPA shows `<unknown>/50%` | metrics-server can't scrape kubelets | Same fix as above; check `kubectl -n kube-system logs deploy/metrics-server` |
+| `CrashLoopBackOff` after `kind load docker-image` | Wrong tag or pull policy | `imagePullPolicy: IfNotPresent`; confirm image exists: `docker exec -it shopcore-control-plane crictl images` |
+| Probe always failing, pod never Ready | App listens on 4000 but probe uses wrong port/path | `kubectl describe pod` → probe events; `kubectl logs` |
+| `helm install` hangs on hooks | Chart's pre-install hook job can't run | `helm install --no-hooks` or inspect hook in `templates/` — read before trusting |
+| Ingress has no ADDRESS | cloud-provider-kind not running / node label present | Start the provider; remove `exclude-from-external-load-balancers` label; see its README |
+
+## 7. Practice and Assessment
+
+**Guided.** Complete the lab: build → load → deploy → port-forward → curl `/health` → HPA → `helm install` hello-chart → uninstall.
+
+**Independent.** Break the liveness probe deliberately (point `httpGet.path` at `/doesnotexist`) and observe restart counts climb in `kubectl get pods -w` — then fix it. Break readiness the same way and observe the pod leaving Service endpoints instead of restarting.
+
+**Challenge.** Run cloud-provider-kind, apply the Ingress from §4 against the ShopCore Service, and curl it by its ADDRESS. Document the port mapping on Windows/WSL2 if you go that route.
+
+**Assessment checklist**
+
+- [ ] I can deploy a container, expose it, and explain readiness vs liveness.
+- [ ] I can install metrics-server in kind and demonstrate an HPA reacting to load.
+- [ ] I can explain why ingress-nginx must not be used and name two current alternatives for local and production clusters.
+- [ ] I can scaffold a Helm chart, render it, install and uninstall it.
+
+</BookNodePage>

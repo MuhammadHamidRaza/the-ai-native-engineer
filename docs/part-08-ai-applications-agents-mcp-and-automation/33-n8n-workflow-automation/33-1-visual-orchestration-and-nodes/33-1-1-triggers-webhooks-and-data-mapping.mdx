@@ -1,0 +1,158 @@
+---
+id: "33-1-1-triggers-webhooks-and-data-mapping"
+title: "33.1.1 Triggers, Webhooks and Data Mapping"
+sidebar_label: "33.1.1 Triggers, Webhooks and Data Mapping"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes/33-1-1-triggers-webhooks-and-data-mapping"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33-s1-t1">
+
+This lesson gets n8n running on your machine, teaches the trigger/expression model, and builds the deterministic half of the ShopCore refund-dispute pipeline. Everything here is verified against n8n docs and releases as of **November 2026**.
+
+## 1. What n8n Is and Why It Exists
+
+n8n is a fair-code (Sustainable Use License), source-available workflow automation platform: a visual canvas of **nodes** connected into a **workflow**, self-hostable, with native JavaScript and first-class AI nodes. It solves the integration problem without a per-task pricing tax — you run it, or n8n Cloud hosts it. It is for engineers and technical ops people who want automation they can read, version, back up and debug; it is not a replacement for your service layer, and it is not a Zapier clone with worse marketing.
+
+Version snapshot, verified Nov 2026:
+
+| Line | State | Notes |
+| :-- | :-- | :-- |
+| `2.47.7` (2026-11-13) | current `stable` Docker tag | Recommended for production self-hosting |
+| `1.123.x` | maintenance line for v1 | Still patched; new features land in 2.x/3.x |
+| `3.0` (2026-10-27) | breaking changes | npm installs deprecated from 3.0; Docker is the distribution path; read the migration notes before upgrading |
+
+## 2. Install It and Verify It
+
+**Requirements:** Node.js **20.19 to 24.x** inclusive (for npm installs), or Docker.
+
+```bash
+# Windows (PowerShell) or bash — quickest trial
+npx n8n
+```
+
+Expected output (abbreviated):
+
+```text
+n8n ready on ::, port 5678
+Editor is now accessible via:
+http://localhost:5678
+```
+
+Open `http://localhost:5678` — the editor loads and asks you to create the **owner account** (email + password, stored locally in `~/.n8n` or your container volume). That account *is* the auth layer on a fresh self-hosted instance.
+
+```bash
+# Keep it after the trial: Docker (recommended from n8n 3.0)
+docker run -it --rm --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n docker.n8n.io/n8nio/n8n
+```
+
+One-line server setup (n8n's recommended path from 3.0): `curl -fsSL get.n8n.io | sh` provisions Docker Compose with generated secrets. Note for planning: **npm-based installs are deprecated from n8n 3.0**, so `npx n8n` is a trial tool, not a production strategy. Windows-first users: Docker Desktop with the WSL2 backend is the supported route; native-Node on Windows works for local trials but many community nodes assume a POSIX shell.
+
+Verify: the editor opens at `localhost:5678`, **Settings → Owner account** exists, and **Executions** (left sidebar) is empty. If 5678 is busy: `npx n8n --port=5679` (or `N8N_PORT=5679`).
+
+**Cost cross-check (Nov 2026, verified):** n8n Cloud Starter is €20/mo billed annually (2,500 executions, 5 concurrent, 1 shared project); Pro €50/mo (10,000); Enterprise quote. Self-hosted Community Edition is €0 — you pay the server (roughly a $6–24/mo VPS) plus your time. Business (self-hosted, SSO, Git, environments, queue mode) is €667/mo annual, 40,000 executions. Fair-code = Sustainable Use License + Enterprise License; internal business use is fine, redistributing n8n as a hosted service is not. Re-check n8n.io/pricing before budgeting — n8n repriced mid-2026.
+
+**Exit test:** close the editor, kill the terminal, restart with `npx n8n`, open Executions again — your workflow list persists (SQLite in `~/.n8n/database.sqlite`). If it does not persist, you were in an ephemeral environment and nothing above transfers to production.
+
+## 3. Core Concepts
+
+| Concept | Meaning |
+| :-- | :-- |
+| Workflow | A named, saved graph of nodes; inactive until you toggle **Active** |
+| Node | One step: a trigger, an action, a transform, or a flow-control block |
+| Trigger | The node that starts execution: Webhook, Schedule Trigger, Email Trigger (IMAP), Gmail Trigger, Manual Trigger |
+| Connection | The wire between nodes; passes the item array downstream |
+| Item | One JSON object flowing through the workflow (`{ json: {...} }`) |
+| Expression | Dynamic value syntax: `{{ $json.orderId }}` evaluated at run time |
+
+Expressions are the glue. `{{ $json.orderId }}` reads `orderId` from the *current* item; `{{ $('Email Trigger').item.json.subject }}` reads from an upstream node's output; `{{ $now }}` / `{{ $today }}` give Luxon date helpers (`{{ $now.minus({ days: 7 }).toISODate() }}`).
+
+Two traps that bite every beginner:
+
+1. **`$json` is the current item, not the workflow object.** Inside Loop Over Items it means "this batch's item", which is rarely what you want in the loop body's final aggregation — read earlier nodes by name instead.
+2. **`$('Node Name')` matches the displayed name exactly.** Renaming "Code" to "Extract dispute" silently breaks every `{{ $('Code')... }}` elsewhere. Rename nodes *before* wiring expressions, or update references immediately after.
+
+Test expressions without running the whole workflow: open any parameter with an expression, and use the **expression preview** in the editor — it evaluates against a sample of the last execution's data. Empty preview = empty field, fix now, not in production.
+
+## 4. The Three Trigger Families — and Which to Use When
+
+| Trigger | Fires when | Use for | Watch out for |
+| :-- | :-- | :-- | :-- |
+| **Webhook** | An HTTP POST arrives at n8n's URL | App events (order disputed, refund requested), product integrations, MCP-style callbacks | Needs a public URL (tunnel for local dev: `npx n8n --tunnel`); unauthenticated webhooks are open doors — set header auth/HMAC |
+| **Schedule Trigger** | Cron/interval fires | AR nudges, weekly research briefs, digests | Timezone (`GENERIC_TIMEZONE`, default `America/New_York`); overlapping runs — guard with locking or idempotency |
+| **Email Trigger (IMAP)** / **Gmail Trigger** | New mail lands in a mailbox | ShopCore support inbox, refund disputes | IMAP polling interval vs Gmail push; attachments arrive as binary data |
+
+ShopCore picks **Gmail Trigger** for dispute mail (push-ish latency, OAuth, no polling), **Webhook** for first-class app events, and **Schedule Trigger** for batch jobs.
+
+## 5. Build the Intake Half — Node by Node
+
+Goal: new dispute email → extract fields → classify with a *placeholder* rule-based switch (the LLM arrives in 33.2.1) → post to Slack or log for Linear.
+
+```text
+Gmail Trigger --> Code (extract) --> IF (classify) --> Slack (#support-ops)
+                                        |
+                                        +--> (false) --> NoOp / later: Linear ticket
+```
+
+1. **Gmail Trigger** — *Trigger on:* Message Received; *Label:* `support/disputes`; output items contain `From`, `Subject`, `snippet`, `id`. Create the Gmail credential (OAuth2) via **Credentials → New → Gmail OAuth2** — never paste tokens into the node.
+2. **Code** — mode **Run Once for All Items** or **Run Once for Each Item**; extract order ID and amount:
+
+```javascript
+const body = $input.item.json.snippet || '';
+const order = (body.match(/order\s*#?([A-Z0-9-]{6,})/i) || [])[1] || 'UNKNOWN';
+const amount = (body.match(/\$(\d+(\.\d{2})?)/) || [])[1] || null;
+return { orderId: order, amountClaimed: amount ? Number(amount) : null, raw: body };
+```
+
+3. **IF** — condition: `{{ $json.amountClaimed }}` **is larger than** `250` (dollar disputes always escalate; the rest are candidates for auto-handling). Outputs `true` / `false`.
+4. **Slack** — *Operation:* Send Message; channel `#support-ops`; text:
+
+```text
+:warning: Dispute {{ $json.orderId }} — claimed ${{ $json.amountClaimed }} — escalating to human.
+From: {{ $('Gmail Trigger').item.json.From }}
+```
+
+5. For the `false` branch, drop a **NoOp** now; you will replace it with the Linear/Notion ticket creation in 33.2.1.
+
+Toggle the workflow **Active**. Send yourself a test dispute email. Open **Executions**, click the run, and inspect each node's input/output JSON — this log is your ground truth for every debugging session in the rest of this chapter.
+
+A healthy execution for a dispute like "charged twice for ORD-1141, $319" looks like this, node by node:
+
+```text
+Gmail Trigger   out: { From: "c@example.com", Subject: "double charged", snippet: "…ORD-1141…$319…" }
+Code            out: { orderId: "ORD-1141", amountClaimed: 319, raw: "…" }
+IF              out (true, 319 > 250): item flows to Slack branch
+Slack           out: { ok: true, ts: "1763300000.000100", channel: "C012OPS" }
+```
+
+If IF routes to `false` despite 319 > 250, your `amountClaimed` is a string — wrap the Code extraction in `Number()` (it already is) and confirm the comparison operator is **is larger than** (numeric), not **contains** (string).
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Editor doesn't open at 5678 | Port busy / process died on startup | `npx n8n --port=5679`; read the terminal error — Node version drift is the usual suspect (`node --version`) |
+| Gmail Trigger never fires | Wrong label, or OAuth consent in testing mode | Re-authorize with the label selected; publish the consent screen or add test users |
+| Expression renders empty | Wrong path or item context | Use the expression editor's autocomplete; check `{{ $json }}` preview with **Execute step** |
+| Webhook 404s from outside | n8n local-only | Use `--tunnel` locally; in production, public URL + `WEBHOOK_URL` env var |
+| Works manually, fails on schedule | Timezone / overlap | Set `GENERIC_TIMEZONE`; add idempotency (see 33.2.2) |
+| Credentials rejected | Token expired or wrong scope | Re-create the credential; scopes are per-API — check the node's credential docs |
+
+## 7. Practice
+
+**Guided.** Build the five-node flow above with a test mailbox; verify via Executions that the Code node extracts the order ID from a real email.
+
+**Independent.** Swap Gmail Trigger for a Webhook Trigger: `POST /webhook/dispute` with `{"orderId":"ORD-1141","amount":319.00,"email":"c@example.com"}`. Verify the IF branch fires correctly using `curl -X POST` (Windows: `Invoke-RestMethod`).
+
+**Challenge.** Add a second IF after classification: messages containing "lawyer" or "chargeback" skip straight to the escalation branch regardless of amount.
+
+**Checklist**
+
+- [ ] n8n runs locally (or in Docker) and the owner account is set with a strong password
+- [ ] I can create a Gmail OAuth2 credential without typing any token into a node
+- [ ] I can write `{{ $json.field }}` expressions and read the expression editor preview
+- [ ] I understand webhook vs schedule vs email trigger trade-offs
+- [ ] I can read an execution log and identify which node failed and why
+
+</BookNodePage>

@@ -1,0 +1,43 @@
+---
+id: "index"
+title: "20. Kubernetes, Production Scaling & Multi-Cloud"
+sidebar_label: "20. Kubernetes, Production Scaling & Multi-Cloud"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20">
+
+Docker (Chapter 18) packages your app. Compose wires a stack on one host. Chapter 19 made delivery repeatable. None of that answers the question every growing team meets eventually: **what happens when one host is not enough — or when it dies at 3 a.m.?** Chapter 20 is the answer: orchestration, scaling, observability, recovery and multi-cloud judgment.
+
+**Chapter 20 (`12 Focused Hours`)** has three movements. **20.1** gets you a real (local, free) Kubernetes cluster with kind, and teaches the objects you deploy with Helm. **20.2** covers production reliability: scaling math, zero-downtime releases, monitoring with Prometheus/Grafana, and the backup/incident-response muscle memory that separates professionals from hopefuls. **20.3** teaches multi-cloud thinking with real price tags — and a lab where you deploy the same image to two environments and measure the difference.
+
+## Chapter 20 Structure
+
+- **20.1 Kubernetes & Helm Fundamentals:** Why orchestration exists — declarative reconciliation vs babysitting processes; control plane (API server, etcd, scheduler, controller-manager) vs nodes (kubelet, container runtime); namespaces; Pods, Deployments, Services; ConfigMaps vs Secrets; readiness/liveness probes; HPA; Ingress (including the post–ingress-nginx world); Helm charts, templates and values; a full local lab building and deploying the ShopCore API.
+- **20.2 Production Reliability, Scaling & Observability:** Horizontal scaling math, sticky vs stateless sessions, L4 vs L7 load balancing, connection draining, shared caching and database scaling; rolling/blue-green/canary releases, feature flags (OpenFeature) and expand/contract database migrations; Prometheus scraping, node_exporter and kube-state-metrics installed via Helm (kube-prometheus-stack), Grafana orientation, and the alerts that matter; backups vs disaster recovery, RPO/RTO, credential-leak runbooks, blameless postmortems and incident roles.
+- **20.3 Multi-Cloud Architecture & Cross-Provider Engineering:** Portability taxonomy, a worked egress-cost analysis, a lock-in scorecard, and when multi-cloud is rational vs cargo-cult — ending with a practical lab deploying the same ShopCore image to two environments, verifying both, and tearing everything down.
+
+## What You Will Be Able to Do After This Chapter
+
+- Stand up a local Kubernetes cluster with kind, install kubectl and Helm, and explain every control-plane component you name.
+- Deploy, expose, scale and probe the ShopCore API; roll it forward and back with confidence.
+- Read a load-balancer diagram, a latency graph and a database saturation metric and know which lever to pull.
+- Ship without downtime using rolling deploys, expand/contract migrations and feature flags.
+- Install kube-prometheus-stack in a cluster, open Grafana, and wire one real alert (high error rate) to a route.
+- Write an incident timeline and a blameless postmortem; execute a backup-restore drill for PostgreSQL.
+- Argue multi-cloud with numbers, not slogans — and tear down whatever you create.
+
+## How to Work Through This Chapter
+
+1. **Do 20.1 on your laptop first.** kind is free and runs entirely in Docker containers — you will make every beginner mistake here, where it costs nothing. WSL2 on Windows is the supported path; native PowerShell works for kubectl/kind commands.
+2. **Build the ShopCore API image from Chapter 18 first** (`docker build -t shopcore-api:1.0.0 .`). 20.1.2's lab loads it into kind.
+3. **20.2 is conceptual + tool-guided; 20.3's lab is budgeted.** No cloud resources are required until 20.3.2, and that lab has a mandatory teardown and a documented cost ceiling.
+4. **Set a billing alert before any cloud step.** GKE free tier and EKS pricing are linked in 20.3.2 — read them before you create anything.
+
+Prerequisites: [Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment) (Docker — kind is built on it; you must build the ShopCore image there), [Chapter 19](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac) (cloud accounts and OIDC concepts), and Part 04 (PostgreSQL, ShopCore schema). Linux comfort from Chapter 17 is assumed but not deep.
+
+**Hours honesty:** 12 focused hours covers the labs once through, plus one failure drill (rollback or restore). If you have never seen Kubernetes before, 20.1.1 will take longer than it looks — that is normal; the concepts are load-bearing for everything after.
+
+</BookNodePage>

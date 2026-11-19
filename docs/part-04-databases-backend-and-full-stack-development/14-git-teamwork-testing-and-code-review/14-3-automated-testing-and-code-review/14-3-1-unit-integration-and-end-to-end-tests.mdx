@@ -1,0 +1,113 @@
+---
+id: "14-3-1-unit-integration-and-end-to-end-tests"
+title: "14.3.1 Unit, Integration and End-to-End Tests"
+sidebar_label: "Unit, Integration and End-to-End Tests"
+slug: "/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-3-automated-testing-and-code-review/14-3-1-unit-integration-and-end-to-end-tests"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-14-s3-t1">
+
+Teams fail at testing in two opposite ways: either writing **zero automated tests** and breaking login every Friday, or mocking **every single dependency** so all 200 unit tests pass while the real PostgreSQL query crashes in production. Choosing the right test layer solves both.
+
+## 1. The Practical Testing Pyramid (and Trophy)
+
+| Test Layer | What It Exercises | Speed | Typical Count | Tools (JS/TS & Python) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Static Analysis** | Types, unused imports, syntax, formatting | < 5s | Whole repo | `tsc --noEmit`, ESLint, `mypy`, Ruff |
+| **Unit Tests** | Pure business logic, parsers, validators, state transitions | < 50ms/suite | Many | `node:test`, Vitest, `pytest` |
+| **Integration Tests** | HTTP routes + real DB queries + auth middleware + React components | 100ms–2s | Moderate | `supertest` + Postgres, FastAPI `TestClient`, React Testing Library |
+| **End-to-End (E2E)** | Real headless browser clicking UI -> API -> real DB | Seconds/test | Few critical paths | Playwright |
+
+Notice the rule of thumb: **do not mock what you own unless you must**. Mocking a SQL query hides schema typos, broken `JOIN` conditions, and constraint errors. Prefer testing API handlers against a disposable test database (Docker Postgres or isolated test schema) while mocking **only external third-party networks** (Stripe, SMTP email, LLM APIs).
+
+## 2. Writing High-Signal Tests (AAA Pattern)
+
+Every clear test follows **Arrange -> Act -> Assert**:
+
+### Unit Test Example (Runnable with `node --test`)
+
+```javascript
+// discount.test.mjs
+import test from "node:test";
+import assert from "node:assert/strict";
+
+function calculateDiscountCents(subtotalCents, couponRate) {
+  if (subtotalCents < 0) throw new RangeError("Subtotal cannot be negative");
+  if (couponRate < 0 || couponRate > 0.5) {
+    throw new RangeError("Coupon rate must be between 0 and 0.50");
+  }
+  return Math.round(subtotalCents * couponRate);
+}
+
+test("rounds half-cent discounts predictably and rejects invalid coupons", () => {
+  // Arrange & Act
+  const discount = calculateDiscountCents(1999, 0.15);
+
+  // Assert
+  assert.equal(discount, 300);
+  assert.throws(() => calculateDiscountCents(1000, 0.9), RangeError);
+});
+```
+
+### E2E Smoke Journey with Playwright
+
+Keep E2E suites tightly focused on revenue- and access-critical user journeys (signup/login, creating a core resource, checkout) rather than testing 50 minor CSS states in a browser:
+
+```typescript
+// e2e/shopcore.spec.ts
+import { test, expect } from "@playwright/test";
+
+test("signed-in customer can complete checkout", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("ada@example.com");
+  await page.getByLabel("Password").fill("correct horse battery staple");   // seeded demo password (ada@example.com)
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page.getByRole("heading", { name: "ShopCore" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Add to cart" }).first().click();
+  await page.goto("/cart");
+  await page.getByRole("button", { name: "Checkout" }).click();
+
+  await expect(page.getByText(/order/i)).toBeVisible();
+});
+```
+
+Notice we query elements by **accessible role and label** (`getByRole`, `getByLabel`), never brittle CSS selectors like `.btn-primary-v2 > span`.
+
+## 3. Eliminating Flaky Tests & Enforcing CI Gates
+
+A flaky test (passes locally, fails randomly 10% of the time in CI) destroys team trust faster than having no tests. Eliminate flakiness by:
+
+1. **Never using `sleep(500)`:** Use Playwright auto-waiting assertions (`await expect(...).toBeVisible()`) or deterministic fake timers.
+2. **Isolating test data:** Generate unique emails/IDs per test or wrap each DB integration test in a rolled-back transaction / truncated table hook.
+3. **Never testing against live external URLs** inside unit/CI suites; stub third-party HTTP boundaries with MSW (`msw`), `nock`, or `respx`.
+
+Wire every PR in CI to run the quality gate automatically:
+
+```json
+{
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.js",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
+  }
+}
+```
+
+## Practice Exercises
+
+1. **Boundary Unit Suite:** Write 4 `node:test` cases (valid, empty, boundary max, and invalid input) for a pure `slugifyTitle(input)` function and verify expected failure errors with `assert.throws`.
+2. **Regression First:** Whenever you fix a bug in your project, write a failing test reproducing that exact bug *before* fixing the source code, then watch the test flip from red to green.
+
+## Mastery Checklist
+
+- [ ] Balances fast unit tests, real DB/HTTP integration tests, and targeted Playwright E2E journeys.
+- [ ] Tests real SQL queries and validation schemas rather than mocking internal logic away.
+- [ ] Eliminates flaky tests caused by fixed sleeps, shared mutable state, or live network calls.
+- [ ] Enforces `lint`, `typecheck`, `test`, and `build` as mandatory PR CI checks.
+
+</BookNodePage>

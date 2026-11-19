@@ -1,0 +1,149 @@
+---
+id: "21-2-3-domain-modeling-bounded-contexts-coupling-and-cohesion"
+title: "21.2.3 Domain Modeling: Bounded Contexts, Coupling and Cohesion"
+sidebar_label: "21.2.3 Domain Modeling: Bounded Contexts, Coupling and Cohesion"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-3-domain-modeling-bounded-contexts-coupling-and-cohesion"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s2-t3">
+
+Almost every "impossible" ShopCore bug is a boundary leak wearing a trench coat: support sees an order total that finance swears is wrong; a refund is issued twice; the audit asks who touched card-adjacent data and nobody can say. The code compiled, the tests passed — because the tests never modeled *who owns which fact*. This lesson gives you the vocabulary (entity, value object, aggregate, invariant), the map (the eight ShopCore contexts and their relationships), and the discipline that keeps borders honest under deadline pressure.
+
+## 1. The Four Vocabulary Words
+
+- **Entity** — an object defined by identity, not attributes. `Order #4815` stays order #4815 when its address changes. Table with a key.
+- **Value object** — defined entirely by its values; no identity. `Money(1299, USD)`, `Address(...)`. Two `Money` instances with the same cents are interchangeable. Immutable; compared by value.
+- **Aggregate** — a cluster of entities/value objects with one root; consistency enforced at the root. `Order` is the aggregate root; `OrderItem` and `ShippingAddress` live and die inside it. You never save an `OrderItem` outside its `Order`.
+- **Invariant** — a rule that must always hold for the aggregate: `order.total == sum(items) - discount + tax`, `stock >= 0` (enforced by CHECK, not hope), `refund <= paid`.
+
+If your code can violate an invariant *between* writes, the invariant belongs in the aggregate root, guarded in the same transaction — not in a UI validator nobody else calls.
+
+## 2. The Eight ShopCore Bounded Contexts
+
+| Context | Owns | Never touches |
+| :-- | :-- | :-- |
+| Ordering | carts, orders, order_items, order state machine | raw card data; product pricing rules |
+| Catalog | products, variants, prices, search index | orders, stock *truth* |
+| Inventory | stock counts, reservations, movements | product descriptions, payments |
+| Payments | payment intents, captures, refunds, webhook idempotency | cart contents, shipping |
+| Identity | customers, credentials, sessions, roles | order contents |
+| Support | tickets, macros, read-only order view | direct `orders` table access |
+| Billing | invoices, credits, settlement reconciliation | payment capture logic |
+| Shipping | fulfilment, carrier labels, tracking events | payment authorization |
+
+Each context gets its own schema (or its own tables at minimum), its own language in code reviews, and its own owner if the org has squads. "The orders table" belongs to Ordering — full stop.
+
+## 3. Context Map — Who Eats Whom
+
+```text
+                 +-----------+        customer-supplier        +----------+
+  Identity -----> | Ordering  | <----------------------------  | Payments |
+                 +-----+-----+      (Ordering depends on        +----+-----+
+                     |                Payments: conformist-ish,       |
+       conformist     |                no — actually ACL below)        |
+       (accepts       v                                                v
+       Catalog's  +-----------+                                 +------+------+
+       model)   |  Catalog  |                                 |   Stripe    |
+                 +-----------+                                 | (external)  |
+                                                               +-------------+
+  Ordering --partnership--> Inventory    (jointly evolve stock reservation)
+  Ordering --anti-corruption layer--> Stripe (translate charge -> Payment)
+  Support  --conformist (view)--> ordering events (materialized read model)
+  Billing  --partnership--> Payments (settlement daily, shared reconciler)
+  Shipping --conformist--> Ordering (reads order.fulfilled events)
+```
+
+Relationship patterns to recognize: **Partnership** (succeed/fail together — Billing↔Payments), **Customer–Supplier** (downstream wins negotiation — Catalog for Ordering), **Conformist** (adopt upstream model wholesale — Shipping adopts order status), **Anti-corruption layer (ACL)** (translate, never adopt — Payments vs Stripe).
+
+## 4. The Anti-Corruption Layer, in Code
+
+ShopCore must never let Stripe's shape into its domain model. The ACL is one file:
+
+```ts
+// payments/acl/stripe.ts — the ONLY file allowed to import stripe types
+import Stripe from 'stripe';
+
+export interface PaymentAuthorization {
+  providerRef: string;      // ch_3abc...
+  amountCents: number;      // always integer cents, never float
+  currency: 'usd';          // ShopCore is single-currency today
+  status: 'authorized' | 'captured' | 'failed';
+}
+
+export function toPaymentAuthorization(ch: Stripe.Charge): PaymentAuthorization {
+  return {
+    providerRef: ch.id,
+    amountCents: ch.amount,
+    currency: 'usd',
+    status: ch.status === 'succeeded' ? 'captured'
+          : ch.status === 'pending'   ? 'authorized' : 'failed',
+  };
+}
+```
+
+Everything downstream (ordering, billing, support views) consumes `PaymentAuthorization` — a type that survives a processor swap. If a `Stripe.` prefix appears outside this file in a pull request, the reviewer rejects it.
+
+## 5. Coupling and Cohesion — Measurable, Not Vibes
+
+- **Afferent coupling (Ca):** who depends on me. Ordering has high Ca — many depend on it; that means changes to it are expensive, so it must change rarely and carefully.
+- **Efferent coupling (Ce):** whom I depend on. Ordering → Catalog, Payments, Inventory: Ce = 3 is healthy; Ce = 9 means ordering knows too much about everyone.
+- **Instability** I = Ce/(Ca+Ce): 0 = maximally stable, 1 = maximally unstable. Payments (low I) should not depend on Support (high I) — dependencies point toward stability.
+- **Cohesion:** if you change one table and it forces changes in four contexts, cohesion failed — split the table or the context. In SQL terms: no cross-context foreign keys, ever. Integrity across contexts happens via events and reconcilers, not JOIN constraints.
+
+Rule of thumb for review: "Can this context be *described in one sentence*?" Ordering: "Turns carts into paid, allocated orders." If the sentence needs an "and", split it.
+
+## 6. Keeping the Boundaries Honest
+
+1. **Ownership.** Every table in the ShopCore schema has exactly one owning context, recorded in `docs/ownership.md`. Support's DB role has `SELECT` only on `support_order_view`.
+2. **Shared schema discipline.** Tempting shortcut: `orders JOIN products`. Forbidden. Snapshot the product name/price onto `order_items` at purchase time — denormalization is the *feature* here: an order is a historical fact, immune to catalog edits.
+3. **No cross-team foreign keys.** Cross-context references are application-level IDs + events; referential integrity across contexts is a reconciler's job (nightly job: every `payments.order_id` resolves to an order, alert otherwise).
+4. **Migrations per context.** Ordering ships its migrations; Payments ships its own; nobody runs `ALTER TABLE` on another context's tables in their migration.
+5. **Contract tests** (Pact-style, see 22-2-1) pin the shape each context promises the others.
+
+## 7. The Leakage Case — Support Needs Order History
+
+Naïve move: support queries `orders` directly for the customer on the phone. Within a month support's ad-hoc joins are load-bearing, the schema can't change, and a `SELECT *` from a reporting role dumps PII into a CSV on a laptop. The pattern that scales:
+
+```text
+Ordering emits:  order.paid / order.fulfilled / order.refunded
+                          |
+                          v
+            support-projection worker (idempotent consumer)
+                          |
+                          v
+   support_order_view(order_id, customer_id, status, total_cents,
+                      placed_at, last_event_at)   -- no items, no PII beyond
+                                                  -- what support needs to act
+```
+
+Support gets a fast, purpose-built, PII-minimal read model; Ordering keeps its aggregate clean; the schema can evolve because the view is owned by Support. If the event is dropped, the view lags — which is why the reconciler and the `last_event_at` column exist. Same pattern serves Billing (nightly settlement) and Analytics without touching the write path.
+
+## 8. Troubleshooting
+
+| Symptom | Boundary disease | Fix |
+| :-- | :-- | :-- |
+| Schema change requires 3 teams in one migration | Contexts sharing tables | Split ownership; event hand-offs |
+| `order_items` has NULL product rows after catalog purge | JOIN-live instead of snapshot | Snapshot name/price at purchase |
+| Support tickets leak full address unnecessarily | Direct table access | Materialized minimal view + role perms |
+| Refund applied twice after webhook replay | No invariant at aggregate root | `refund_total <= paid_amount` enforced in aggregate + idempotent webhook |
+| "Quick fix" PR edits orders from Shipping module | Ownership ignored | `docs/ownership.md` + review checklist; CODEOWNERS per context |
+
+## 9. Practice
+
+**Guided exercise.** Take the ShopCore `orders` table from [15.1.2](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-1-foundations-and-data-layer/15-1-2-database-design-and-migrations) and annotate every column with its owning context and its invariant. Which columns are foreign keys that cross contexts, and what replaces them?
+
+**Independent exercise.** Write the ACL for the carrier webhook (Shipping context): carrier status payload → `FulfilmentEvent`, no carrier types beyond the one file. Include the status enum and one mapping test case.
+
+**Challenge.** Design the `support_order_view` projection end-to-end: events consumed, worker idempotency rule, the SQL DDL, the support role's grants, and the reconciliation job's query. Estimate staleness at Black Friday event rates.
+
+**Assessment checklist**
+
+- [ ] I can define entity, value object, aggregate, invariant with ShopCore examples.
+- [ ] I can draw the eight-context map and name each relationship type.
+- [ ] I can write an ACL that isolates a vendor payload from my domain.
+- [ ] I can explain how support gets order history without touching `orders`, and why the naive join fails.
+- [ ] I know the five honesty rules and what enforces each.
+
+</BookNodePage>

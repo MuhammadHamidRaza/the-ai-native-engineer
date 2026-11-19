@@ -1,0 +1,85 @@
+---
+id: "05-2-2-utility-types-and-mapped-types"
+title: "05.2.2 Utility Types and Mapped Types"
+sidebar_label: "05.2.2 Utility Types and Mapped Types"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-2-generics-and-advanced-patterns/05-2-2-utility-types-and-mapped-types"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s2-t2">
+
+In full-stack apps, a single entity like `User` shows up in slightly different forms everywhere: creating a user (no `id` or `createdAt` yet), patching a user (all editable fields optional), or returning a public profile (without `passwordHash`). Duplicating five separate interfaces drifts out of sync fast. TypeScript's built-in **utility types** and **mapped types** derive every variation from **one single source of truth**.
+
+## 1. Essential Built-In Utility Types
+
+Start from one canonical domain type:
+
+```typescript
+export interface UserRecord {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  role: "member" | "admin";
+  createdAt: string;
+}
+
+// 1. Omit<T, K>: strip server-generated or secret fields
+export type PublicUser = Omit<UserRecord, "passwordHash">;
+export type CreateUserInput = Omit<UserRecord, "id" | "passwordHash" | "createdAt"> & {
+  password: string;
+};
+
+// 2. Partial<T> + Pick<T, K>: allow patching ONLY safe editable fields
+export type UpdateUserInput = Partial<Pick<UserRecord, "name" | "email">>;
+
+// 3. Record<K, V>: typed lookup dictionaries keyed by a literal union
+export type RolePermissions = Record<UserRecord["role"], readonly string[]>;
+
+export const PERMISSIONS: RolePermissions = {
+  member: ["tasks:read", "tasks:create"],
+  admin: ["tasks:read", "tasks:create", "users:manage"],
+};
+```
+
+Other high-value built-ins:
+- **`Required<T>`:** Opposite of `Partial`—makes every optional property mandatory.
+- **`Readonly<T>`:** Marks top-level properties readonly.
+- **`ReturnType<typeof fn>` / `Awaited<ReturnType<typeof asyncFn>>`:** Extracts return types from existing helper functions without redeclaring interfaces.
+
+## 2. How Mapped Types Work Under the Hood
+
+Every utility type above (`Partial`, `Required`, `Readonly`, `Pick`) is actually a tiny **mapped type** iterating over `keyof T`:
+
+```typescript
+// Conceptually how TypeScript defines Partial<T> and Nullable<T>
+type MyPartial<T> = {
+  [K in keyof T]?: T[K];
+};
+
+type Nullable<T> = {
+  [K in keyof T]: T[K] | null;
+};
+
+type FormDraft = Nullable<Pick<UserRecord, "name" | "email">>;
+// Equivalent to: { name: string | null; email: string | null }
+```
+
+## 3. Common Mistakes
+
+- **Using `Omit<T, "nonExistent">` blindly:** `Omit` does not warn if you misspell a property key in the second argument (unlike `Pick`, which enforces `K extends keyof T`).
+- **Using `Partial<User>` on updates when `id` or `role` shouldn't be client-editable:** Always combine `Partial<Pick<User, "allowedField1" | "allowedField2">>` so attackers can't patch `role: "admin"` even at the type layer (`Part 04` also validates this at runtime!).
+
+## 4. Practice Exercises
+
+1. Define a `Task` interface (`id`, `title`, `completed`, `assigneeId`, `createdAt`) and derive `CreateTaskDto`, `UpdateTaskDto` (only `title` and `completed` optional), and `TaskSummary` (only `id`, `title`, `completed`) using `Omit`, `Pick`, and `Partial`.
+2. Create a `Record<"low" | "medium" | "high", number>` priority weight map and verify TypeScript errors if `"high"` is omitted.
+
+## Mastery Checklist
+
+- [ ] Derives DTOs from one core model with `Pick`, `Omit`, and `Partial`.
+- [ ] Uses `Record<UnionKey, Value>` to enforce exhaustive dictionary keys.
+- [ ] Understands `[K in keyof T]` mapped-type syntax.
+
+</BookNodePage>

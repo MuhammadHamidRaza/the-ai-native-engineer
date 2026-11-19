@@ -1,0 +1,48 @@
+---
+id: "index"
+title: "33.1 Visual Orchestration & Nodes"
+sidebar_label: "33.1 Visual Orchestration & Nodes"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33-s1">
+
+Before you automate anything with AI, you need the mechanical layer to be solid: how a workflow wakes up, how data moves between nodes, and how flow is controlled. Everything in 33.2 (LLM nodes, error workflows) assumes the mental model built here — a trigger fires, items flow through nodes, expressions map fields between them, and flow control decides what runs next.
+
+## The Node Mental Model
+
+n8n is a directed graph you draw on a canvas:
+
+```text
+ trigger            transform                 branch         action
+┌──────────┐   ┌───────────────┐   ┌──────────────┐   ┌─────────────┐
+│ Trigger  │-->│ Code / LLM /  │-->│  IF / Switch  │-->│ Slack /     │
+│ (email,  │   │ HTTP Request  │   │               │   │ Linear /    │
+│ webhook, │   │               │   │   true / false│   │ Postgres    │
+│ schedule)│   │               │   │               │   │             │
+└──────────┘   └───────────────┘   └──────────────┘   └─────────────┘
+```
+
+Every node receives **items** (arrays of JSON objects) and emits items. A trigger node is simply a node that starts the flow when something happens. Connections pass the item array along; most nodes process every item independently, and flow-control nodes decide which branch(es) items take.
+
+## The Two Topics in This Section
+
+- **[33.1.1 Triggers, Webhooks and Data Mapping](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes/33-1-1-triggers-webhooks-and-data-mapping)** — install n8n and verify it, the workflow/node/trigger/expression model, trigger types compared (webhook vs email vs schedule), the `{{ $json.field }}` expression syntax, and the ShopCore refund-dispute intake pipeline drawn node-by-node.
+- **[33.1.2 Branching, Batching and Custom Code Nodes](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-1-visual-orchestration-and-nodes/33-1-2-branching-batching-and-custom-code-nodes)** — IF/Switch for classification output, Split In Batches (Labelled "Loop Over Items" in current releases) for bulk work, the JavaScript Code node for the 10% visual tools cannot express, and where code should and should not live.
+
+## Why This Section Comes First
+
+LLM nodes are just nodes: they consume items, emit items, and fail like any other node. If you cannot debug a webhook payload mapping or a condition on malformed JSON, an AI step will fail silently in ways you will not understand. Prove the plumbing on a deterministic workflow first — ShopCore's intake pipeline with a hard-coded classifier — then swap the hard-coded step for a model in 33.2.
+
+## Section Exit Criteria
+
+- You can install n8n locally, create the owner account, and read the execution log.
+- You can wire Gmail/webhook → parse → IF → Slack or Linear with correct expressions, no guessing.
+- You can explain when to use the Code node instead of another visual node.
+- You know where credentials live (the n8n credential store) and that nothing secret is typed into a node parameter.
+
+Prerequisites: Node.js 20.19–24.x or Docker on your machine (for 33.1.1), and the Part 04/05 foundations. Facts verified against n8n docs and releases, November 2026.
+
+</BookNodePage>

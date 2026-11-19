@@ -1,0 +1,127 @@
+---
+id: "21-4-2-timeouts-retries-circuit-breakers-queues-and-backpressure"
+title: "21.4.2 Timeouts, Retries, Circuit Breakers, Queues and Backpressure"
+sidebar_label: "21.4.2 Timeouts, Retries, Circuit Breakers, Queues and Backpressure"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-4-distributed-systems-resilience/21-4-2-timeouts-retries-circuit-breakers-queues-and-backpressure"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s4-t2">
+
+The 3 a.m. page is never "a server died". It is "one dependency slowed down, every caller waited on it, retries amplified it, the pool drained, and everything — including healthy paths — timed out". This lesson is the full defensive toolkit: timeouts sized from p99, retry budgets with jitter, circuit breakers, bulkheads, bounded queues with load shedding, the degradation ladder, the tooling that ships these today, and a tabletop drill to rehearse the whole story before it happens live on you.
+
+## 1. Timeouts — From p99, Never From Vibes
+
+Every network call has two numbers: what you expect (p99) and what you will tolerate (p99 + margin). ShopCore baseline budget for checkout:
+
+| Call | p99 observed | Timeout | Why this margin |
+| :-- | --: | --: | :-- |
+| PG query (checkout tx) | 40 ms | 500 ms | 10× headroom — a hung lock should fail fast, kill retry storm |
+| Redis (cache GET) | 2 ms | 100 ms | Cache miss is cheap; waiting is not |
+| Stripe charge | 900 ms | 2500 ms | Provider p99 plus jitter; never > 5 s on a user path |
+| Stripe webhook verify | n/a (inbound) | 5 s hard limit | Stripe requires fast ack; queue the work |
+| Courier API (async) | 1.2 s | 10 s | Non-user-facing; retried by worker |
+
+Rules: (1) default timeouts in client SDKs are **wrong** (often none or 60 s — both fatal); (2) set at all three layers (client, load balancer, server) and make the client the tightest; (3) a call with no timeout is an unbounded queue — the OS will not save you.
+
+## 2. Retries — Budgets, Backoff, Jitter, and What Not to Retry
+
+Retry only: timeouts and 5xx (or unknown), only for idempotent operations (GET, PUT, DELETE) or POSTs carrying an `Idempotency-Key` (21.3.2). Never retry 4xx (your fault) or `POST /orders` without a key.
+
+**Budget:** retries must not exceed 10% of total traffic. **Backoff with jitter:**
+
+```text
+delay = min(cap, base * 2^attempt) * random(0.5, 1.5)
+base = 100 ms, cap = 2 s, attempts = 2 (3 total tries max)
+```
+
+Full jitter (random 0–delay) prevents synchronized retry waves; decorrelated jitter does the same with better spread. Without jitter, your entire fleet retries at t=100ms exactly — a self-inflicted spike.
+
+**Circuit breaker** (closed → open → half-open) wraps every dependency:
+
+```text
+              error rate >= 50% over 20 requests
+   +--------+    or timeouts dominate      +------+
+   | CLOSED | ---------------------------> | OPEN |
+   +--------+                              +------+
+      ^                                           |
+      | success streak (3 probes OK)              | cooldown 30 s
+      |                                           v
+   +--------+                              +-------------+
+   | CLOSED | <---------------------------  | HALF-OPEN  |
+   +--------+      probe fails -> OPEN      +-------------+
+                                       one request allowed through
+```
+
+While OPEN: fail fast with the degraded response (Section 6). Half-open admits exactly one probe; success closes, failure re-opens with a longer cooldown. Tools: resilience4j (JVM), Polly (.NET), `cockatiel` or `opossum` (Node), Envoy outlier detection at the proxy layer, AWS SDK v3 built-in retries (always override the mode to `adaptive` or set budgets explicitly).
+
+## 3. Bulkheads — Contain the Blast Radius
+
+Isolate resource pools per dependency so one exhaustion doesn't sink everything: separate HTTP connection pools for Stripe vs courier vs webhooks; separate PG pools for checkout vs analytics; separate worker concurrency limits (email workers may saturate without touching payment verification workers). A bulkhead converts "the site is down" into "order confirmation emails are 5 minutes late".
+
+## 4. Queues and Backpressure — Bounded or Dead
+
+Unbounded queues are memory leaks with a polite name. Every queue in ShopCore is bounded: BullMQ concurrency caps; Postgres `outbox` table with an archival watermark; Redis list-based buffers capped at e.g. 5,000 entries. When full: **shed**, don't block — return `503` + `Retry-After` for synchronous sheds; drop lowest-priority telemetry first (analytics beacons), never drop money-path work; prefer dropping new work over timing out older work (oldest orders have paid customers on the phone).
+
+Backpressure signals flow upward: consumer lag → producer slow-down (HTTP 429 with `Retry-After`) → clients with jitter backoff. If you cannot shed, you cannot survive.
+
+## 5. The Degradation Ladder
+
+| Rung | State | User experience |
+| :-- | :-- | :-- |
+| 0 | All green | Full checkout |
+| 1 | Redis down | Slower catalog (PG fallback), rate limits disabled for reads, fail-closed on payments |
+| 2 | Stripe slow (breaker open) | Catalog browsable; checkout shows "payment unavailable, try again in a few minutes"; cart preserved |
+| 3 | PG read replica lag | Stale order history with a "verifying…" banner; writes still consistent |
+| 4 | Neon primary impaired | Maintenance page with status link; orders paused; no false charges (SLO forces C over A here) |
+
+Each rung is a pre-built, flag-controlled mode — not improvised under fire. Rung 2 is drilled in Section 7.
+
+## 6. Tooling Map (as of Nov 2026)
+
+- **In-app:** Node — `cockatiel` (retry/timeout/breaker/bulkhead), `opossum` (breaker); .NET — Polly; JVM — resilience4j.
+- **Proxy/mesh:** Envoy (outlier ejection, retries with budgets), NGINX (`proxy_next_upstream`, careful — it retries idempotent requests by default), cloud load balancers with health checks.
+- **Platform:** AWS SDK adaptive retry mode, Kubernetes liveness/readiness probes (readiness gates traffic, liveness restarts), [20.2.3 Prometheus/Grafana](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-3-monitoring-logs-and-alerts-with-prometheus-and-grafana) for SLO burn alerts.
+- **Verification:** chaos tooling (k6 for load; Stripe's test-mode failure injection: `stripe trigger payment_intent.payment_failed`).
+
+## 7. Tabletop Drill — "Stripe Is Slow at 14:02"
+
+Fifteen minutes, no laptops, whiteboard only. Scenario: checkout p99 900 ms → 6 s since 13:58; Stripe status page shows degraded API; error budget 60% consumed this month.
+
+1. **(0–2 min) Declare & freeze.** Declare incident, severity 2, incident commander named; deploy freeze announced.
+2. **(2–4 min) Confirm scope.** Breaker state for `stripe` (open), retry rate (throttled by budget — good), DB pool (healthy), queue depth (email backed up 4 min, fine).
+3. **(4–6 min) Contain.** Flip rung-2 flag (reads cached; new checkouts get the honest "payments paused" page; in-flight payments continue with their timeouts).
+4. **(6–9 min) Communicate.** Status page update; support macro with the exact wording; finance notified (no charges in this mode; no refund exposure beyond in-flight).
+5. **(9–12 min) Recover.** Stripe status green → half-open probes pass → close breaker → 1% checkout canary → 25% → 100%. Verify no duplicate captures via reconciliation report.
+6. **(12–15 min) Capture.** Timeline of decisions; two action items (raise timeout? add Stripe-fallback provider — no, ADR discussion); blameless review scheduled (see 22-3-2's postmortem template).
+
+If your drill ends with "we'd just restart the pods", repeat the drill until it doesn't.
+
+## 8. Troubleshooting
+
+| Symptom | Failure mode | Fix |
+| :-- | :-- | :-- |
+| Timeouts cascade A→B→DB | No bulkhead, shared pool | Separate pools per dependency; per-call timeouts |
+| Retry storms after provider blip | No budget/jitter | Section 2 values; alarm on retry-rate ratio |
+| Breaker never opens | Threshold too lenient (min 20 requests) | Keep minimum-request floor; alert on error ratio not count |
+| Checkout hangs, no 500 | Missing server timeout | Node `server.timeout = 10 s`; LB idle timeout below upstream |
+| Everything times out under normal load | p99 estimated, never measured | Measure weekly; budgets in repo docs |
+
+## 9. Practice
+
+**Guided exercise.** Add `cockatiel` to the ShopCore repo: wrap the Stripe call in timeout(2500) + retry(2, jitter) + breaker(50%/20/30 s). Kill Stripe with `toxiproxy` (or a proxy you control) and observe open→half-open→closed in the logs.
+
+**Independent exercise.** Replace every `fetch(` in `src/` missing an explicit timeout with your configured client. Count how many call sites you fixed — it will be more than three.
+
+**Challenge.** Run the Section 7 drill with three teammates. Rotate the incident commander. Write the 1-page postmortem against the 22-3-2 template and present it at Friday review.
+
+**Assessment checklist**
+
+- [ ] I can derive timeouts from p99 for every network call in checkout.
+- [ ] I can recite the retry budget, backoff formula with jitter, and the never-retry list.
+- [ ] I can draw the breaker state machine and explain half-open probing.
+- [ ] I can name the five-rung degradation ladder for ShopCore in order.
+- [ ] I have run the 15-minute tabletop drill and know my role in it.
+
+</BookNodePage>

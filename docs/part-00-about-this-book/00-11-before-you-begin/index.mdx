@@ -1,0 +1,113 @@
+---
+id: "index"
+title: "00.11 Before You Begin"
+sidebar_label: "00.11 Before You Begin"
+slug: "/part-00-about-this-book/00-11-before-you-begin"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="sec-00-11">
+
+Intentional preparation removes months of invisible friction before you write your first serious line of curriculum code. Most learners who abandon an ambitious 638-hour engineering curriculum do **not** quit because binary numbers, TypeScript types, SQL joins, or agent guardrails proved intellectually impossible. They stall because of avoidable operational drag: misconfigured development environments that eat entire weekend sessions, inconsistent study calendars that shatter during busy work weeks, invisible progress tracking that drains motivation around month three, and unrealistic expectations about how normal struggle feels when mastering hard skills.
+
+**Section 00.11 — Before You Begin** serves as your **pre-flight engineering readiness gate** immediately before crossing from **Part 00 (About This Book)** into **Part 01 (Foundations)**. Treat these six guides as an actionable setup sprint rather than casual reading. An hour invested here saves dozens of hours of environment debugging and schedule drift across Chapters 01 through 42.
+
+## 1. The Six Pre-Flight Readiness Gates
+
+You are ready to launch **Chapter 01** smoothly once you pass all six checkpoints in sequence:
+
+```text
+[Gate 1: 00.11.1 Hardware & OS Audit]
+    --> Verify 64-bit OS, CPU, 8–16+ GB RAM reality & SSD headroom (no hype upgrades)
+[Gate 2: 00.11.2 Clean Toolchain Setup]
+    --> Install & verify Git, Node.js LTS, Python 3.13+, VS Code, shell & .gitignore
+[Gate 3: 00.11.3 Honest Learning Expectations]
+    --> Replace overnight myths with clear mental calibration around bugs & plateaus
+[Gate 4: 00.11.4 Weekly Time Architecture]
+    --> Protect recurring 90-minute focus blocks mapped cleanly to your 638h budget
+[Gate 5: 00.11.5 Tracking Your Progress]
+    --> Launch Git commit habit, PROGRESS.md ledger & weekly mastery self-checks
+[Gate 6: 00.11.6 Starting Your Journey]
+    --> Run 5-minute workspace smoke test --> Open Part 01 / Chapter 01
+```
+
+## 2. Quick Map of Topics in Section 00.11
+
+| Step & Page | Concrete Problem It Solves | Deliverable Locked In Before Part 01 |
+| :--- | :--- | :--- |
+| **`00.11.1` Computer and System Requirements** | Confusion over whether you need flagship laptops/GPUs vs. what modern web, Docker, and API AI dev actually requires | Evidence-based audit of your CPU, RAM (`4–64 GB` reality), NVMe/SSD headroom, and Windows/macOS/Linux choices |
+| **`00.11.2` Setting Up Your Development Environment** | Broken `PATH` variables, Node/Python version conflicts, messy Windows vs. WSL permissions, and leaked secrets | Working terminal (`WSL 2 Ubuntu`, macOS zsh, or Ubuntu bash), Git 2.x, Node 26/24 LTS, Python 3.14/3.15 `venv`, VS Code, and `.gitignore` |
+| **`00.11.3` Understanding the Learning Expectations** | Burnout from expecting effortless progress or thinking real engineers never struggle with cryptic errors | Realistic expectations around reading stack traces, hitting syntax plateaus, and earning confidence through builds |
+| **`00.11.4` Managing Your Learning Time** | Starting intensely at 30h in week one and quitting completely by week four | Protected 90-minute focus blocks (`10h`, `15h`, or `20+h/week`) plus recovery rules for missed weeks |
+| **`00.11.5` Tracking Your Progress** | Feeling busy for months without measurable proof of completed skills or working code | Combined platform completion tracking + `PROGRESS.md` commit ledger + chapter capability checkouts |
+| **`00.11.6` Starting Your Journey** | Endless preparation procrastination—tinkering with editor themes instead of starting Chapter 01 | Executed workspace smoke test and immediate launch into **01.1.1 What Is a Computer?** |
+
+## 3. Why Setup Hygiene Matters Across Every Later Part
+
+Notice how small day-one setup choices ripple across the entire curriculum:
+- **On Windows 11:** Installing Node.js, Python, and Docker directly against **WSL 2 (Windows Subsystem for Linux)** rather than mixing half your tools in Windows PowerShell and half inside Linux avoids line-ending mismatches, file-watcher slowdowns, and path bugs in **Part 04 (`PostgreSQL`)** and **Part 05 (`Linux & Docker`)**.
+- **Across all operating systems:** Keeping a single predictable workspace folder (such as `~/dev/ai-native-engineer/`) with a clean global `.gitignore` protects you from accidentally committing `.env` API secrets (`Ch 15, 22`) or huge `node_modules/` and `.venv/` directories (`Ch 03.2`).
+- **Managing Python & Node isolation cleanly:** Using `venv` (or `uv`) per Python project (`Ch 09–10`) and LTS Node.js (`Node 26 Active LTS` or `Node 24 Maintenance LTS` via `nvm`/`fnm`) prevents *"worked yesterday, broke globally today"* dependency collisions.
+
+## 4. Choosing Your Operating System Workflow Cleanly
+
+Every chapter in this curriculum supports all three major desktop platforms natively—provided you keep your execution environment consistent:
+
+| Operating System | Recommended Shell & Runtime Environment | Key Day-One Guardrail Covered in `00.11.2` |
+| :--- | :--- | :--- |
+| **Windows 11** | **Windows Terminal + WSL 2 (`Ubuntu 24.04/26.04 LTS`)** paired with VS Code Remote-WSL | Store repositories inside the Linux filesystem (`/home/<user>/dev/...`), **not** `/mnt/c/...`, to prevent slow file I/O and permission bugs (`Ch 03, 18`). |
+| **macOS (Apple Silicon / Intel)** | **macOS Terminal / iTerm2 (`zsh`) + Homebrew** + VS Code + Docker Desktop / OrbStack | Check `arm64` vs `amd64` container platform awareness when building images later in **Part 05 (`Ch 18`)**. |
+| **Ubuntu / Debian Linux** | **Native `bash`/`zsh` + `apt` + native Docker Engine** + VS Code | Fastest native container I/O and lightest RAM footprint (`00.11.1`)—no desktop virtualization VM required for Docker Engine. |
+
+Pairing that clean OS environment with a realistic weekly time plan (`10–15h/week` sustained beats `30h` week-one sprint burnout) ensures you finish **Part 01 (`26 hours`)** steadily within two to three weeks and maintain momentum straight into full-stack development.
+
+## 5. Common Pre-Flight Mistakes That Delay Learners by Months
+
+1. **"Tool-tuning procrastination":** Spending two weeks customizing Neovim plugins, terminal fonts, Zsh themes, and ten VS Code extensions before writing a single exercise. Follow **`00.11.2`** cleanly, use sane defaults, and defer customization until **Part 02** or later.
+2. **Buying unnecessary hardware upfront:** Upgrading to a flagship workstation before verifying whether your current 8 GB or 16 GB laptop runs **Parts 01–04** smoothly wastes money—especially since cloud AI APIs (`Parts 07–08`) do not run on your local GPU (`00.11.1`).
+3. **Committing to unsustainable heroic study schedules:** Declaring *"I will study 5 hours every night after a full-time job"* fails within ten days. Two deeply focused 90-minute blocks plus one longer weekend build session beat sporadic marathon crashes every single time (`00.11.4`).
+
+## 6. Separating Your Study Workspace From Experimental Clutter
+
+Before writing code in Chapter 01, adopt clean folder hygiene so files never tangle across projects:
+- **Dedicate one clean parent directory:** Keep `~/code/ai-native-engineer/` structured sequentially (`part-01-foundations/`, `part-02-frontend/`, `part-04-postgres-api/`, etc.) paired with your `PROGRESS.md` ledger (`00.11.5`).
+- **Keep throwaway spikes in `/tmp` or a `sandbox/` folder:** Never leave half-broken experiments scattered inside production milestone repositories.
+- **Maintain isolated virtual environments & clean Git histories:** Every Python project uses its own `.venv/` and every Node project manages its own `package-lock.json` (`00.11.2`). When stepping into Chapter 03, that clean baseline makes `git status` and CI automation effortless to interpret.
+
+## 7. Pre-Flight Baseline Check (5 Minutes)
+
+Before opening **`00.11.1`**, record four baseline facts about your starting setup right now:
+1. **Your machine & OS:** Exact OS version (`Windows 11`, `macOS ...`, `Ubuntu 24.04/26.04 LTS`), RAM size, and free SSD space.
+2. **Existing dev tools:** Run `git --version`, `node -v`, and `python3 --version` (or `python --version`) in your current terminal just to see what is already installed—even if all three fail right now!
+3. **Current distraction blockers:** Identify the top two notifications or browser tabs that break deep focus during 90-minute sessions and decide how you will silence them before study blocks begin (`00.11.4`).
+4. **Target start date for Chapter 01:** Write down the exact date and time block (`e.g., Monday 7:00 PM`) when your setup sprint finishes and **Part 01** begins.
+
+Once you complete **`00.11.1`** through **`00.11.5`**, your terminal should execute a clean baseline verification snapshot with zero missing runtimes:
+
+```bash
+# Quick Pre-Flight Readiness Verification (macOS / Linux / WSL 2 Ubuntu)
+mkdir -p ~/code/ai-native-engineer
+cd ~/code/ai-native-engineer
+git --version && node -v && npm -v && python3 --version
+ls -la
+```
+
+Do not chase extra plugins, experimental beta runtimes, or dual-boot configurations if those four commands resolve cleanly inside your POSIX workspace folder—clean simplicity beats fragile complexity across every single week ahead.
+
+## 8. Financial & Scope Sanity Check Before Chapter 01
+
+You do **not** need paid API subscriptions, paid cloud servers, custom domains, or paid AI IDE tiers to work smoothly through **Part 01 (`26 hours`)**, **Part 02 (`92 hours`)**, **Part 03 (`40 hours`)**, or **Part 04 (`124 hours`)**. Everything across those first `250 hours` executes completely locally on your own workstation (`00.9.9`–`00.9.10`) with zero external bills. When you reach **Parts 05, 07, and 08**, follow `00.9.10` strictly so hard spend caps, billing alerts, and response caching protect your budget automatically.
+
+## 9. Key Takeaways
+
+- **Clean setup is leverage:** Passing all six readiness gates (`00.11.1`–`00.11.6`) removes technical and scheduling friction across the next 638 hours.
+- **Do not over-invest in hardware or editor aesthetics upfront:** Follow the verified OS and toolchain steps in `00.11.1`–`00.11.2` and move briskly toward building.
+- **Once `00.11.6`'s smoke test passes, stop preparing and start Chapter 01.**
+
+## 10. Further Reading & Official Setup Anchors
+
+- **Official OS & Runtime Documentation:** [Microsoft WSL 2 Installation Guide](https://learn.microsoft.com/en-us/windows/wsl/install), [Ubuntu Desktop & LTS Release Cycle](https://ubuntu.com/about/release-cycle), [Node.js Releases](https://nodejs.org/en/about/previous-releases), [Python 3 Documentation](https://docs.python.org/3/), [Git Documentation](https://git-scm.com/doc), [Visual Studio Code Setup](https://code.visualstudio.com/docs/setup/setup-overview), and [Docker Desktop Install Guides](https://docs.docker.com/desktop/).
+- **Direct Launch Target:** [Part 01 — Foundations](/book/part-01-foundations).
+
+</BookNodePage>

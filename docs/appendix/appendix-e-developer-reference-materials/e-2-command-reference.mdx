@@ -1,0 +1,98 @@
+---
+id: "e-2-command-reference"
+title: "E.2 Command Reference"
+sidebar_label: "E.2 Command Reference"
+slug: "/appendix/appendix-e-developer-reference-materials/e-2-command-reference"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-e-2">
+
+**Purpose:** The 46 commands you'll type every day — organized by layer. Know these cold; everything else is documentation lookup.
+
+## Git (10 commands)
+
+```bash
+git status                  # what changed
+git add -p                  # stage interactively — review every hunk
+git commit -m "message"     # small, atomic commits
+git push                    # push branch
+git pull --rebase           # rebase on latest main
+git log --oneline --graph   # see branch structure
+git diff                    # review before commit
+git stash                   # temporarily shelve changes
+git branch -d branch-name   # delete merged branch
+git checkout -b feature-x   # new feature branch
+```
+
+## Node.js / npm (8 commands)
+
+```bash
+npm ci                      # install from lockfile — reproducible
+npm run dev                 # dev server with hot reload
+npm test                    # run test suite
+npm run build               # production build
+npx tsc --noEmit            # type check without emitting
+npx eslint src              # lint
+node --inspect app.js       # debug with Chrome DevTools
+npm audit                   # security scan — run weekly
+```
+
+## PostgreSQL (8 commands)
+
+```bash
+psql -U postgres -d dbname              # connect
+\dt                                      # list tables
+\d table_name                            # describe table
+EXPLAIN ANALYZE SELECT ...               # query plan — but it EXECUTES the statement;
+                                         # never run on writes (INSERT/UPDATE/DELETE)
+CREATE INDEX idx ON table (col);         # add index
+SELECT * FROM table LIMIT 10;            # sample data
+VACUUM ANALYZE;                          # reclaim + update stats
+SELECT pg_size_pretty(pg_total_relation_size('table'));  # table size
+```
+
+## Docker (8 commands)
+
+```bash
+docker build -t app:latest .            # build image
+docker run -p 3000:3000 app:latest      # run container
+docker ps                               # list running containers
+docker logs container-id                # logs
+docker exec -it container-id sh         # shell into container
+docker compose up -d                    # start stack (detached)
+docker compose logs -f                  # follow logs
+docker compose down                     # stop and remove
+```
+
+## Linux Shell (8 commands)
+
+```bash
+ps aux | grep node                      # find processes
+top                                     # real-time process viewer
+tail -f log.txt                         # follow log
+grep -r "TODO" src/                     # search codebase
+find . -name "*.log" -size +100M        # find large files
+chmod +x script.sh                      # make executable
+curl -I https://example.com             # HTTP headers only
+nvidia-smi                              # GPU status (if applicable)
+```
+
+## Cloud / Deployment (4 commands)
+
+```bash
+vercel                                      # deploy to Vercel (Next.js/Node)
+railway up                                  # deploy to Railway
+flyctl deploy                               # deploy to Fly.io
+gh run list                                 # list GitHub Actions runs
+```
+
+## When You Forget
+
+1. `man <command>` — built-in manual
+2. `<command> --help` — quick usage
+3. Read the destructive command before running it — `--dry-run` is NOT universally available (it does not exist for `rm`, `dd`, `mkfs`, `DROP TABLE`); check for a plan/explain mode instead, or test in a scratch VM first
+4. Google: `site:docs.example.com <command>` — official docs beat Stack Overflow
+
+</BookNodePage>

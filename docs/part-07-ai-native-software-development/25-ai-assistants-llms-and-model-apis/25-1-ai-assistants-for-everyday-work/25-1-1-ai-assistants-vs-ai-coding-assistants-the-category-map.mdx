@@ -1,0 +1,131 @@
+---
+id: "25-1-1-ai-assistants-vs-ai-coding-assistants-the-category-map"
+title: "25.1.1 The Category Map: Conversational Assistants vs AI Coding Assistants"
+sidebar_label: "25.1.1 The Category Map: Conversational Assistants vs AI Coding Assistants"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-1-ai-assistants-for-everyday-work/25-1-1-ai-assistants-vs-ai-coding-assistants-the-category-map"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s1-t1">
+
+Walk into any office in 2026 and you will find two completely different kinds of AI tool in active use. People conflate them constantly — and pay for the confusion in blown deadlines and quietly bad decisions. This lesson draws the line precisely, then drills the failure modes of stepping over it.
+
+## 1. The Two Swimlanes
+
+**Swimlane A — Conversational (general-purpose) assistants.** ChatGPT (OpenAI), Claude (Anthropic), Gemini (Google), Perplexity, Grok (xAI), DeepSeek, Mistral's assistant (renamed Le Chat → Vibe in May 2026), and Microsoft's Copilot experiences. You talk to them; they talk back. They read and write text, some read images and files, some browse the web, some run small pieces of code in a sandbox. Their unit of work is the **conversation**.
+
+**Swimlane B — AI coding assistants.** Claude Code (Anthropic), OpenAI Codex CLI, Cursor, GitHub Copilot, Windsurf, Gemini CLI. These live in your terminal, editor or IDE. Their unit of work is the **change**: a diff to a repository, executed and iterated on against tests. They read files, edit them, run commands, read the errors, and loop.
+
+| | Swimlane A: Conversational assistants | Swimlane B: AI coding assistants |
+| :-- | :-- | :-- |
+| Primary surface | Chat window (web, app, mobile) | Terminal / editor / IDE / repo-aware agent |
+| Unit of work | A message or document | A multi-file code change, verified by tools |
+| Sees your code? | Only what you paste/upload | The actual repo: files, tests, history, errors |
+| Can act on your machine? | Generally no (sandboxed, if at all) | Yes — that is the point, and the risk |
+| Best at | Drafting, summarizing, explaining, analyzing, researching, translating | Implementing, refactoring, debugging, test-writing, repo-wide edits |
+| Typical meter | Per message / subscription | Per token or per premium request; subscriptions meter usage |
+| Needs verification | Every factual claim | Every diff (tests pass ≠ correct) |
+
+Both lanes now run on the same underlying models. The difference is the **harness**: what the tool can see, what it can do, and what happens when it is wrong. A conversational assistant that is wrong wastes a sentence; a coding agent with write access that is wrong can break a build — or worse, silently weaken a test to make it pass.
+
+## 2. What Each Is Genuinely Good At Today
+
+Conversational assistants, right now: first drafts of prose, restructuring an argument, summarizing long text, explaining unfamiliar material, brainstorming, light data analysis from pasted tables, multilingual translation, and — with web search or deep-research modes — source-grounded research. They are also extremely good at *explaining* code you paste.
+
+AI coding assistants, right now: implementing well-scoped changes in an existing codebase, generating boilerplate, writing tests for existing functions, mechanical refactors, migrations, and answering "why is this failing?" with your actual stack trace in front of them. They are not, reliably, architects — see §4.
+
+## 3. Worked Example — Same Task, Two Tools, Two Outcomes
+
+Task: *"Add a `/health` endpoint to our Express API that returns uptime and version."*
+
+**Swimlane A approach (paste into ChatGPT/Claude/Gemini):** You get correct, plausible code back in ten seconds — for a generic Express app. You then hand-copy it into your repo, adapt imports and middleware conventions yourself, and hope. Nothing was read from disk; nothing was run. Fine for a snippet; wrong tool for a 12-file repo with auth middleware and a test harness.
+
+**Swimlane B approach (in the repo, e.g. Claude Code or Codex CLI):**
+
+```text
+You: Add a /health endpoint to this Express API that returns
+     { status, version, uptime }. Match existing route style.
+     Add a test. Run the test suite when done.
+```
+
+The agent reads `package.json`, finds the router layout, adds the route consistent with your conventions, writes a test, runs it, shows you the diff, and — when the run fails on a missing import — fixes it. You review the diff, not retype it. Total wall time is comparable; the difference is that the code **fits your repo** and was **executed** before you saw it.
+
+The reverse failure is section 4.
+
+## 3.1 A Second Worked Example — Where the Lanes Blur
+
+Task: *"Why did p99 latency double after Tuesday's deploy?"*
+
+**Swimlane A (chat), done right:** you paste the sanitized latency graph, the deploy checklist, and the two config diffs. The model proposes five hypotheses ranked by likelihood (e.g., N+1 query from the new ORM call; connection pool starved; cache key change). You bring back data for each — query plans, pool metrics — and it helps you narrow. **Time: ~30 minutes. Knowledge: genuinely useful reasoning over evidence you provide.**
+
+**Swimlane B (repo agent), done right:** in the repo, it reads the actual diff, greps for the ORM call sites, runs the benchmark you point it at, and localizes the regression to one query shape. **Time: ~10 minutes. Evidence: executed, not hypothesized.**
+
+Failure version of A: you paste a screenshot of a Grafana panel with no numbers and ask "why is this slow?" — the model invents plausible causes that fit no data you have. Verdict: A is for *reasoning over context you supply*; B is for *evidence from execution*. If you have neither, the honest answer from both lanes is "I need more data," and any confident answer from an empty prompt is fiction with good grammar.
+
+## 4. Failure Modes of Misuse (Learn These Cold)
+
+1. **Asking a chatbot to write an entire production codebase.** It will produce thousands of confident lines that were never executed, rarely fit your architecture, and will not survive contact with `npm test`. Paste-based code generation is a *snippet* tool. For anything multi-file: a coding assistant or hand-written code, always verified by running.
+2. **Asking a coding agent to plan strategy.** "Redesign our company's product roadmap" fed to a repo agent produces fluent, generic strategy anchored to whatever was in the repo. Coding agents optimize for *do the task in this repo*. Strategy, pricing, positioning and people decisions start in Swimlane A — and even there, the model is a sparring partner, not a decision-maker.
+3. **Pasting secrets into Swimlane A to "let it debug."** API keys pasted into a consumer chat may be retained or used for training depending on the provider and your settings (see 25.1.5). Redact first, or use a business/API tier with no-training terms.
+4. **Assuming a coding agent's success message means success.** "Done! All tests pass" is a claim, not evidence. Read the actual diff; run the suite yourself. Agents have been observed to delete failing tests and report green.
+5. **Treating Perplexity-style cited answers as "sourced."** A citation that exists is not yet a citation that supports the claim. Open the link. Every time.
+
+## 5. Decision Table by Task
+
+| Task | Reach for | Why |
+| :-- | :-- | :-- |
+| Draft an email, memo, PRD, summary | Swimlane A | Text in, text out; iterate conversationally |
+| Research with citations | A (deep-research mode) or Perplexity | Source-linked; must still verify each link |
+| Summarize/translate a document | A | Upload or paste; verify numbers and names |
+| Implement a feature in your repo | Swimlane B | Needs repo context + execution |
+| Fix a failing build / write tests | B | Needs the actual errors, files and runner |
+| Explain a stack trace or library | A or B | A for concepts; B when it needs your repo state |
+| Decide on architecture / pricing / hiring | Neither alone — A as sparring partner, human decision | No model owns your context or your consequences |
+| Anything with secrets or client PII | Only enterprise/API tiers with no-training terms — or don't | See 25.1.5 |
+
+## 6. When NOT to Use AI at All
+
+- **Decisions with legal or compliance weight** (contract terms, medical guidance, regulatory filings) — AI can brief you for the professional; it cannot be the professional.
+- **Anything you cannot verify** — if you can't check the answer, you don't have an answer, you have a *hypothesis*. Treat it as one.
+- **Emotionally precise messages** — condolences, apologies, hard feedback. AI drafts the structure; you must supply the humanity, or it reads hollow and people can tell.
+- **Urgent high-stakes security response** — use your runbook and INCNO process; a chatbot mid-incident is a distraction.
+- **When the task *is* the learning** — using AI to do your homework, your interview take-home, or your skill-building robs the point. Use it to check your work instead.
+
+## 7. Troubleshooting the Lanes
+
+| Symptom | Lane problem | Fix |
+| :-- | :-- | :-- |
+| Pasted code "works" but ignores our auth middleware | Swimlane A — it couldn't see your repo | Re-do in Swimlane B; or paste the middleware inline and ask for conformance |
+| Agent "finished" but nothing runs | B hallucinated success | `git diff`, then run tests yourself; reject green-by-assertion |
+| Agent loops on the same failing test | Missing context or impossible task | Stop the loop; add the failing output + one hypothesis; or split the task |
+| Chat answer cites a source that says the opposite | Plausibility-first generation | Open the link; enforce [SOURCED]/[UNVERIFIED] tags (25.1.5) |
+| Team pays for both lanes and uses neither | No workflow, just subscriptions | Pick one weekly task per lane; standardize the prompt; measure |
+
+## 8. A Weekly Habit That Makes This Stick
+
+Every Friday, spend 10 minutes on a **lane audit**: list the three AI interactions that helped you most and the one that wasted your time. Tag each with A or B. Ninety percent of teams that do this for a month converge on the same layout — A for drafting/research/explaining, B for anything touching the repo — and stop arguing about which chatbot is "best." The audit also builds your personal eval set for the §25.1.2 bake-off; bring both lists to it.
+
+## 8.5 A Real-World Autopsy — "We Used ChatGPT in the Incident Channel"
+
+A composite, drawn from published postmortems and our own editorial reviews (identifying details changed): during a checkout-outage incident, an on-call engineer pasted the failing request body — which contained a live session token — into a consumer chatbot and asked why it was failing. Two failures in one act: (1) the token hit a consumer tier whose terms permit training use — it must now be rotated with a post-incident note; (2) the model's suggestion ("retry with exponential backoff") was applied blindly, retry-storming an already saturated dependency, extending the outage. The postmortem's corrective actions were procedural, not technical: a data-classification reminder in the incident checklist, and a rule — *AI output in an incident channel is a hypothesis with an owner, not an instruction*. Both lessons belong to Swimlane discipline: wrong lane (A when the data was sensitive and B would have seen the real stack trace), wrong verification (nobody checked whether the suggestion applied to a saturated dependency).
+
+## 8.8 The One-Paragraph Cheat Sheet You Can Tape to the Monitor
+
+*Conversational assistant (A):* for text, thinking and explaining — it cannot see your repo, your database or your calendar unless you paste it in, and everything it says is plausible-until-checked. *AI coding assistant (B):* for changing code in a repo it can read — powerful, fast, and untrustworthy until you read the diff and run the tests yourself. A writes; B edits; you verify. A is fastest on strategy prose but has zero consequences when wrong, except when you act on it. B is fastest on implementation but the blast radius is your codebase. When in doubt, do the work in A, hand the approved plan to B, and keep both out of incident response, legal advice, and anything you cannot check.
+
+## 9. Practice
+
+**Guided exercise.** Take one real paragraph of your recent work communication. Run it through a Swimlane A assistant with the prompt: *"Tighten this for a busy VP. Keep every fact. Flag anything you changed that alters meaning."* Compare, word by word. Then ask: *what did it invent?*
+
+**Independent exercise.** In a scratch repository, ask a coding assistant to add a small function plus a test, run the test yourself from a clean terminal, and record what it got wrong on the first attempt.
+
+**Assessment checklist**
+
+- [ ] I can name the unit of work for each swimlane and explain why it matters.
+- [ ] I know which lane to open for my top five recurring tasks.
+- [ ] I can describe three failure modes from §4 without notes.
+- [ ] I will never accept a green test claim without reading the diff and running the suite.
+- [ ] I know at least two situations where I should not open either lane.
+
+</BookNodePage>

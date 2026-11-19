@@ -1,0 +1,90 @@
+---
+id: "c-3-pain-point-identification"
+title: "C.3 Pain-Point Identification"
+sidebar_label: "C.3 Pain-Point Identification"
+slug: "/appendix/appendix-c-client-hunting-practice-workbook/c-3-pain-point-identification"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-c-3">
+
+**Purpose:** Convert vague frustration into a quantified, ownable business problem — the kind a buyer will pay to make disappear.
+
+## Exercise 1 — The Pain Interview Simulator (role-play)
+
+With a partner (or solo, record it), practice the discovery flow:
+
+1. **Warm open** — "Thanks for the 15 minutes. Walk me through how you handle [process] today."
+2. **Clarify** — "What does that look like on a bad day?"
+3. **Quantify** — "How often? What does that cost you — time, money, customers?"
+4. **Validate** — "If this stayed broken for another year, what happens?"
+5. **Close** — "What would success look like for you in 90 days?"
+
+**Deliverable:** 10-minute recorded role-play + transcript (or notes). Review: did you ask more than you spoke?
+
+## Exercise 2 — The Pain Ladder (30 min per company)
+
+For each of your 10 targets, climb the ladder:
+
+```text
+Surface symptom: "slow checkout"
+  ↓
+Concrete metric: "p95 = 2.8s; 12% abandonment"
+  ↓
+Root cause: "N+1 Shopify API calls in cart middleware"
+  ↓
+Business cost: "$12,240/month lost revenue at 1,200 orders x $85 AOV x 12% (1,200 x $85 x 0.12 = $12,240)"
+  ↓
+Your fix: "Batch API calls + Redis cache; p95 → 400ms; abandonment → 7%"
+```
+
+**Deliverable:** one ladder per target company.
+
+## Exercise 3 — The Business Cost Estimator (45 min)
+
+For each pain, build the spreadsheet:
+
+| Input | Value |
+| :-- | --: |
+| Frequency | X per month |
+| Cost per instance | $Y |
+| Monthly impact | $X × $Y |
+| Annual impact | $X × $Y × 12 |
+| Your fee (15–25% of annual impact) | $Z |
+
+**Deliverable:** 10 spreadsheets (or one master). You must be able to say the number out loud in one sentence.
+
+## Exercise 4 — The "So What?" Test (15 min)
+
+For your top 3 companies, write one sentence that answers:
+
+```text
+"This costs you $___/month and here's why you should care today."
+```
+
+**Deliverable:** 3 killer sentences, each &lt;20 words, each with a number.
+
+## Exercise 5 — Disqualification Practice (20 min)
+
+Practice saying no. For each of your 10 targets, ask:
+
+- Is the pain urgent? (if no → disqualify)
+- Is there budget? (if no → nurture, don't pitch)
+- Can I fix it in my stack? (if no → refer out)
+- Do they trust me enough to give me access? (if no → build trust first)
+
+**Deliverable:** 10 dispositions: 3 pursue aggressively, 4 nurture, 3 disqualify politely.
+
+## Scoring
+
+| Criterion | 1 | 3 | 5 |
+| :-- | --: | --: | --: |
+| Pain clarity | Vague | Specific | Quantified with $/time |
+| Root cause | Guessing | Plausible | Verified or clearly evidenced |
+| Business case | "Would be nice" | Clear cost | $/month + ROI on your fee |
+| Disqualification | Can't say no | Sometimes | Ruthless, with reasons |
+
+**Target: ≥16/20 before moving to outreach.**
+
+</BookNodePage>

@@ -1,0 +1,90 @@
+---
+id: "42-3-2-shipping-to-production-and-delivering-outcomes"
+title: "42.3.2 Shipping to Production and Delivering Outcomes"
+sidebar_label: "42.3.2 Shipping to Production and Delivering Outcomes"
+slug: "/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-3-production-deployment-and-launch/42-3-2-shipping-to-production-and-delivering-outcomes"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-42-s3-t2">
+
+Shipping is a deliverable, not an event. The client didn't hire you to push a repo — they hired you to make their reconciliation process quieter. This lesson covers the last mile: a reproducible production deploy, honest documentation, the demo, and the evidence that the system actually moved the needle.
+
+## 1. The Deployment Runbook (One Page, Taped to the Wall)
+
+```text
+1. git tag v1.0.0 && git push --tags
+2. CI runs: lint → test → migrate → build → deploy to staging → smoke test (GET /health = 200)
+3. Manual approval (you + client lead) → promote to production
+4. Production smoke: /health 200, one webhook round-trip, one bookings page loads
+5. If smoke fails: rollback = redeploy previous tag; notify client within 5 minutes
+6. Monitor first 72h: nightly run success, error rate, client feedback channel
+```
+
+Memorize it. If it takes more than 5 lines to recover from a failed deploy, simplify.
+
+## 2. The Handover Pack (Everything the Client Needs)
+
+| Item | Owner |
+| :-- | :-- |
+| README with one-command local setup | You |
+| `.env.example` documented | You |
+| Runbook (deploy, rollback, on-call escalation) | You |
+| Architecture ADR (why this stack) | You |
+| Monitoring dashboard link + alert recipient | Client ops lead |
+| Admin credentials + role matrix | Client manager |
+| Data dictionary + schema notes | You |
+| Known limitations + what's out of scope | You + client |
+
+Missing any one and the client is dependent on you forever. That is a failure of delivery, not a compliment to your indispensability.
+
+## 3. The Demo and Handover Meeting
+
+Structure (45 min, not an hour):
+
+```text
+0–5    Context: the problem in one sentence, the metric you moved
+5–15   Live walkthrough: one booking event → nightly run → one mismatch → one human resolution
+15–25  Client drives: they click around without you; you answer questions
+25–35  Q&A + known limitations (say them before they ask)
+35–45  Handover docs, contacts, next steps, support window
+```
+
+End with a written summary email within 2 hours: what was delivered, what to verify Monday, what to escalate and to whom. Verbal handovers evaporate.
+
+## 4. Proving Outcomes (Not Features)
+
+Before demo, capture baseline and target:
+
+```text
+Baseline: 6 hrs/week manual reconciliation; 8 complaints/month; $0 visibility
+After 30 days: <1 hr/week; 2 complaints/month; weekly automated report email
+```
+
+Ask the client for a 1-paragraph testimonial and one metric you can publish (with permission). That paragraph is worth more than ten LinkedIn posts.
+
+## 5. The 30-Day Post-Launch Check-in
+
+Schedule it now, 30 days after go-live. Agenda: what broke, what surprised them, whether the metric moved, whether they want a phase 2. This is where capstone becomes ongoing engagement — and where referrals originate.
+
+## 6. Common Failure Modes
+
+- **Handover as an afterthought**: you vanish after the demo; client resents you; they tell others.
+- **Demo theater**: you click a pre-loaded "happy path" while hiding a broken state. Then production surprises them. Do it live.
+- **No metrics**: "It seems faster" is not evidence. Measurement or silence.
+- **Scope negotiation at the handover table**: that conversation should have happened in the PRD phase. Reopening scope now burns trust.
+- **Unpaid invoice paired with undelivered code**: the final invoice must follow working production, not staging hopes.
+
+## 7. Exercise
+
+Run the 30-day post-launch check-in agenda against a peer (or a friend playing client) for your capstone. Record: baseline metric, target metric, actual metric (or "pending — 30 days not yet run"). Draft the testimonial paragraph — or the honest "not ready for a testimonial because X" note.
+
+**Acceptance criteria.**
+- [ ] Deployment runbook fits on one page and is tested (you have rolled back at least once)
+- [ ] Handover pack contains all 8 items; someone other than you can set up the project from it
+- [ ] Demo is executable live, not pre-recorded
+- [ ] Baseline and target metrics are written down, with a 30-day check-in scheduled
+- [ ] Client signs the acceptance checklist (even if the client is a peer reviewer)
+
+</BookNodePage>

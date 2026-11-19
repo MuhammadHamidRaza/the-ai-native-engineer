@@ -1,0 +1,41 @@
+---
+id: "index"
+title: "Chapter 15: Complete Full-Stack ShopCore Application"
+sidebar_label: "Chapter 15: Complete Full-Stack ShopCore Application"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15">
+
+**Chapter 15 (`38 Focused Hours`)** builds **ShopCore** — a complete, production-structured online store: React + Vite frontend, Express 5 backend, PostgreSQL with real migrations, cookie authentication, and a CI-tested checkout flow. No placeholders, no magic — every file, command and expected output.
+
+## Chapter 15 Structure
+
+- **15.1 Foundations & Data Layer:** Requirements, architecture, repository layout — then the canonical ShopCore schema loaded as versioned migrations.
+- **15.2 Backend Build:** `pg`-wired Express skeleton, the complete auth module (sessions in Postgres, `HttpOnly` cookies, roles), and the catalog/cart/checkout API.
+- **15.3 Frontend Build:** Vite + React SPA with a typed API client, and the shop UI with safe optimistic updates.
+- **15.4 Verification & Shipping:** supertest + Playwright, CI quality gates, a full security pass, and a README a stranger can run.
+
+## Build Order — Nine Milestones
+
+| # | Milestone | Lesson | Done means |
+| :-- | :-- | :-- | :-- |
+| 1 | Requirements & architecture | 15.1.1 | You can present the diagram from memory |
+| 2 | Database + migrations | 15.1.2 | `\dt` shows the six core tables (plus `schema_migrations`); ledger tracks 001/002 |
+| 3 | Backend skeleton | 15.2.1 | `GET /health` → ok with DB ping |
+| 4 | Auth module | 15.2.2 | Register/login/logout/me via curl |
+| 5 | Catalog/cart/checkout API | 15.2.3 | Checkout transaction works; OUT_OF_STOCK rolls back |
+| 6 | Frontend scaffold | 15.3.1 | Catalog renders from the API on :5173 |
+| 7 | Shop UI | 15.3.2 | Browse → cart → checkout → orders page |
+| 8 | Tests + CI | 15.4.1 | `npm test` green; CI badge on PRs |
+| 9 | Security pass + docs + ship | 15.4.2 | Threat table clean; README reproducible |
+
+## What You Will Have After This Chapter
+
+A portfolio-grade project: a real database with migrations, a secure API with authorization, a responsive SPA, automated verification — and the understanding to extend it (payments, email, deployment in Part 05).
+
+This chapter reuses everything: ER modeling (11), SQL + PostgreSQL (12), Node/Express/auth/jobs (13), Git/testing/review (14). If a concept here is unfamiliar, stop and revisit the earlier lesson — do not paste, type.
+
+</BookNodePage>

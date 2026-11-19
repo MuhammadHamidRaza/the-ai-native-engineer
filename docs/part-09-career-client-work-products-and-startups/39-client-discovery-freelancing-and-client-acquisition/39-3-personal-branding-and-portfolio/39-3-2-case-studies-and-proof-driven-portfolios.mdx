@@ -1,0 +1,98 @@
+---
+id: "39-3-2-case-studies-and-proof-driven-portfolios"
+title: "39.3.2 Case Studies and Proof-Driven Portfolios"
+sidebar_label: "39.3.2 Case Studies and Portfolios"
+slug: "/part-09-career-client-work-products-and-startups/39-client-discovery-freelancing-and-client-acquisition/39-3-personal-branding-and-portfolio/39-3-2-case-studies-and-proof-driven-portfolios"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-39-s3-t2">
+
+Buyers don't believe claims; they believe **stories with receipts**. A case study that names the problem, the constraint, the approach, and a measured result is the single most persuasive artifact you will ever produce. This lesson teaches the case-study format that closes clients and the portfolio that frames them.
+
+## 1. The Case-Study Template Buyers Trust
+
+```markdown
+# HelpBot: Deflecting 62% of Tier-1 Support for ShopCore
+
+**Client:** ShopCore (e-commerce, 40k orders/yr) — scoped to two ops pilots
+**Role:** Solo consultant — AI/RAG implementation
+**Timeline:** 6 weeks · **Stack:** Next.js, Postgres + pgvector, OpenAI API, Vercel
+
+## Problem
+Support agents spent ~60% of their time on refund/warranty questions already
+answered in the policy docs. Errors were common (wrong refund citations).
+
+## Constraints
+Pilot had to ship without touching the CRM or auto-responding (human-in-loop only).
+Existing policies were PDFs with inconsistent headings.
+
+## Approach
+PDF ingestion → chunking (500 tokens) → pgvector embeddings → hybrid search
+(RRF) → answer with citations + confidence threshold; below-threshold → handoff.
+Counted deflections as "agent-sent no reply, AI answer marked correct".
+
+## Results
+- 62% of tier-1 tickets deflected after 4 weeks
+- Refund citation accuracy: 91% → 99%
+- p95 answer latency: 1.4s
+- $0 infra cost beyond API; pilot payback modeled at 3 months
+
+## What I'd Do Next
+Quarterly eval of refusal correctness; add order-lookup tool with approval gate.
+```
+
+Notice: every line is about **their** problem with **your** contribution framed narrowly. Not "we built a cool pipeline" — "their refund error rate dropped 40%; here's the mechanism".
+
+## 2. Three Case Studies That Cover the Buyer's Risk Model
+
+1. **Speed win** — a 48h/72h rescue. Shows you deliver fast under pressure.
+2. **Scale win** — latency, throughput, cost reduction at volume. Shows you think about systems.
+3. **Judgment win** — you talked them out of an over-built solution and saved money. Shows you're an advisor, not just an implementer.
+
+If you only have one, build the other two from your own side projects with honest labels ("personal project, simulated scale") — honest framing beats implied client work.
+
+## 3. The Proof-Driven Portfolio Structure
+
+```markdown
+# Hamid Raza — AI-native engineer
+
+Helping ShopCore-scale businesses ship AI features that survive production.
+Fastify · PostgreSQL · Next.js · OpenAI/Claude APIs
+
+## Selected work
+1. HelpBot RAG — case study (deflected 62% tier-1 volume)
+2. Billing idempotency migration — case study ($0 double-charges, 100% replay safety)
+3. API latency rescue — case study (p95 480ms → 90ms)
+
+## Writing
+- Why your RAG eval matters more than your model (blog post)
+- The idempotency-key pattern for Stripe retries (blog post)
+
+## Contact
+hello@hamidraza.dev · calendar.app/hamid · github.com/hamidraza
+```
+
+Rule: **three case studies, two posts, one calendar link**. Everything else is decoration.
+
+## 4. Getting Permission & Numbers
+
+- Ask clients for permission to share — most say yes with light anonymization ("a 9-figure Shopify merchant in NYC").
+- If they refuse, publish the work as "anonymous e-commerce retailer, details on request" — still credible.
+- Numbers beat adjectives. If you have none, instrument before/after now: latency via `curl -w`, deflection via a log query, cost via API dashboard exports.
+
+## 5. Common Failure Modes
+
+- **Tech-stack selfie** — "Built with Next.js + pgvector + OpenAI + Redis + Docker + …" as if stacks close deals. They don't. Outcomes close deals.
+- **No before/after** — "improved performance" without numbers reads as vibes.
+- **Five weak case studies** — three strong ones beat five thin ones every time.
+- **Hiding the failure modes** — "here's what went wrong and how we fixed it" is the most trusted paragraph in the document.
+
+## 6. Exercise
+
+Write one complete case study from a past project using the markdown template above, get a peer to read it cold, and fix the three unclear points they flag. Publish it on your site or as a public Gist; pin it on LinkedIn with a 3-sentence intro.
+
+**Acceptance criteria.** Your case study names: a specific client type, one measured before/after number, one constraint, one honest "what went wrong" line, and a CTA to talk.
+
+</BookNodePage>

@@ -1,0 +1,92 @@
+---
+id: "e-3-troubleshooting"
+title: "E.3 Troubleshooting Playbook"
+sidebar_label: "E.3 Troubleshooting Playbook"
+slug: "/appendix/appendix-e-developer-reference-materials/e-3-troubleshooting"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-e-3">
+
+**Purpose:** When things break — and they will — you need a systematic approach, not panic. This is the 80/20 troubleshooting playbook you'll reuse forever.
+
+## The Universal Debugging Loop
+
+```text
+1. Reproduce — can you make it fail on demand? If not, it's not a bug yet.
+2. Isolate — what changed? git bisect; recent deploy? env diff?
+3. Simplify — smallest failing case; remove variables until it passes or fails consistently.
+4. Read the error — actually read it; 90% of the answer is in the message.
+5. Fix — one change at a time; verify after each.
+6. Prevent — add a test; write the runbook entry.
+```
+
+## Common Failure Patterns
+
+### "It works on my machine"
+
+```text
+Cause: environment difference (Node version, env var, DB state).
+Fix: nvm use / .nvmrc; docker compose; .env.example vs .env diff.
+```
+
+### "500 Internal Server Error"
+
+```text
+Cause: unhandled exception, missing env var, DB down, timeout.
+Fix: check logs first (tail -f); curl the health endpoint; check env vars;
+check DB connectivity; check upstream dependency status.
+```
+
+### "Slow query"
+
+```text
+Cause: missing index, N+1, full table scan.
+Fix: EXPLAIN ANALYZE; add the index; check connection pool settings.
+```
+
+### "Deploy failed"
+
+```text
+Cause: lockfile mismatch, missing migration, type error, env var missing.
+Fix: npm ci (not install); run migrate; npx tsc --noEmit; check CI logs.
+```
+
+### "CORS error"
+
+```text
+Cause: origin not allowed, credentials not sent, preflight failed.
+Fix: add origin to allowlist; credentials: 'include'; check OPTIONS handler.
+```
+
+### "OOM killed"
+
+```text
+Cause: memory leak, unbounded query, too large file buffer.
+Fix: heap snapshot; LIMIT queries; stream responses; increase memory limit temporarily.
+```
+
+## The 5-Minute Triage Checklist
+
+```text
+[ ] Logs — what do they say?
+[ ] Metrics — what are the graphs doing?
+[ ] Recent changes — what deployed?
+[ ] Dependencies — is an upstream service down?
+[ ] Reproduce — can I trigger it manually?
+[ ] Rollback — if all else fails, revert the last deploy
+```
+
+## When to Escalate
+
+Escalate when:
+
+- Data integrity at risk — stop, do not touch, call someone senior
+- Security incident — contain first, investigate second
+- Customer-facing outage >5 min — page the incident commander
+- You don't understand what you're looking at — ask for help before making it worse
+
+**Never debug in production without a rollback plan.**
+
+</BookNodePage>

@@ -1,0 +1,108 @@
+---
+id: "37-2-3-code-review-blameless-postmortems-and-incident-collaboration"
+title: "37.2.3 Code Review, Blameless Postmortems and Incident Collaboration"
+sidebar_label: "37.2.3 Code Review, Blameless Postmortems and Incident Collaboration"
+slug: "/part-09-career-client-work-products-and-startups/37-teamwork-and-professional-engineering/37-2-operating-inside-engineering-teams/37-2-3-code-review-blameless-postmortems-and-incident-collaboration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-37-s2-t3">
+
+Three rituals separate professional engineering teams from hero cultures: **code review** (quality before merge), **blameless postmortems** (learning after failure), and **incident collaboration** (composure during failure). All three are about making good decisions under conditions where judgment is degraded. This lesson teaches the working versions.
+
+## 1. Code Review — The Actual Job
+
+Code review is not "nitpick the author". It is **the last cheap place to catch what automated checks can't**: wrong abstractions, hidden assumptions, missing failure modes, and API misuse. Linters and CI catch syntax; reviewers catch design.
+
+### The reviewer's checklist (in priority order)
+
+1. **Correctness** — does this do what it says? Where are the edge cases? Are errors handled?
+2. **Tests** — do they exist? Do they fail when the code breaks? Do they test behavior, not implementation?
+3. **Security boundary** — input validation, auth checks, no secrets, no PII in logs (Chapter 22).
+4. **Design** — right abstraction? Right layer? Does it generalize or hard-code?
+5. **Failure modes** — what happens when this dependency is down, this row is missing, this value is null?
+6. **Operability** — logs, metrics, flags, rollback story.
+7. **Style/nits** — last, and labeled as such. "nit: prefer const" is optional; everything above is mandatory.
+
+### Review etiquette
+
+- **Comment on the code, never the person.** "This assumes userId is present — is that guaranteed at line 84?" not "You forgot the null check again."
+- **Author responds with reasoning, not just code tweaks.** If a reviewer asks "why", the PR thread is where the why lives — future readers need it.
+- **Big PRs are unreviewable.** >400 lines of meaningful change almost always needs splitting. If it can't split, the reviewer owes the author a call, not a 60-inline-comment marathon.
+- **Approve honestly.** "LGTM" on unread code is complicity, not politeness. If you didn't read it, say so.
+- **No surprise rewrites.** If the author is heading down a wrong path, say it in the first comment, not the fifteenth.
+
+## 2. Postmortems — Blameless or They Are Useless
+
+Every outage, customer-impacting bug, and scary near-miss gets a postmortem. The **only** acceptable tone is blameless and written: blameless, because blame drives incidents underground (the single worst outcome — the same bug recurs); **written**, because archaeology is harder than archaeology of the sea floor if nobody wrote anything down.
+
+### The template that works
+
+```markdown
+# Postmortem: Cart service returned stale totals 14:02–14:37 UTC (2026-11-18)
+
+**Severity:** SEV-2 · **Customers affected:** ~2,400 sessions · **Duration:** 35 min
+**Detection:** checkout_error rate alert (PagerDuty, 14:09) — 7 minutes after impact began
+
+## What happened (timeline)
+14:02 deploy v2.14.0 → 14:09 alert fires → 14:12 on-call acknowledges →
+14:21 rollback initiated → 14:34 v2.13.1 live → 14:37 metrics recovered
+
+## Root cause
+v2.14.0 changed cart serialization (BigInt → string for IDs) without updating
+the ws broadcast layer's diff computation; diffs computed as empty for BigInt IDs.
+
+## Contributing factors
+- No integration test for ws diff path with non-string IDs (unit tests only)
+- Canary at 5% was too small to trigger checkout_error alert at meaningful rate
+- Alert fired on error rate, not on cart staleness symptom directly
+
+## What went well
+- Rollback was mechanical (flag flip + redeploy), 13 minutes
+- Blameless first instinct — no speculation in the channel
+
+## Action items (owners + dates)
+1. Add ws-diff integration test incl. BigInt IDs — @sasha — 2026-11-22
+2. Alert on cart_staleness_seconds p95 > 5s, not just error rate — @oncall — 2026-11-25
+3. Canary to 25% with 15-minute soak minimum — @release — 2026-11-29
+4. Serializer version bump checklist in release template — @process — 2026-12-02
+```
+
+### The five blameless rules
+
+1. **Humans did what made sense with the information they had.** Start from that premise and the system's failure modes expose themselves.
+2. **Ask "what" and "how", never "who".**
+3. **Systems failed, people coped.** Fix the system.
+4. **Action items have owners and dates** — a postmortem without them is a story, not a process.
+5. **Share it widely.** The lessons only exist if others read them; postmortems are internal knowledge gold — write them for a stranger.
+
+## 3. Incident Collaboration — The 15-Minute Default Structure
+
+When it's on fire, structure beats talent:
+
+```text
+Minute 0–2:  ACKNOWLEDGE — on-call takes the channel, announces "I have it"
+Minute 2–5:  ASSESS — scope (which users/impact), severity, who to page
+Minute 5–10: MITIGATE — stop the bleeding first (rollback/flag/failover);
+                        diagnose AFTER traffic is stable
+Minute 10–15: COMMS — one update per stakeholder audience (eng, support, exec)
+              with impact, current action, next update time
+```
+
+Roles: **Incident Commander** (owns decisions, speaks once), **Operator** (hands on keyboard), **Comms** (writes the status, shields the IC from noise). Three people; more are counterproductive. Everyone else observes the channel and stays silent unless paged.
+
+### Live norms for the channel
+
+- Narrate actions with timestamps: "14:21 initiating rollback to v2.13.1".
+- State uncertainty explicitly: "impact unclear; checkout metrics look worse, investigating".
+- No blame, no speculation, no solution design in the hot channel — that's for the postmortem.
+- The IC's job is to keep the channel *cold*: calm, timestamped, decision-logged.
+
+## 4. Exercise
+
+Write a postmortem for a real incident from your last six months (or a realistic synthetic one: a bad deploy, a data bug, an outage). Use the template above. Identify one contributing factor and one action item that would have *actually* prevented it.
+
+**Acceptance criteria.** Your postmortem has: a timestamped timeline, a root cause stated in one sentence, ≥2 contributing factors, ≥3 action items with owners and dates, and a written statement of what went well. It contains zero blame language.
+
+</BookNodePage>

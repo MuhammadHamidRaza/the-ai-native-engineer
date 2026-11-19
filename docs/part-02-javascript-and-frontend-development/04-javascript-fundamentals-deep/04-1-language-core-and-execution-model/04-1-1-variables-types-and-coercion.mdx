@@ -1,0 +1,175 @@
+---
+id: "04-1-1-variables-types-and-coercion"
+title: "04.1.1 Variables, Types and Coercion"
+sidebar_label: "04.1.1 Variables, Types and Coercion"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model/04-1-1-variables-types-and-coercion"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s1-t1">
+
+Every bug where `"10" + 5` evaluates to `"105"` or `0 == false` returns `true` happens because JavaScript is **dynamically typed** and performs **implicit type coercion** when operators receive mismatched types. Mastering variables, primitive vs. object types, operators, and control flow ensures your data means what you expect before it ever reaches a database or UI.
+
+## 1. Plain-English Intuition: Variables Are Labels, Not Boxes
+
+In beginner explanations, people often picture variables as cardboard boxes holding values. In JavaScript, a **better mental model** is a **sticky label attached to a value** (or attached to a memory address for objects):
+
+- `const` means the **label cannot be peeled off and moved** to a different value. If the label points to an object or array, the contents *inside* that object can still mutate unless you freeze or copy it.
+- `let` allows moving the label to a new value (reassignment), and is scoped to the nearest `{ ... }` block.
+- `var` is function-scoped (ignores `if`/`for` blocks) and initializes to `undefined` before execution—legacy syntax you should recognize in old codebases, never write in new code.
+
+## 2. The JavaScript Type System (`7 Primitives + Objects`)
+
+JavaScript has **seven immutable primitive types** and **one non-primitive reference category (`object`)**:
+
+| Type | Example | `typeof` Result | Key Rule |
+| :--- | :--- | :--- | :--- |
+| `string` | `"hello"` | `"string"` | UTF-16 code units; immutable |
+| `number` | `42`, `3.14`, `NaN` | `"number"` | IEEE 754 `binary64` float (`0.1 + 0.2 !== 0.3`) |
+| `bigint` | `9007199254740993n` | `"bigint"` | Arbitrary-precision integers; cannot mix with `number` |
+| `boolean` | `true`, `false` | `"boolean"` | Logical branching |
+| `undefined` | `let x;` | `"undefined"` | Missing/unassigned value |
+| `null` | `null` | **`"object"`** (historic quirk!) | Intentional empty value; check `x === null` |
+| `symbol` | `Symbol("id")` | `"symbol"` | Guaranteed unique property key |
+| `object` | `{ a: 1 }`, `[1, 2]`, `fn` | `"object"` (`"function"` for functions) | Stored by reference; mutable |
+
+## 3. Beginner Walkthrough: Operators, Conditions, and Loops
+
+Save this file as `basics.js` and run `node basics.js`:
+
+```javascript
+// basics.js — Variables, operators, conditions, and loops
+const itemPriceCents = 1999; // $19.99 stored safely as integer cents
+let quantity = 2;
+quantity += 1; // now 3
+
+const subtotalCents = itemPriceCents * quantity;
+const freeShipping = subtotalCents >= 5000 ? true : false;
+
+// Branching with strict equality and logical operators
+let shippingCents = 0;
+if (!freeShipping && subtotalCents > 0) {
+  shippingCents = 699;
+}
+
+const items = ["Keyboard", "Cable", "Mousepad"];
+for (let i = 0; i < items.length; i += 1) {
+  console.log(`Item #${i + 1}: ${items[i]}`);
+}
+
+console.log({
+  subtotalDollars: (subtotalCents / 100).toFixed(2),
+  shippingDollars: (shippingCents / 100).toFixed(2),
+  totalDollars: ((subtotalCents + shippingCents) / 100).toFixed(2),
+});
+```
+
+**Expected Output:**
+
+```text
+Item #1: Keyboard
+Item #2: Cable
+Item #3: Mousepad
+{ subtotalDollars: '59.97', shippingDollars: '0.00', totalDollars: '59.97' }
+```
+
+**Line-by-Line Mechanics:**
+1. Integer `cents` (`1999`) avoids IEEE 754 binary float drift (`19.99 * 3 === 59.97` happens to work, whereas `0.1 + 0.2 === 0.30000000000000004`).
+2. `subtotalCents >= 5000 ? true : false` can be simplified directly to `const freeShipping = subtotalCents >= 5000;`.
+3. `for (let i = 0; ...)` creates a fresh block-scoped binding `i` on every loop iteration. For iterating arrays without needing the index, prefer `for (const item of items)`.
+
+## 4. Deep Dive: Coercion, Truthiness, and `===` vs `==`
+
+JavaScript applies three coercion operations automatically when operators expect a specific type:
+
+- **`ToString`:** Triggered when `+` has at least one string operand (`"Order #" + 42 === "Order #42"`).
+- **`ToNumber`:** Triggered by arithmetic `-`, `*`, `/`, `%`, unary `+` (`+"42" === 42`), and relational comparisons (`"10" > 2` is `true`, `"abc" * 2` is `NaN`).
+- **`ToBoolean`:** Triggered by `if (...)`, `!x`, `&&`, `||`. Only **8 values are falsy** in JavaScript: `false`, `0`, `-0`, `0n`, `""`, `null`, `undefined`, `NaN`. Everything else—including `"0"`, `"false"`, `[]`, and `{}`—is **truthy**.
+
+### Why `||` Breaks Zero/Empty Strings and `??` Fixes It
+
+```javascript
+const userPort = 0;
+const wrongPort = userPort || 3000; // 3000! (0 is falsy)
+const rightPort = userPort ?? 3000; // 0! (?? checks ONLY null or undefined)
+console.log({ wrongPort, rightPort });
+```
+
+### Strict (`===`) vs Loose (`==`) Equality
+
+- **`===` (Strict Equality):** Zero coercion. Different types immediately return `false`. **Always use `===` and `!==`.**
+- **`==` (Abstract Equality):** Coerces operands across quirky rules (`"" == 0` is `true`, `[] == ![]` is `true`). The *only* idiomatic exception some codebases permit is `value == null`, which matches both `null` and `undefined`.
+
+## 5. Professional Pattern: Defensive Input Parsing
+
+When reading data from HTML `<input>` fields, URL query strings, or environment variables, **values arrive as strings**. Validate and convert explicitly instead of trusting coercion:
+
+```javascript
+// parseQuantity.js
+export function parsePositiveInt(raw, fieldName = "value") {
+  if (typeof raw === "number") {
+    if (!Number.isSafeInteger(raw) || raw <= 0) {
+      throw new RangeError(`${fieldName} must be a positive safe integer`);
+    }
+    return raw;
+  }
+
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new TypeError(`${fieldName} must be a non-empty numeric string`);
+  }
+
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new RangeError(`${fieldName} ("${normalized}") contains non-digit characters`);
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new RangeError(`${fieldName} must be a positive safe integer`);
+  }
+  return parsed;
+}
+```
+
+Notice why `Number(normalized)` + `/^\d+$/` beats `parseInt("12px", 10)` (which silently returns `12` and drops `"px"`) and beats unary `+"   "` (which silently coerces whitespace to `0`!).
+
+## 6. Common Errors & Troubleshooting
+
+- **`NaN === NaN` evaluates to `false`:** Never check `x === NaN`. Always use `Number.isNaN(x)` (not global `isNaN("abc")`, which coerces `"abc"` first).
+- **`TypeError: Assignment to constant variable`:** You tried reassigning a `const` label (`const total = 0; total = 5;`). Use `let` when a binding genuinely changes.
+- **`0.1 + 0.2 === 0.3` returns `false`:** Store prices in integer minor units (`cents`) or round explicitly at display boundaries.
+
+## 7. Verification with `node --test`
+
+Create `parseQuantity.test.js` and run `node --test parseQuantity.test.js`:
+
+```javascript
+import test from "node:test";
+import assert from "node:assert/strict";
+import { parsePositiveInt } from "./parseQuantity.js";
+
+test("accepts valid strings and numbers", () => {
+  assert.equal(parsePositiveInt(" 42 "), 42);
+  assert.equal(parsePositiveInt(7), 7);
+});
+
+test("rejects suffixes, decimals, zero, and empty strings", () => {
+  assert.throws(() => parsePositiveInt("12px"), RangeError);
+  assert.throws(() => parsePositiveInt("0"), RangeError);
+  assert.throws(() => parsePositiveInt("   "), TypeError);
+});
+```
+
+## 8. Practice Exercises
+
+1. Write a script that reads `process.argv[2]` and `process.argv[3]` (two command-line numbers), converts them safely, and prints their sum—or exits with a clear error message if either argument is missing or invalid (`NaN`).
+2. Inspect `Number(" ")`, `Boolean([])`, `typeof null`, and `0.1 + 0.2` in Node's interactive REPL (type `node` with no filename, test each expression, then type `.exit`).
+
+## Mastery Checklist
+
+- [ ] Can explain why `const obj = {}; obj.a = 1;` works while `obj = {}` throws.
+- [ ] Can list all 8 falsy values and explain when `??` prevents bugs that `||` introduces.
+- [ ] Never relies on `parseInt()` or `==` for user input validation.
+
+</BookNodePage>

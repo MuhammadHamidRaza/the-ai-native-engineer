@@ -1,0 +1,85 @@
+---
+id: "d-3-interview-preparation-frameworks"
+title: "D.3 Interview Preparation Frameworks"
+sidebar_label: "D.3 Interview Preparation Frameworks"
+slug: "/appendix/appendix-d-job-search-and-career-resources/d-3-interview-preparation-frameworks"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-d-3">
+
+**Purpose:** Interviews are a skill, not a filter. This gives you the 80/20 frameworks for the four loops you'll face: coding, system design, behavioral, and practical/take-home.
+
+## D.3.1 — Coding Interview Framework (RPL)
+
+**R**estate → **P**lan → **L**oop
+
+```text
+1. Restate: "So I need to find the top-k frequent elements? Confirming:
+   input is an array of nums, output is top k frequent."
+2. Plan out loud: "I'll use a hash map for counts, then a min-heap of
+   size k. O(n log k) time, O(n) space."
+3. Loop: code + narrate edge cases (empty input, k=0, k > unique count)
+```
+
+**Rules:** never code silently; never skip complexity analysis; never skip edge cases.
+
+### Pattern List to Master
+
+- Two pointers · Sliding window · Hash map counting · Binary search
+- BFS/DFS · Backtracking · Heap · Intervals · Dynamic programming (basic)
+
+**150 problems across these patterns > 500 random problems.**
+
+## D.3.2 — System Design Framework (RDD)
+
+**R**equirements → **D**eep-dive → **D**rive
+
+```text
+1. Requirements (5 min): DAU, read/write, consistency, latency, scale
+2. High-level (5 min): boxes — client → LB → API → DB + cache
+3. Deep-dive (15 min): schema, hot paths, indexes, cache invalidation,
+   failure modes
+4. Drive (5 min): trade-offs, what you'd cut, how it scales 10×
+```
+
+**Draw on a whiteboard or paper, not in your head.** Naming the components out loud is how you get evaluated.
+
+## D.3.3 — Behavioral Framework (STAR-L)
+
+**S**ituation → **T**ask → **A**ction → **R**esult → **L**earning
+
+```text
+"In 2024, our checkout latency hit 4s at peak (S). I was assigned to fix
+it before Black Friday (T). I profiled the API, found N+1 queries in the
+cart service, added connection pooling + a Redis cache, and shipped a hotfix
+(A). Latency dropped to 380ms p95; we processed 40k orders that weekend
+with zero Sev-1s (R). I learned to never deploy on a Friday (L)."
+```
+
+**6–8 stories, one per theme:** ambiguity, failure, disagreement, working with PM, shipping under pressure, learning fast, leadership, ethics.
+
+## D.3.4 — Practical/Take-Home Framework (SHIP)
+
+**S**cope → **H**olistic view → **I**teration → **P**ackaging
+
+```text
+1. Scope: restate the problem, list assumptions, ask for missing constraints
+2. Holistic: end-to-end plan before coding — data model first, API second, UI last
+3. Iteration: build thin vertical slice → demo → then polish
+4. Packaging: README, tests, one-command run, what you'd do with more time
+```
+
+**Evaluation rubric:** working code > perfect code; clear thinking > clever code; communication > velocity. Score yourself with the rubric in [E.4 Assessment Rubrics](/book/appendix/appendix-e-developer-reference-materials/e-4-assessment-rubrics) after each mock interview — external calibration beats vibes.
+
+## D.3.5 — The 2-Week Sprint
+
+| Week | Focus |
+| :-- | :-- |
+| Day 1–4 | Coding patterns (2/day, timed) |
+| Day 5–7 | System design (2 mock designs/day) |
+| Day 8–10 | Behavioral (write 8 stories, rehearse aloud) |
+| Day 11–14 | 3 full mock loops with peers/recordings |
+
+</BookNodePage>

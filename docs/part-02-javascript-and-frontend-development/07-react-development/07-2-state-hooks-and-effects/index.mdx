@@ -1,0 +1,24 @@
+---
+id: "index"
+title: "07.2 State, Hooks & Effects"
+sidebar_label: "07.2 State, Hooks & Effects"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s2">
+
+Hooks let functional components store local state, coordinate complex transitions, synchronize with browser/network APIs, and share data across subtrees. Most React bugs happen when developers misuse `useEffect` for values that should be derived during render—or forget cleanup functions when effects run more than once.
+
+## Lessons in Subchapter 07.2
+
+1. **[07.2.1 useState, useReducer and Derived State](/book/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects/07-2-1-usestate-usereducer-and-derived-state):** Immutable state updates, functional updaters (`prev => ...`), eliminating redundant state (`filteredTasks`), and `useReducer`.
+2. **[07.2.2 useEffect and Synchronizing External Systems](/book/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects/07-2-2-useeffect-and-synchronizing-external-systems):** Dependency arrays, `AbortController` cleanup, avoiding infinite loops, and why you probably don't need `useEffect`.
+3. **[07.2.3 Custom Hooks and Context](/book/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects/07-2-3-custom-hooks-and-context):** Extracting reusable hooks (`useDebouncedValue`), typed React Context, and avoiding unnecessary subtree re-renders.
+
+## Rules of Hooks (Always Enforce)
+
+- Call hooks **only at the top level** of a React component or custom `use...` hook—never inside `if`, `for`, or nested callbacks. React tracks hooks by call order across renders!
+
+</BookNodePage>

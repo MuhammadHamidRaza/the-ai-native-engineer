@@ -1,0 +1,170 @@
+---
+id: "19-1-2-aws-core-infrastructure-and-hands-on-workload-lab"
+title: "19.1.2 AWS Core Infrastructure and Hands-On Workload Lab"
+sidebar_label: "19.1.2 AWS Core Infrastructure & Lab"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-1-cloud-fundamentals-and-aws-azure-google-cloud/19-1-2-aws-core-infrastructure-and-hands-on-workload-lab"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s1-t2">
+
+Reading about VPCs is like reading about swimming. This lab has you launch ShopCore's frontend onto a real, Free-Tier-eligible EC2 instance — then tear it all down so the bill stays at $0. **Do not start until your $5 budget alert from [19.1.1](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-1-cloud-fundamentals-and-aws-azure-google-cloud/19-1-1-cloud-regions-networking-iam-and-billing-controls) exists.**
+
+**Billing-safety (read twice):** t3.micro is Free Plan eligible for new accounts (as of Nov 2026; legacy Free Tier = 750 hrs/month for 12 months) — but **Unlimited burst mode can bill CPU credits**, and unattached Elastic IPs / stray EBS volumes bill even with no instance running. Every billable item below has a teardown step. Skipping teardown is how a "free lab" becomes $40.
+
+## 1. Step 1 — Create the IAM Lab User (least privilege, MFA)
+
+Root account only for setup. **IAM → Users → Create user** → name `shopcore-lab`, console access, **no** access keys yet.
+
+Create a customer-managed policy **IAM → Policies → Create policy → JSON**:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "ec2:Describe*", "ec2:RunInstances", "ec2:TerminateInstances",
+      "ec2:StartInstances", "ec2:StopInstances",
+      "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
+      "ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupIngress",
+      "ec2:CreateKeyPair", "ec2:DeleteKeyPair",
+      "ec2:AllocateAddress", "ec2:AssociateAddress",
+      "ec2:DisassociateAddress", "ec2:ReleaseAddress",
+      "ec2:CreateTags", "ec2:AddTags"
+    ],
+    "Resource": "*"
+  }]
+}
+```
+
+Name it `ShopCoreLabEC2`. (EC2 actions largely don't support resource-level scoping, so `"*"` on actions is honest least-privilege here — write scope lives in *which actions*, not which ARNs.) Attach it to a group `ShopCoreLab`, add `shopcore-lab` to the group. **Enable MFA**: user → Security credentials → **Assign MFA device** → authenticator app → scan → confirm two codes.
+
+Sign in as `shopcore-lab` via the account alias/sign-in URL (IAM dashboard shows it). **Console-only for this lab** — no programmatic keys until 19.2.2.
+
+## 2. Step 2 — Launch the EC2 Instance
+
+**EC2 → Instances → Launch instances.** Where you click matters:
+
+| Setting | Value |
+| :-- | :-- |
+| Name | `shopcore-spa-lab` |
+| AMI | **Amazon Linux 2023** — verify "Free tier eligible" label |
+| Instance type | `t3.micro` (or whichever is Free Plan eligible in your Region) |
+| Key pair | Create new `shopcore-lab-key` → RSA → **.pem**; download it |
+| Network | Default VPC; **auto-assign public IP: Enable** |
+| Security group | Create `shopcore-lab-sg` |
+| Storage | 8 GiB gp3 default (free-tier eligible size) |
+
+Security group inbound rules — **restricted, not open**:
+
+| Type | Port | Source | Why |
+| :-- | :-- | :-- | :-- |
+| SSH | 22 | `YOUR_IP/32` (find it: `curl ifconfig.me`) | Only you |
+| HTTP | 80 | `0.0.0.0/0` | Public website |
+
+Launch. Note the **public IPv4 address**. Also confirm **burst mode = Standard** (Actions → Instance settings) if available — `t3.unlimited` bills for burst CPU.
+
+## 3. Step 3 — SSH In (Windows-first)
+
+**Where to run:** PowerShell (OpenSSH client ships with Windows 10/11 1809+) or bash/WSL2. Amazon Linux 2023's default user is **`ec2-user`**.
+
+```powershell
+# Windows: fix key permissions once, or SSH refuses the file
+icacls shopcore-lab-key.pem /inheritance:r /grant:r "$($env:USERNAME):R"
+ssh -i shopcore-lab-key.pem ec2-user@YOUR_PUBLIC_IP
+```
+
+```bash
+# bash / WSL2
+chmod 400 shopcore-lab-key.pem
+ssh -i shopcore-lab-key.pem ec2-user@YOUR_PUBLIC_IP
+```
+
+Expected prompt: `[ec2-user@ip-172-31-x-x ~]$`. First connection asks to trust the host fingerprint — yes.
+
+## 4. Step 4 — Install nginx and Host the ShopCore SPA
+
+Inside the SSH session:
+
+```bash
+sudo dnf install -y nginx
+sudo systemctl enable --now nginx
+sudo rm -f /usr/share/nginx/html/index.html
+sudo chown -R ec2-user:ec2-user /usr/share/nginx/html
+```
+
+On your **laptop**, in the ShopCore frontend repo (Part 4 / 15.3): `npm run build` → produces `dist/`. Then:
+
+```bash
+scp -i shopcore-lab-key.pem -r dist/* ec2-user@YOUR_PUBLIC_IP:/usr/share/nginx/html/
+```
+
+Verify from the laptop: `curl -I http://YOUR_PUBLIC_IP` → `HTTP/1.1 200 OK`, and open `http://YOUR_PUBLIC_IP` in a browser — the ShopCore catalog must render. (Client-side routing paths like `/cart` will 404 on refresh with plain nginx — fine for this lab; a `try_files … /index.html;` fallback is the fix, see [17.2.2](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-2-reverse-proxies-with-nginx-and-caddy).)
+
+## 5. Step 5 — Elastic IP (so the address survives stops)
+
+**EC2 → Elastic IPs → Allocate → Associate** to `shopcore-spa-lab`. The public IP is now static across stop/start. **Warning:** every public IPv4 address is billed ~$0.005/hour (~$3.60/mo) since Feb 2024 — attached or unattached. Release the EIP in teardown instead of forgetting it. (Pricing as of Nov 2026 — verify current rates.)
+
+## 5.2 Verify From Your Laptop — Don't Trust the Server Alone
+
+```bash
+curl -I http://YOUR_PUBLIC_IP          # HTTP/1.1 200 OK, Server: nginx
+curl -s http://YOUR_PUBLIC_IP | head   # <title>ShopCore — ... (your built SPA)
+```
+
+On Windows PowerShell: `(Invoke-WebRequest -Uri "http://YOUR_IP" -Method Head).StatusCode` → `200`. Then watch **EC2 → Instances → Status checks** — 2/2 passed means system and instance checks are green. When something feels off later, these two commands are your baseline "is it the server or the network?" divider.
+
+## 5.5 What This Lab Costs (Approximate, Nov 2026 — Verify)
+
+| Item | Free allowance | After allowance |
+| :-- | :-- | :-- |
+| t3.micro on-demand (us-east-1) | Free Plan eligible (new accounts) / 750 hrs legacy 12-mo | ~$7.50/mo |
+| 8 GiB gp3 EBS | Within 30 GB Free Tier storage | ~$0.80/mo |
+| Elastic IPv4 | ~$3.60/mo attached or not (Feb 2024+ billing) | ~$3.60/mo |
+| Data transfer out | 100 GB/mo Free Tier | ~$0.09/GB |
+| nginx dnf package | Free | Free |
+
+Terminated within hours of a lab day, the real cost is under $0.05. Left running for a month, under $8–12. **The teardown in Step 6 is the difference.**
+
+## 6. Step 6 — MANDATORY TEARDOWN (do not skip, do not stop at "instance stopped")
+
+`stop` still bills EBS + EIP. Terminate means gone. Do all of it, in order:
+
+1. **EC2 → Elastic IPs** → select → **Disassociate** → **Release**.
+2. **EC2 → Instances** → `shopcore-spa-lab` → **Instance state → Terminate** → confirm. Wait for `terminated`.
+3. **EC2 → Security Groups** → delete `shopcore-lab-sg` (only possible after the instance is terminated).
+4. **EC2 → Key Pairs** → delete `shopcore-lab-key` (and delete the local `.pem` or move it to your key vault).
+5. **IAM** → remove user from `ShopCoreLab` (or delete the lab group/policy/user if the labs are over).
+6. **Next day:** check **Billing → Bills** — confirm $0 (or credits applied). If anything shows a charge, find it before doing anything else.
+
+## 7. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `Permission denied (publickey)` | Wrong user (`ubuntu` on AL2023) / key perms | Use `ec2-user`; re-run `icacls`/`chmod 400` |
+| SSH times out | SG port 22 source isn't your current IP | `curl ifconfig.me`; update SG rule |
+| Browser shows nginx welcome page | `scp` copied into wrong dir / index.html not replaced | `ls -l /usr/share/nginx/html` on the server |
+| `403`/`404` on SPA deep links | Missing `try_files` fallback | Add `try_files $uri /index.html;` (17.2.2) |
+| Unexpected instance charges | Unattached EIP or Unlimited burst mode | Release EIP; set burst to Standard |
+| `dnf install nginx` hangs | Subnet has no route to an Internet Gateway | Use a public subnet with auto-assign public IP |
+| Lost track of the instance IP | Public IPs rotate on stop/start unless Elastic IP | `aws ec2 describe-instances --query "Reservations[].Instances[].PublicIpAddress"`; associate an EIP if needed |
+
+## 8. Practice
+
+**Guided.** Complete Steps 1–5 exactly as written; keep the browser tab open on the ShopCore SPA.
+
+**Independent.** Add a second inbound rule for HTTPS (443) to the SG and explain why the SPA lab doesn't strictly need it yet (hint: no TLS cert on the instance — certbot is covered in 17.2.2/16.2.3).
+
+**Challenge.** After teardown, write down every component you deleted and beside each the "what happens if I forget it" cost. Bring this checklist to 19.3.1, where Terraform does the same lifecycle as code.
+
+**Assessment checklist**
+
+- [ ] My lab user has MFA and only the scoped `ShopCoreLabEC2` policy.
+- [ ] Port 22 is restricted to my IP; 80 is public; no other inbound rules.
+- [ ] The ShopCore SPA rendered from the EC2 public IP / Elastic IP.
+- [ ] I terminated the instance, released the EIP, deleted SG, key pair and (optionally) the lab policy/group/user.
+- [ ] I verified the next-day bill is $0 before moving on.
+
+</BookNodePage>

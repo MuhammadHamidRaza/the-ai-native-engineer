@@ -1,0 +1,35 @@
+---
+id: "index"
+title: "36. Production AI Systems"
+sidebar_label: "36. Production AI Systems"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-36">
+
+Chapters 29–35 built ShopCore's HelpBot: architecture, tools, memory, guardrails, MCP, workers, multi-agent orchestration. This chapter is the part the demos skip — **the day after launch**. The model changes underneath you without asking, users thumbs-down silently, cost creeps, a support ticket reveals PII in a log line, and the incident channel gets paged. Production AI is not a bigger demo; it is a different discipline: measure before you ship, observe after you ship, and have a rollback before both.
+
+## What This Chapter Teaches
+
+Evaluation as a gate (not a vibe), telemetry as a loop, latency and token economics as engineering constraints, model routing as cost control, PII and compliance as launch blockers, and model upgrades as a staged, reversible procedure — all against one running example: taking ShopCore's HelpBot from pilot to production and keeping it honest.
+
+The honest framing, up front:
+
+- **Launch-blocking eval, runtime telemetry, one rollback switch** — in that order. If you only have the first, you'll catch regressions in CI but not in reality. If you only have the last two, you can't tell a regression from noise.
+- **Eval scores are not the goal.** Time-to-resolution for the customer's problem is. A model that resolves tickets slowly with a perfect rubric score is still losing.
+- **If you didn't test it, it ships broken.** Your golden set's blind spots are your production incidents' mailing list.
+
+## Chapter Contents
+
+- **36.1 Evaluations, Benchmarks & Telemetry** ([36.1.1 Offline Datasets and Online Quality Signals](/book/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-1-evaluations-benchmarks-and-telemetry/36-1-1-offline-datasets-and-online-quality-signals), [36.1.2 Latency, Token Cost and Model Routing](/book/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-1-evaluations-benchmarks-and-telemetry/36-1-2-latency-token-cost-and-model-routing)) — golden datasets, rubric and LLM-judge scoring, CI regression gates, online signals (thumbs, escalation, re-contact, CSAT), A/B ramps, significance basics, TTFT vs throughput, token cost math, x-request-id cost tracing, model routing, caching, 429 backoff, queueing, and the HelpBot SLO.
+- **36.2 Governance & Continuous Improvement** ([36.2.1 Safety, Compliance, Privacy and PII Redaction](/book/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-2-governance-and-continuous-improvement/36-2-1-safety-compliance-privacy-and-pii-redaction), [36.2.2 Feedback Loops and Model Upgrades](/book/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-2-governance-and-continuous-improvement/36-2-2-feedback-loops-and-model-upgrades)) — Presidio-based PII redaction before the model call, GDPR/CCPA and contract posture, OWASP LLM Top 10 2025 abuse defenses, audit trails, the prompt-injection incident postmortem, EU AI Act status, silent-drift detection, canary model upgrades, and the continuous-improvement loop.
+
+## Prerequisites and Outcomes
+
+Prerequisites: Chapters 29–35 (agent loop, tools, guardrails, workers, orchestration), Part 06 (testing and observability instincts). After this chapter you will be able to build a minimal eval pipeline that blocks bad merges, instrument a production agent so cost and quality are per-request visible, redact PII before it reaches a model, run a staged model upgrade with a rollback, and defend your "is this regression real?" claim with numbers.
+
+Tooling and policy status verified November 2026; model names follow Chapter 25. Providers, SDKs, prices and regulations drift — re-check official docs before implementing. Nothing in this chapter is legal advice.
+
+</BookNodePage>

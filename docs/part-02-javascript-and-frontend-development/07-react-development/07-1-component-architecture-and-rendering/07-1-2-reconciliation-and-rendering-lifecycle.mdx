@@ -1,0 +1,43 @@
+---
+id: "07-1-2-reconciliation-and-rendering-lifecycle"
+title: "07.1.2 Reconciliation and Rendering Lifecycle"
+sidebar_label: "07.1.2 Reconciliation and Rendering Lifecycle"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-1-component-architecture-and-rendering/07-1-2-reconciliation-and-rendering-lifecycle"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s1-t2">
+
+Understanding **when** React calls your component function—and what **Reconciliation** actually changes in the browser—prevents wasted re-renders, disappearing input state, and mysterious double-log surprises during development.
+
+## 1. The Three Steps of Every Screen Update
+
+1. **Trigger:** Either initial mount (`createRoot(...).render(<App />)`) OR a state setter (`setTasks(...)`) runs.
+2. **Render (Pure Calculation):** React calls your component functions to compute the *next* virtual JSX tree (`element` snapshots). **Rendering does NOT mean repainting the whole browser page!** It means calling JS functions to diff the new tree against the previous tree (**Reconciliation**).
+3. **Commit:** React touches the real DOM **only** where elements, attributes, or text actually changed.
+
+## 2. Why Component Renders Must Be Pure
+
+During the **Render** phase, calling `<Profile user={user} />` twice with the same inputs **must produce identical JSX** and cause **zero side effects**:
+- Do **not** mutate variables outside the component, trigger `fetch()`, or mutate arrays (`items.push(...)`) directly inside the component body.
+- This is why `<StrictMode>` intentionally calls your component functions **twice** in development (`npm run dev`): if your component accidentally mutates an external array or counter during render, StrictMode exposes the impurity immediately! (It only runs once in production builds.)
+
+## 3. Component Identity & Position in the Tree
+
+React preserves internal component state (`useState`) as long as a component stays at the **same position and element type** in the JSX tree:
+- Switching `<div><Counter /></div>` to `<section><Counter /></section>` destroys the old `<Counter />` instance and resets its `useState` back to initial values.
+- Changing a component's `key` prop intentionally resets its state cleanly (useful when switching between two user edit forms: `<UserForm key={selectedUser.id} user={selectedUser} />`).
+
+## 4. Practice Exercises
+
+1. Open your Vite app in development, put a `console.log("render")` inside `<App />`, observe why `<StrictMode>` logs twice on mount, and explain why state setters must live in event handlers or reducers—not the render body.
+2. Demonstrate resetting a `<Timer key={sessionId} />` automatically by incrementing `sessionId` on a "Reset" button click.
+
+## Mastery Checklist
+
+- [ ] Understands Trigger -> Render (Reconciliation) -> Commit.
+- [ ] Keeps render bodies pure with zero side effects or external mutations.
+- [ ] Knows why React `<StrictMode>` double-invokes renders in development.
+
+</BookNodePage>

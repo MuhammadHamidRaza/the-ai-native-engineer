@@ -1,0 +1,126 @@
+---
+id: "21-3-1-modular-monoliths-vs-distributed-services"
+title: "21.3.1 Modular Monoliths vs Distributed Services"
+sidebar_label: "21.3.1 Modular Monoliths vs Distributed Services"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-1-modular-monoliths-vs-distributed-services"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s3-t1">
+
+The most expensive architecture decision in ShopCore's history was not which database to use — it was a 2024 instinct to "break the monolith" at 400 orders a day, before anyone could say what problem distribution was solving. This lesson is the honest version: when the monolith is right, what it must look like inside, how extraction actually works, and why microservices are an operational commitment, not a diagram.
+
+## 1. The Honest Comparison
+
+| Dimension | Modular monolith | Microservices |
+| :-- | :-- | :-- |
+| Deploy | One artifact, one pipeline | N artifacts, N pipelines, N rollback stories |
+| Ops cost | One log stream, one alert surface | Distributed tracing mandatory; per-service health |
+| Data | One DB, ACID for free | Per-service data; sagas for multi-context writes |
+| Consistency | Trivial (transactions) | Eventual or 2PC (you will never 2PC; see 21.4.1) |
+| Latency | Function-call fast | Network + serialization + retries |
+| Team fit | 1–3 squads | 2+ squads per service; ownership clarity required |
+| Failure isolation | Bad: one crash can take all | Good: bulkheads possible if designed |
+| Local dev | `docker compose up` | 6 services + brokers or heavy stubbing |
+
+Neither is "modern" or "legacy". The monolith is the correct default for ShopCore today and possibly forever — if it is *modular*.
+
+## 2. Conway's Law, Used Deliberately
+
+Conway's law: organizations design systems that mirror their communication structure. Two corollaries worth taping to the wall:
+
+1. If ShopCore has one team, services will either be well-coordinated (wasted ceremony) or rot into a distributed monolith — network calls with zero autonomy.
+2. If you *want* a service boundary to last, give it a team before you give it a repo. A service owned by everyone is owned by no one.
+
+Tooling for the law: team topology drives context boundaries from 21.2.3. Three engineers → contexts inside one deployable; the seams are in the module tree, enforced by `dependency-cruiser`, not by the network.
+
+## 3. What "Modular" Actually Means
+
+A modular ShopCore looks like this, today, in one deployable:
+
+```text
+src/
+  catalog/     // components, services, repo — owns products tables
+  ordering/    //      same shape — owns orders/order_items
+  inventory/   //      owns stock; emits stock.reserved
+  payments/    //      ACL to Stripe (21.2.3) — owns payment_intents
+  identity/    //      owns customers/sessions
+  support/     //      read-model consumer — NEVER imports ordering internals
+```
+
+Rules, all enforced in CI (`dependency-cruiser` or ESLint `no-restricted-imports`):
+
+- A module never imports another module's internals — only its public `index.ts`.
+- Cross-context calls go through interfaces owned by the caller (ports), never by the callee's types.
+- Cross-context data moves via events or the read models from 21.2.3.
+- One `schema.sql` per module, namespaced per context (`ordering.*`, `payments.*`) even in one database — migration scoping becomes trivial later.
+
+This is exactly the shape you extract from — which is the point.
+
+## 4. The Extraction Path — Strangler Fig, Not Big Bang
+
+When the trigger arrives, services peel off one at a time behind the same interface:
+
+```text
+Step 1  Payments module lives in monolith, but ALL calls go through
+        PaymentProvider interface (21.1.3) already. No new code paths.
+Step 2  Stand up Payments service. Route 1% of capture() to it
+        (feature flag). Compare results. Error budget decides ramp.
+Step 3  Inventory extracted second ONLY IF payments trigger paid off.
+Step 4  Monolith keeps ordering/catalog/identity/support. It is now
+        "the commerce core", deliberately smaller. Done.
+```
+
+Never extract first what everything depends on (ordering, identity) — you will strangle nothing and anger everyone. Payments first because it has: its own SLO (99.95%), its own failure modes (webhooks), its own compliance scope (PCI adjacency), and a natural interface already.
+
+## 5. The Triggers — Stay or Split
+
+**Stay in the monolith** while ALL of these hold:
+- Team under 2 full squads on the candidate service.
+- No context-specific SLO diverges from the rest (payments is the usual first).
+- No independent scaling need (catalog reads scale 50:1 vs writes — cache first, split never).
+- Release cadence is shared and fine.
+
+**Extract** (any one is sufficient, and record it in an ADR per 21.2.2):
+- Two squads genuinely blocked on each other weekly.
+- Payment SLO must differ; monthly fulfillment window can't tolerate shared deploys.
+- A context's runtime profile diverges (CPU-heavy fraud scoring vs I/O-bound API).
+- Compliance demands isolation (PCI-adjacent service behind its own boundary and audit).
+
+## 6. What Distribution Actually Costs
+
+Per extracted service you buy: a CI/CD pipeline + secrets management, a deploy + rollback runbook, health/readiness endpoints, distributed tracing or logs you can join (22-3-1), retries + timeouts + breaker (21.4.2) at every call site, contract tests (22-2-1), on-call knowledge, and a network hop of p99 latency. Multiply by five services and the $0 infra dream is dead — fine, if that is the *price of a problem you actually have*. If not, the monolith is not "less serious"; it is cheaper severity of failure.
+
+Note the honesty rule from Part 05: [Docker Compose and registries](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries) make local multi-service dev real, but they do not make a 5-service system cheaper to *operate*.
+
+## 7. Deployment Scripts Are Equal Either Way
+
+Monolith: one build, one migrate (rolling, zero-downtime per [20.2.2](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-2-zero-downtime-releases-feature-flags-and-safe-migrations)), one health check, one rollback. Services: the same, N times, plus cross-service deploy ordering and contract verification in the pipeline. Write the monolith runbook as if the extraction will come — parameterize image name, env, migration command — and extraction later means editing variables, not authoring runbooks at 2 a.m.
+
+## 8. Troubleshooting
+
+| Symptom | Disease | Fix |
+| :-- | :-- | :-- |
+| "Microservices but every call is synchronous chain A→B→C" | Distributed monolith | Revert to monolith modules or make edges async with events (21.3.3) |
+| Shared `pg` schema across services | No data ownership | Per-context namespaces; FK ban; reconcilers |
+| Local dev takes 20 minutes and 8 containers | Premature extraction | Collapse back into monolith + fakes; re-extract with triggers |
+| Every deploy needs all teams' sign-off | Wrong boundaries | Redraw per context map; assign CODEOWNERS per module |
+| Extraction stalled at 10% traffic forever | No error budget decision | ADR sets ramp criteria: 5% → 25% → 50% → 100% gated on 2 weeks error budget |
+
+## 9. Practice
+
+**Guided exercise.** Inventory ShopCore's modules with `dependency-cruiser` or a manual import scan. Which module imports the most others? That is your first refactor — before any extraction talk.
+
+**Independent exercise.** Write the extraction runbook for Payments as if you needed it next quarter: flag names, ramp steps, rollback, reconciliation report, success metric (error budget parity for 14 days), and the cost line (one more on-call burden).
+
+**Challenge.** Argue *against* extracting Inventory in the next 12 months in one page, citing the Section 5 triggers and your current traffic data. Winning the argument matters more than the architecture.
+
+**Assessment checklist**
+
+- [ ] I can state the six cost items every extraction adds, per service.
+- [ ] I can defend staying in the monolith today with the Section 5 triggers.
+- [ ] I can produce a strangler-fig plan with ramp percentages and gates.
+- [ ] I can explain what Conway's law predicts for one-team ShopCore and why.
+
+</BookNodePage>

@@ -1,0 +1,29 @@
+---
+id: "index"
+title: "21.2 Requirements, Decisions & Domain Modeling"
+sidebar_label: "21.2 Requirements, Decisions & Domain Modeling"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s2">
+
+**Subchapter 21.2** converts understanding into commitment. Subchapter 21.1 taught you to see the system; here you pin down *what must be true* (requirements), *what you chose and why* (decisions), and *what the domain actually is* (domain model) — the three artifacts every serious change to ShopCore starts from.
+
+## Lessons in Subchapter 21.2
+
+1. **[21.2.1 Requirements Engineering: From Problem Discovery to Acceptance Criteria](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-1-requirements-engineering-from-discovery-to-traceability):** Complaint vs pain vs root; stakeholder mapping (customers, ops, finance, eng, legal); functional vs non-functional requirements with real ShopCore NFRs; constraints (budget, legacy, PCI); user stories and given/when/then acceptance criteria; thin-prototype validation; the traceability matrix; catching requirements creep mid-sprint.
+2. **[21.2.2 Engineering Decisions: ADRs, Trade-offs, Technical Debt and Build vs Buy](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-2-engineering-decisions-adrs-trade-offs-technical-debt-build-vs-buy):** ADR anatomy with two worked ShopCore ADRs (monolith vs services; Redis vs in-memory); trade-off tables (consistency vs latency, cost vs speed, simplicity vs scale); risk as probability × impact; the technical-debt quadrant; the build-vs-buy decision tree; how architecture reviews actually run.
+3. **[21.2.3 Domain Modeling: Bounded Contexts, Coupling and Cohesion](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-3-domain-modeling-bounded-contexts-coupling-and-cohesion):** Entities, value objects, aggregates, invariants; the eight ShopCore bounded contexts and the context map; the anti-corruption layer between Payments and Stripe; coupling/cohesion metrics; keeping boundaries honest — ownership, shared-schema discipline, no cross-team foreign keys; a worked leakage case with events materializing into a support read model.
+
+Work in order. 21.2.1 tells you what "done" means; 21.2.2 records what you chose; 21.2.3 defines the borders your choices must respect. Skipping 21.2.3 is how every ShopCore table ends up owned by everybody and trusted by nobody.
+
+**Exit checklist**
+
+- [ ] I can trace one ShopCore requirement from stakeholder complaint to deployable acceptance criterion.
+- [ ] I can write an ADR that another engineer can challenge without asking questions.
+- [ ] I can draw the ShopCore context map and name every relationship (partnership, customer-supplier, conformist, ACL).
+- [ ] I can explain how a support agent gets order history without joining the orders table.
+
+</BookNodePage>

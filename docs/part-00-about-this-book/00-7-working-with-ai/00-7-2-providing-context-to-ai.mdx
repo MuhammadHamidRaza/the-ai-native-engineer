@@ -1,0 +1,126 @@
+---
+id: "00-7-2-providing-context-to-ai"
+title: "00.7.2 Providing Context to AI"
+sidebar_label: "00.7.2 Providing Context to AI"
+slug: "/part-00-about-this-book/00-7-working-with-ai/00-7-2-providing-context-to-ai"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-7-2">
+
+When engineers complain *"the AI keeps inventing non-existent functions, ignoring our repository layout, or rewriting working logic cleanly into bugs,"* nearly every frustration traces back to one simple cause: **the assistant guessed everything you left out of context.**
+
+Large language models possess zero automatic telepathy into your PostgreSQL column names, your session middleware conventions, your `tsconfig.json` strictness flags, the exact SDK version locked in `package.json` or `pyproject.toml`, or your business invariant rules. **Providing Context to AI**—practiced systematically across **Part 07 (`Chapter 26–27`)** as *context engineering*—is what turns erratic trial-and-error prompting into predictable engineering leverage.
+
+## 1. Why Underspecified Prompts Generate Subtle Architectural Drift
+
+Watch how much silent ambiguity hides inside a seemingly clear one-sentence request:
+
+> *"Add role-based delete permission to the projects API endpoint."*
+
+Without crisp repository context, the assistant must guess answers to seven architectural forks:
+1. Soft-delete (`deleted_at = NOW()`) or irreversible SQL `DELETE`?
+2. May any `admin` delete any order, or strictly orders placed by themselves (`WHERE user_id = $1`)?
+3. Should cross-tenant ID probes return `403 Forbidden` or `404 Not Found` to avoid leaking record existence?
+4. Does the backend derive `userId` from `req.session` cookies, a verified JWT middleware (`req.auth`), or Next.js `getSession()`?
+5. Do child records (`order_items`, `payments`) cascade in SQL or get archived/rejected when the parent row is non-deletable?
+6. Which validation library (`Zod`, `Pydantic v2`, `Valibot`) and JSON error envelope (`{ error: { code, message } }` vs. FastAPI `HTTPException`) does the codebase use?
+7. What integration test framework (`Vitest`, `Pytest`, `Supertest`) validates regressions?
+
+If the assistant guesses wrong on just two of those seven points, you spend twenty minutes untangling conflicting code patterns.
+
+## 2. The Five-Part Engineering Context Packet
+
+Before asking an AI coding tool to implement a feature, write tests, or plan a refactor, assemble a concise context packet containing five high-signal layers—while pruning unrelated noise:
+
+| Context Layer | What to Supply Explicitly | Noise to Exclude Intentionally |
+| :--- | :--- | :--- |
+| **1. Goal & Non-Goals** | One clear paragraph stating the exact target deliverable plus 2–3 things *explicitly out of scope* | Long rambling history or unrelated Phase-3 feature ideas |
+| **2. Ground-Truth Schemas & Types** | Exact SQL DDL / migration slice, Zod/Pydantic models, and shared TypeScript interfaces touched by this task | 40 untouched database tables or unrelated UI form types |
+| **3. Repo Conventions & Exemplar File** | One short working reference route/service showing exact auth checks, error envelopes, logger usage, and naming style | Giant CSS stylesheets, lockfiles (`package-lock.json`), or build artifacts |
+| **4. Exact Stack & Version Pinning** | Manifest-verified runtime & library versions (e.g., *"Node 26 LTS, Next.js 15 App Router, pg driver, Zod 3, Vitest"*) | Unspecified guesses causing deprecated v1/v2 API syntax hallucinations |
+| **5. Invariants & Verification Plan** | Exact status codes (`200`, `403`, `404`, `409`, `422`), permission filters, edge cases, and required test cases | Generic *"make sure it's production-ready and bug-free"* |
+
+## 3. Concrete Example: Annotated Spec-First Context Packet
+
+Notice how compact and surgical a high-performing context prompt stays in real daily work (under 35 lines):
+
+```markdown
+## Task
+Implement `POST /api/workspaces/:workspaceId/invites` in `src/routes/invites.ts`.
+
+## Verified Stack & Conventions
+- Runtime: Node.js 26 LTS, strict TypeScript (`noImplicitAny`), Zod validation, raw `pg` pool (`src/db/pool.ts`).
+- Auth middleware: Use `requireWorkspaceRole(req, ['owner', 'admin'])` from `src/middleware/auth.ts`
+  (populates `req.auth.userId` and verifies membership cleanly).
+- Error format: Match `src/routes/projects.ts` -> `{ error: { code: string, message: string } }`.
+
+## Relevant Schema (excerpt from `src/db/migrations/004_invites.sql`)
+- `workspace_invites(id uuid PK, workspace_id uuid, email text, role text, token_hash text, expires_at timestamptz, accepted_at timestamptz)`
+- Partial unique index already enforces uniqueness on `(workspace_id, lower(email)) WHERE accepted_at IS NULL`.
+
+## Business Invariants & Non-Goals
+- Only roles `'admin' | 'member'` can be assigned via invite (never `'owner'`).
+- On unique constraint conflict (`23505`), return `409 Conflict` with code `'INVITE_ALREADY_PENDING'`.
+- Do NOT wire SMTP email sending yet; hash raw random token with SHA-256 before DB insert and return `{ inviteId, expiresAt }`.
+
+## Required Verification Tests
+- Add `tests/invites.test.ts` testing: owner creates invite (`201`), regular member blocked (`403`), `'owner'` role rejected (`422`), duplicate pending email (`409`).
+```
+
+Investing three minutes assembling those 25 precise lines regularly produces clean, first-pass production code matching existing architecture seamlessly—cutting back-and-forth cleanup cycles by 80%.
+
+## 4. Context Hygiene Across Multi-Turn Sessions
+
+Even clean context degrades inside very long chat threads once twenty failed logs, reverted snippets, and conflicting ideas pile up in conversation history ("context poisoning"):
+
+- **Start a fresh thread per cohesive subtask:** Once a feature merges or an investigation ends, open a clean session carrying only confirmed ground-truth specs rather than dragging 40 pages of stale debug chatter.
+- **Pin repository rules cleanly (`AGENTS.md` / `.cursorrules` / style notes):** Keep recurring invariants (strict TypeScript, server-only API keys, parameterized SQL only, Vitest conventions) inside concise repository instruction files rather than retyping them daily (**Chapter 27**).
+- **Prefer quoting small exact signatures over massive raw dumps:** Models reason more sharply over 150 lines of relevant contracts than 4,000 lines of noisy unrelated code.
+
+## 5. Mini Practice Exercise
+
+Pick any endpoint or backend task you intend to build soon—for instance `POST /api/documents/upload` or `GET /api/orders?status=pending`—and draft a complete **5-Part Context Packet** under 30 lines:
+
+1. Include exact **Stack Versions** and **Error Response Shape**.
+2. State **two explicit Non-Goals** blocking scope creep.
+3. State **four verification test assertions** (`success`, `unauthorized`, `invalid schema`, `edge conflict`).
+
+## Reference `AGENTS.md` / Repository Contract Snippet
+
+When working across multi-week builds (`Part 04`, `Part 08`, `Ch 42`), store stable team conventions once at your repository root so every coding session inherits the exact rules automatically:
+
+```markdown
+# Repository Engineering Contracts
+- Stack: TypeScript strict mode (`noImplicitAny`), Next.js App Router, raw parameterized `pg` SQL (no raw string interpolation).
+- Auth & Tenant Isolation: Every query in `src/routes/**` derives `workspaceId` from `requireWorkspaceSession()`, NEVER from `req.body`.
+- Validation & Errors: Validate every body with Zod; return `{ error: { code, message } }` with explicit 401/403/409/422 status codes.
+- Testing Rule: All route PRs must include real Postgres integration tests verifying cross-workspace access returns 403/404.
+```
+
+Keeping context surgical—one compact global contract file plus 20 lines of task-specific schema and exemplar files—prevents rambling prompts while keeping architectural drift near zero.
+
+## Common Context Mistakes That Degrade Generated Code
+
+Even skilled engineers occasionally hit sloppy diffs when rushing prompt assembly. Inspect these three fast diagnostics:
+
+| Symptom in AI Output | Root Context Omission | Immediate Correction |
+| :--- | :--- | :--- |
+| **Invents non-existent SDK methods** | Forgot to specify exact library major version from `package.json` / `pyproject.toml` | Paste installed version + official interface snippet directly |
+| **Uses `userId` from request body** | Left auth extraction helper out of prompt packet | Supply exact `requireWorkspaceSession()` signature + one working route exemplar |
+| **Breaks unrelated passing features** | Prompt thread became bloated after 15 back-and-forth error pastes | Start a fresh session attaching strictly the failing function, test case, and schema slice |
+
+## Key Takeaways
+
+- Poor AI output is almost always an **underspecified context problem**, not purely a model capability limit.
+- High-signal engineering context packets supply: **Scope + Non-Goals, Relevant Schemas, Exemplar Convention File, Verified Library Versions, and Explicit Acceptance Criteria**.
+- Keep sessions fresh per subtask so stale debug chatter never poisons architectural adherence.
+
+## References and Further Reading
+
+- [Anthropic — Context Engineering for Reliable Systems](https://www.anthropic.com/engineering)
+- [Chapter 26 Curriculum Preview — Prompt & Context Engineering](/book/part-07-ai-native-software-development/26-prompt-and-context-engineering)
+- [Next Topic — 00.7.3 Reviewing AI-Generated Code](/book/part-00-about-this-book/00-7-working-with-ai/00-7-3-reviewing-ai-generated-code)
+
+</BookNodePage>

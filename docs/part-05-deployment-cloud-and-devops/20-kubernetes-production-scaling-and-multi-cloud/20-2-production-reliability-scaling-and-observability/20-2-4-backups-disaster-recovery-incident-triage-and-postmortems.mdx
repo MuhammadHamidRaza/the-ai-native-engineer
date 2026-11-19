@@ -1,0 +1,128 @@
+---
+id: "20-2-4-backups-disaster-recovery-incident-triage-and-postmortems"
+title: "20.2.4 Backups, Disaster Recovery, Incident Triage and Postmortems"
+sidebar_label: "20.2.4 Backups, Disaster Recovery, Incident Triage and Postmortems"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-4-backups-disaster-recovery-incident-triage-and-postmortems"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s2-t4">
+
+Every team believes it has backups until the day it needs them. This lesson makes the uncomfortable distinction between *having files* and *having a recovery capability* — then covers what to do in the first fifteen minutes of an incident and in the week after it.
+
+## 1. Backup vs Disaster Recovery
+
+**A backup is a copy of data. Disaster Recovery is the practiced ability to restore the service — data, config, secrets, DNS, people — after losing an environment.** You can have perfect backups and still be down for three days because nobody documented how to restore.
+
+| Term | Definition | Target you set, not discover |
+| :-- | :-- | :-- |
+| **RPO** (Recovery Point Objective) | Max acceptable data loss, measured in time | "We lose at most 5 minutes of orders" → RPO = 5 min |
+| **RTO** (Recovery Time Objective) | Max acceptable time to restore service | "We're back within 1 hour" → RTO = 1h |
+
+Design backwards: RPO 5 min + RTO 1h for ShopCore means **continuous WAL archiving** (not nightly dumps) plus a **documented, rehearsed restore**. If your RPO is 24h, nightly `pg_dump` suffices — define it honestly before spending effort.
+
+## 2. What to Back Up — and How Deep
+
+**Choosing your targets** (worked example): nightly full backup + WAL shipping every 5 min → RPO ≈ 5 min. Restore rehearsal takes 35 minutes including verification → achievable RTO ≈ 1h. If that feels too slow for the business, the alternatives are warm standby (changes cost model entirely) or accepting a bigger RTO with explicit stakeholder sign-off — either is a legitimate decision; **silently aspirational targets are not.**
+
+1. **Datastores** — PostgreSQL: `pg_dump` (logical, portable, Part 04's [restore drill](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores)) **plus WAL archiving** for point-in-time recovery. Nightly dump alone = up to 24h of lost orders.
+2. **State in the cluster** — the cluster's brain is **etcd**: `etcdctl snapshot save /backup/etcd-$(date +%F).db` (inside the control-plane node; in kind: `docker exec -it shopcore-control-plane etcdctl ...` with `ETCDCTL_API=3`) **or** use **Velero** to back up cluster resources + persistent volumes to object storage (`velero backup create shopcore --include-namespaces shopcore`). YAML in Git is not a full backup — it omits live Secrets, CRDs you forgot you installed, and PV data.
+3. **The rest** — DNS zone files, TLS keys, CI/CD secrets, cloud IAM definitions, runbooks. If restoring requires information only one person has, you have a documentation problem, not a backup strategy.
+4. **Test the restore** — quarterly at minimum, in an isolated namespace/instance. An untested backup is a hope, not a control.
+
+**Kind restore drill sketch:** create a scratch cluster, snapshot etcd, delete a throwaway namespace with PV data, restore the snapshot into the *new* cluster, verify the namespace objects return (data volumes need Velero — etcd holds cluster state, not PV bytes). Write down the wall-clock time; that number is your real RTO.
+
+## 3. The Credential-Leak Runbook (Read This Once, Really)
+
+1. **Revoke first, investigate second** — rotate/disable the leaked credential immediately (API key, DB password, token). Rotation beats forensics; a leaked key is abused in minutes.
+2. **Assume breach of scope** — enumerate exactly what that credential could do (RBAC audit, cloud access logs).
+3. **Rotate dependents** — everything derived from or adjacent to it (sessions, webhooks, deploy keys).
+4. **Purge history** — remove from git history (`git filter-repo`), force-push, expire clones/forks where possible; revoke leaked JWT signing keys (all sessions die; plan comms).
+5. **Inventory & lock down** — find where the secret *should* live (secret manager), move it there, enable scanning (GitHub push protection, trufflehog) to prevent recurrence.
+6. **Postmortem** — how it leaked, why scanning missed it, what control closes the class of bug.
+
+## 4. Incident Triage — The First Fifteen Minutes
+
+Roles (for anything bigger than a one-person shop — even then, say them out loud):
+
+- **Incident Commander (IC)** — owns the incident, makes the call, not necessarily the debugger.
+- **Communications lead** — status page / stakeholder updates every 15–30 min.
+- **Operations lead** — hands on keyboard, executes, logs every command.
+
+Timeline template (paste into the incident doc immediately):
+
+```text
+HH:MM — detected (who/what)
+HH:MM — IC assigned / incident channel opened #inc-2026-0417
+HH:MM — suspected cause (and what disproved)
+HH:MM — mitigation started (what)
+HH:MM — mitigation verified (how)
+HH:MM — incident closed; monitoring for recurrence
+```
+
+Triage order: **stop the bleeding** (roll back? flag off? failover?) → **verify** user-facing impact is gone → **stabilize** (capacity, rate limits) → **root-cause later**. Do not debug the why while customers are down; mitigation first.
+
+## 5. The Blameless Postmortem Template
+
+```text
+# Postmortem: <title> — <date>
+Severity: SEV-2 | Duration: 43 min | Author: <name> | Status: Final
+
+## Summary (2–3 sentences, for executives)
+## Impact (users affected, data loss, revenue, SLO breach)
+## Timeline (from the incident log, verbatim)
+## Root cause (what actually broke, the 5-whys chain)
+## What went well / what went poorly / where we got lucky
+## Action items (OWNER + DATE; tracked to closure — a postmortem without
+##   closed action items teaches nothing)
+## Lessons learned
+```
+
+Blame is banned as a finding: the fix is always a *system* (guardrail, alert, checklist, default). "Operator was careless" is not actionable; "no pre-flight check existed for destructive migrations" is.
+
+**A filled-in fragment** (abbreviated, from a real-shaped migration incident):
+
+```text
+Severity: SEV-2 | Duration: 43 min | Author: platform team | Status: Final
+Summary: A schema migration held an exclusive lock on `products` during
+  deploy, blocking all writes for 38 min.
+Timeline: 09:12 migration started → 09:14 alerts: API 5xx > 5% → 09:16 IC
+  assigned → 09:22 identified lock wait in pg_stat_activity → 09:25
+  mitigation: rollback deploy + kill blocking session → 09:31 errors cease →
+  09:55 closed after 20 min stability.
+Root cause: ALTER TABLE without CONCURRENTLY inside a deploy; no pre-check
+  for long-running transactions.
+Action items: (1) migration linter in CI blocks non-CONCURRENT DDL — owner:
+  infra, 2026-12-05. (2) runbook pre-flight check for deploys touching DDL —
+  owner: platform, 2026-11-28. (3) alert on lock-wait > 30s — owner: SRE, done.
+```
+
+Two things make this a good postmortem: every action item has an owner and a date, and none of them is "be more careful."
+
+## 6. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `pg_restore` fails mid-restore | Schema/version mismatch | Restore into matching major version; `pg_restore --clean --if-exists` |
+| Velero backup succeeds, restore missing PV data | Volume snapshot class missing | Check `velero backup describe`, volume snapshotter plugin |
+| etcd snapshot won't defrag/restore | Snapshot from wrong cluster member/version | Snapshot from the leader; verify with `etcdctl snapshot status` |
+| Restore tested locally, never in prod-like env | Environment drift | Restore drill in an isolated namespace quarterly |
+| Backups silently stale for 2 months | No backup age alert | Alert on backup timestamp > threshold |
+
+## 7. Practice and Assessment
+
+**Guided.** Re-run the Part 04 restore drill: `pg_dump` the ShopCore DB, drop it, restore, verify row counts. Then write your RPO/RTO for ShopCore and one for a payments feature.
+
+**Independent.** Take an etcd/Velero conceptual step: `helm install velero` docs walkthrough in a scratch kind cluster, create one backup, restore it into a *new* kind cluster. Document the time each step took — that is your real RTO.
+
+**Challenge.** Write the credential-leak runbook for your ShopCore repo into a `RUNBOOK-credential-leak.md` in a scratch folder: exact revoke commands for your stack (GitHub token, DB password, Docker Hub token), who to notify, how to purge git history.
+
+**Assessment checklist**
+
+- [ ] I can state my service's RPO and RTO and explain what each implies for backup tooling.
+- [ ] I can perform (or fully narrate) a PostgreSQL dump/restore and a Velero-style cluster restore.
+- [ ] I can run the first 15 minutes of an incident: IC, comms, mitigate, timeline.
+- [ ] I can write a blameless postmortem whose action items close.
+
+</BookNodePage>

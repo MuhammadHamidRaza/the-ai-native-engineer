@@ -1,0 +1,86 @@
+---
+id: "00-10-11-the-municipal-library-capstone-requirements-and-prd"
+title: "00.10.11 The Municipal Library Capstone: Requirements & PRD"
+sidebar_label: "00.10.11 Capstone: Requirements & PRD"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-11-the-municipal-library-capstone-requirements-and-prd"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-11">
+
+Stage 2 converts the discovery brief into a contract: a **PRD** the client can sign and a set of **acceptance criteria** your future self will be held to. Everything here builds on [21.2.1 Requirements Engineering](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-1-requirements-engineering-from-discovery-to-traceability) and the ShopCore PRD you assembled there.
+
+## 1. Problem Statement (One Paragraph)
+
+> Chapterhouse is a 2009 Access database maintained by one volunteer; members cannot see availability or place holds online; policy questions are answered ad hoc. The City needs a public catalog with search, accounts and hold requests by March 31, plus a policy assistant that answers ONLY from official documents — without exposing personal data to external systems, and without the reservation flow depending on AI availability.
+
+## 2. Functional Requirements
+
+| ID | Requirement | Acceptance |
+| :-- | :-- | :-- |
+| FR-1 | Public catalog browse: list, search by title/author/ISBN/category, pagination | Search "asimov" returns ≤50 results with correct availability |
+| FR-2 | Account signup/login; card number issued or linked | New member signs up; logs in; sees own card number |
+| FR-3 | Hold request: member requests a title currently at 0 available copies | Request creates hold row with expiry; member sees position |
+| FR-4 | Availability view: "3 of 5 available", updated atomically on checkout/return | Concurrent checkouts never show more than total copies |
+| FR-5 | Policy assistant: answers questions from the five policy PDFs with citations | Answer quotes the source doc + section; refuses otherwise |
+| FR-6 | Staff view: hold queue, manual override with reason, audit log | Override writes audit row; cannot exceed copies_total |
+| FR-7 | Import: nightly CSV import of catalog with reject report | Bad rows rejected with reasons; good rows imported |
+| FR-8 | Card expiry: membership lapses after 2 years inactivity | Lapsed card cannot place holds; reactivation path documented |
+
+## 3. Non-Functional Requirements
+
+| ID | Requirement | Target |
+| :-- | :-- | :-- |
+| NFR-1 | Search latency p95 | < 300 ms on the 2k-row dataset |
+| NFR-2 | Assistant latency p50 / p95 | < 2s / < 5s (or refusal template if over) |
+| NFR-3 | Availability | Reservation flow works with AI fully disabled |
+| NFR-4 | Privacy | No patron PII in any LLM prompt; prompts carry policy text only |
+| NFR-5 | Concurrency | Hold placement is idempotent; double-click never double-books |
+| NFR-6 | Accessibility | WCAG 2.1 AA for core flows; keyboard-navigable search |
+| NFR-7 | Cost | ≤ $20/mo infra at pilot scale (Render + Neon or VPS) |
+| NFR-8 | Auditability | Every hold, override, and assistant answer logged |
+
+## 4. User Stories with Acceptance Criteria
+
+- *As a patron, I want to search by title so that I can find the book even if I misspell the author.* → Fuzzy title match (`ILIKE '%asimovs%'` still returns Asimov) or trigram similarity threshold ≥ 0.3.
+- *As a patron, I want to know if placing a hold is worth it.* → Show queue length and estimated wait ("2 patrons ahead of you").
+- *As staff, I want to override holds during book sales week.* → Override requires `admin` + written reason; appears in audit log; capped at `copies_total`.
+- *As a patron asking "how many renewals do I get?"* → Assistant answers from `loans-policy.pdf`, cites section, refuses if question is outside policy (e.g., "can I get a refund?").
+
+## 5. Assumptions and Risks
+
+| Assumption | Validation | Risk if wrong |
+| :-- | :-- | :-- |
+| `isbn` uniquely identifies a *work* | Sample data shows 97% unique; the 3% duplicates are editions → collapse on `isbn` | Holds misattach to wrong edition |
+| Staff get 10 welcome days before launch | Librarian availability pre-agreed | Override flow ships untested |
+| Policy PDFs are current | Client confirmed 2026-01 versions | Assistant quotes stale fees |
+| Patrons tolerate email-verification signup | v1 uses email magic link | Support load rises |
+
+**Risks:** data quality (mitigate: import reject report + Karen's sign-off on a 200-row sample), scope creep (mitigate: "Not in v1" list below), AI trust (mitigate: assistant refuses by default; citations mandatory), single-maintainer dependency (mitigate: runbook + handover, Stage 9).
+
+## 6. Explicitly Out of Scope (v1)
+
+- E-books/e-readers integration, mobile apps, online payments, automated card issuance, SMS/WhatsApp notifications, inter-library loan. These are listed so that "while you're here…" has a written answer: *"That's v2 — here's the v2 brief from our backlog."*
+
+## 7. Delivery Milestones
+
+| M | Milestone | Horizon |
+| :-- | :-- | :-- |
+| M1 | Discovery signed off; data imported | Week 1 |
+| M2 | Catalog search live on staging | Week 2 |
+| M3 | Accounts + holds transaction flow | Week 3 |
+| M4 | Assistant with citations + eval | Week 4 |
+| M5 | Pilot at one branch, rollback rehearsed | Week 5 |
+| M6 | Handover pack delivered | Week 6 |
+
+## 8. Stage 2 Done Criteria
+
+- [ ] PRD ≤ 4 pages, signed off (role-played honestly)
+- [ ] Every FR/NFR has a number and a named acceptance check
+- [ ] "Out of scope" list exists with at least 5 entries
+- [ ] Risks have mitigations and owners, not just names
+
+**Next:** [00.10.12 Technical Design](/book/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-12-the-municipal-library-capstone-technical-design)
+
+</BookNodePage>

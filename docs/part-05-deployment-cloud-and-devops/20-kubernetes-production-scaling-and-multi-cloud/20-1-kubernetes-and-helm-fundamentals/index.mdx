@@ -1,0 +1,29 @@
+---
+id: "index"
+title: "20.1 Kubernetes & Helm Fundamentals"
+sidebar_label: "20.1 Kubernetes & Helm Fundamentals"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-1-kubernetes-and-helm-fundamentals"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s1">
+
+**Subchapter 20.1** is the foundation everything else in the chapter stands on. Kubernetes intimidates people for one reason: they try to learn it as a pile of commands. It is actually one idea — **declare the desired state, let controllers reconcile reality to it** — with several supporting objects. Learn the idea first, the objects second, the commands third.
+
+## Lessons in Subchapter 20.1
+
+1. **[20.1.1 Kubernetes Architecture: Pods, Deployments, Services and Config](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-1-kubernetes-and-helm-fundamentals/20-1-1-kubernetes-architecture-pods-deployments-services-and-config):** Control plane (API server, etcd, scheduler, controller-manager) vs nodes (kubelet, container runtime); why declarative reconciliation beats manual ops; kubectl and kind installation; `kind create cluster`; namespaces; full YAML anatomy for a Pod, Deployment and Service; `apply`, `scale`, `rollout status`; ConfigMap vs Secret — and why base64 is not encryption.
+
+2. **[20.1.2 Ingress, Probes, Autoscaling, Helm and Local Cluster Lab](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-1-kubernetes-and-helm-fundamentals/20-1-2-ingress-probes-autoscaling-helm-and-local-cluster-lab):** Readiness vs liveness probes, HPA with metrics-server in kind, the Ingress concept and the post–ingress-nginx landscape (ingress-nginx retired March 2026), kind + cloud-provider-kind and Gateway API, Helm from zero (`helm create`, `helm template`, `helm install`), and the capstone lab: build ShopCore's image, `kind load docker-image`, deploy, port-forward, curl.
+
+## How to Work Through Subchapter 20.1
+
+1. Install kubectl and kind **before** the first lesson's lab section — installation is part of the learning, not setup bureaucracy.
+2. Type the YAML manifests by hand the first time; do not copy-paste blindly. The muscle memory pays off when something fails to apply.
+3. Expect `kind create cluster` to take 1–5 minutes depending on your machine and network. It downloads a prebuilt node image (~1 GB) once; subsequent clusters start from cache.
+4. Keep one terminal on `kubectl get pods -w` while you apply manifests — watching reconciliation happen is the single best mental-model builder in this subchapter.
+
+Prerequisites for this subchapter: Docker working ([Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment)), the ShopCore API image built (18.1.2), and basic YAML comfort (Part 04's CI workflow from Chapter 19 helps). No prior Kubernetes knowledge is assumed. All labs run on your laptop and cost nothing; delete the cluster (`kind delete cluster --name shopcore`) when you are done.
+
+</BookNodePage>

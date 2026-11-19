@@ -1,0 +1,106 @@
+---
+id: "00-8-6-verifying-results"
+title: "00.8.6 Verifying Results"
+sidebar_label: "00.8.6 Verifying Results"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-6-verifying-results"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-6">
+
+Deploying an untested staging preview and emailing busy stakeholders *"Please try clicking around and tell us if anything looks wrong"* abandons engineering accountability. Operational teams have limited patience—if the very first three real records they test throw an unhandled `500`, display stale data, or surface an ungrounded AI hallucination with zero source evidence, stakeholder trust collapses and adoption stalls for months.
+
+The **Verify** stage (`Listen → Map → Measure → Slice → Build → Verify → Handover`) proves rigorously—using **automated software tests**, **real-data AI evaluation suites**, **Shadow Mode comparison**, and **non-admin operator User Acceptance Testing (UAT)**—that your delivered slice behaves accurately, safely, and predictably under ugly real-world conditions *before* requesting broad rollout.
+
+## 1. Three Verification Gates Required Before Broad Rollout
+
+| Verification Gate | Exact Risk Eliminated | Concrete Evidence Required to Pass |
+| :--- | :--- | :--- |
+| **1. Deterministic Software & Security Gate** | Broken auth checks, cross-tenant leaks, duplicate writes on retry, crash on invalid uploads, failed DB migrations | Passing CI unit + real-DB integration tests (`Ch 14`), `curl`/API probes verifying `401`/`403`/`409`/`422`, confirmed secret isolation |
+| **2. Real-Data AI Evaluation Gate (`Ch 36`)** | Prompt fragility on noisy PDFs, wrong-year contract retrieval, fabricated numbers, indirect prompt injection | Automated eval script run across 30–60 anonymized *real* customer packets measuring field accuracy, citation grounding, JSON validity, p95 latency, and token cost |
+| **3. Frontline Operator UAT Gate** | Confusing button layouts, missing exception workflows, blind mistrust of AI outputs, unreadable error messages | 2–3 actual frontline operators completing realistic daily tasks under normal restricted accounts while you watch silently and log friction |
+
+## 2. Shadow Mode: De-Risking High-Stakes Operational Launches
+
+When introducing AI or automation into high-consequence processes—such as customer refund triage, carrier rate dispute letters, medical/legal intake routing, or billing syncs—never switch overnight from *"100% manual"* to *"system writes straight into production records."*
+
+Deploy **Shadow Mode** for 3–7 business days first:
+
+1. **Mirror live intake silently:** Route live incoming webhooks, emails, or uploaded PDFs through your new Slice 1 pipeline in **strict read-only / draft state** without notifying external customers or mutating the legacy ERP.
+2. **Collect paired human vs. system outputs:** Frontline staff continue handling their normal queue while your system persists what *it would have proposed* alongside timestamps and retrieved evidence.
+3. **Audit every mismatch daily:** Sit down for 20 minutes each afternoon inspecting discrepancies between human decisions and system proposals:
+   - *Category A — Missing business rule:* Did operators apply an unwritten seasonal rule nobody mentioned during `Listen`? Add the deterministic rule cleanly.
+   - *Category B — Retrieval / extraction failure:* Did OCR garble a watermarked table or pull an expired SOP? Fix chunking or add metadata filters (`Ch 28`).
+   - *Category C — Adversarial / weird input:* Add that exact anonymized packet straight into your permanent regression test file (`Ch 36`) so it never regresses later.
+4. **Graduate strictly on measured evidence:** Only enable human-approved one-click write actions once Shadow Mode proves predictable accuracy, latency, and clear escalation rates against your **Measure (`00.8.3`)** baseline.
+
+## 3. Concrete Walkthrough: Verifying a Claims Extraction Slice Before Launch
+
+Imagine an FDE finishing Slice 1 of a property-claims intake assistant. Before scheduling executive sign-off, the engineer runs a clean pre-launch verification report:
+
+- **Deterministic tests (`24/24` passing):** Verified duplicate claim email webhooks deduplicate cleanly via SHA-256; verified Claim Adjuster from Region East receives `HTTP 403` attempting to fetch Region West claim IDs; verified arithmetic validation flags mismatched invoice totals automatically.
+- **Golden Eval (`50 real anonymized packets`):** Typed PDFs hit `96%` exact key-field extraction; handwritten contractor scans hit `71%` extraction with `100%` correctly triggering `status = 'needs_manual_review'` below confidence rules instead of emitting silent bad numbers; average cost sits at `$0.011/claim`.
+- **Silent UAT observation (30 minutes):** Watching two claims coordinators exposes one subtle UI snag—operators struggled scrolling long PDFs to verify extracted totals. The engineer adds a clickable `Page 4` anchor jump beside `Total Estimated Damage`, cutting verification clicks per claim in half before go-live.
+
+## 4. Closing the Loop Back to Baseline (`00.8.3`)
+
+Every **Verify** cycle ends by comparing observed metrics side by side with pre-build baselines recorded in **Measure**: cycle time before vs. after, error/rework rate before vs. after, operator override frequency, and live unit cost. Honest reporting—highlighting both wins and explicit known boundaries (`"handles typed vendor invoices cleanly; multi-page handwritten manifests escalate safely for Slice 2"`)—builds rock-solid organizational trust.
+
+## 5. Mini Practice Exercise
+
+Suppose you built a tool that reads customer bug emails, pulls matching GitHub issue threads via RAG, and drafts reply notes for support engineers:
+
+1. Design a **3-day Shadow Mode verification plan**: what exact table/columns log your tool's draft alongside the support engineer's actual final sent reply?
+2. List **four specific messy inputs** (`empty thread`, `customer pasting raw malicious prompt text`, `exact alphanumeric crash code`, `non-English attachment`) you will place into your golden evaluation file before launching live.
+
+## Automated Eval + Adversarial Gate Example (`Ch 36`)
+
+Notice why a crisp repeatable golden evaluation script replaces vague gut feelings (*"seems accurate today"*) before promoting any Slice 1 update live:
+
+```python
+# Minimal golden eval runner checking schema, required citations & prompt-injection immunity
+for case in load_golden_cases("evals/triage_v1.jsonl"):
+    result = run_triage_pipeline(case["raw_input"], workspace_id=SANDBOX_WS)
+    assert result.schema_valid is True, f"Broken schema on {case['id']}"
+    if case["expects_refusal"]:
+        assert result.action == "NEEDS_MANUAL_REVIEW"
+    else:
+        assert case["expected_policy_id"] in result.cited_doc_ids
+```
+
+Running that exact script locally and inside CI every time a developer tweaks a chunk size, embedding query, or system instruction guarantees that fixing Case #14 never silently breaks Cases #1–#13! Pair that automated eval suite with a 30-minute silent **Operator UAT Scorecard** (`Can the staff member find, verify citations, override a wrong value, and approve within 3 minutes without asking you where a button sits?`), and Slice 1 earns genuine user adoption from day one.
+
+## Shadow-Mode Comparison Schema (`shadow_evaluations`)
+
+To run Question #1's Shadow Mode cleanly in PostgreSQL without writing back into production ERP systems yet, persist each silent system draft right beside the later human action:
+
+```sql
+CREATE TABLE shadow_evaluations (
+  id              UUID PRIMARY KEY,
+  workspace_id    UUID NOT NULL,
+  external_msg_id TEXT NOT NULL UNIQUE,
+  ai_draft_json   JSONB NOT NULL,
+  human_final_act TEXT,          -- Filled asynchronously when operator completes ticket manually
+  matched_human   BOOLEAN,       -- Scored in nightly/daily 20-min discrepancy review
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+When five straight business days show high `matched_human` agreement and zero schema or tenant faults, you promote Slice 1 into live operator-assisted production with verified empirical backing instead of crossed fingers.
+
+Even after Slice 1 ships cleanly, keep your `evals/triage_v1.jsonl` benchmark alive as a living engineering asset. Every production edge case reported during early operations—after stripping confidential PII—earns one permanent anonymized test case inside that golden suite (`Ch 36`). Over weeks, your verification gate compounds into an authoritative safety net protecting every model upgrade, chunk-size tweak, or SQL refactor.
+
+## Key Takeaways
+
+- Never delegate testing unverified software to busy stakeholders; verify across **deterministic tests, real-data AI evals, and live operator UAT** first.
+- **Shadow Mode** bridges risky manual workflows safely into production by measuring system proposals silently against human experts on live traffic.
+- Compare verified runtime outcomes transparently against pre-build baselines to validate true operational impact.
+
+## References and Further Reading
+
+- [OpenAI Evaluation Guide — Real-World Evals & Regression Sets](https://platform.openai.com/docs/guides/evals)
+- [Google SRE Book — Testing for Reliability](https://sre.google/sre-book/testing-reliability/)
+- [Next Step — 00.8.7 Deployment and Handover](/book/part-00-about-this-book/00-8-fde-mindset/00-8-7-deployment-and-handover)
+
+</BookNodePage>

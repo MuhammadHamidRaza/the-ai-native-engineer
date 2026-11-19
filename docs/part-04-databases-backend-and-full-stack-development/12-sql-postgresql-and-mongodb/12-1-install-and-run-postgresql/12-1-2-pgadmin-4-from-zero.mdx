@@ -1,0 +1,114 @@
+---
+id: "12-1-2-pgadmin-4-from-zero"
+title: "12.1.2 pgAdmin 4 From Zero"
+sidebar_label: "12.1.2 pgAdmin 4 From Zero"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-1-install-and-run-postgresql/12-1-2-pgadmin-4-from-zero"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s1-t2">
+
+**pgAdmin 4** is the official graphical administration tool for PostgreSQL. For a beginner it is the fastest way to *see* what the database is doing — create databases and tables with menus, browse data in a grid, and run SQL interactively. Every skill here has a `psql` equivalent you will learn in [12.1.3](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-1-install-and-run-postgresql/12-1-3-psql-command-line-essentials); a professional uses both daily.
+
+## 1. Who Should Use pgAdmin
+
+- **Use it when:** you want to visualize tables/columns/constraints, explore unknown schemas, or build muscle memory with SQL in the Query Tool.
+- **Prefer the terminal when:** scripting, migrations, CI/CD, or connecting to servers without a desktop GUI.
+
+## 2. Launching pgAdmin 4 and First-Time Setup
+
+**Windows:** Start menu → type **pgAdmin 4** → Enter. (It also ships inside the PostgreSQL 18 installer — no separate download needed; official standalone downloads are at https://www.pgadmin.org/download/.) The app opens in its own window (it is a local web app). The first launch takes 20–60 seconds.
+
+**First-time screen — Master Password:** pgAdmin asks you to set a **Master Password**. This is *not* your database password — it encrypts the connection credentials pgAdmin stores on your machine. Choose any strong passphrase you will remember (e.g., 4 unrelated words). If you forget it, delete the pgAdmin config folder (`%APPDATA%\pgAdmin`) — pgAdmin regenerates it, losing only stored passwords.
+
+## 3. Register Your First Server — The Exact Clicks
+
+1. In the left **Browser** panel, expand **Servers**. Right-click **Servers** → **Register** → **Server…**
+2. **General** tab:
+   - **Name:** `Local PostgreSQL 18` (any label).
+3. **Connection** tab:
+   - **Host name/address:** `localhost`
+   - **Port:** `5432` (or whatever you chose during install)
+   - **Maintenance database:** `postgres`
+   - **Username:** `postgres`
+   - **Password:** the superuser password you set in the installer. Tick **Save password**.
+   - Keep **SSL mode:** `Prefer`.
+4. Click **Save**.
+
+The tree expands to show: **Databases** → `postgres`, `template0`, `template1` — plus Login/Group Roles, Tablespaces, etc.
+
+If registration fails, see **Troubleshooting** — the three causes are always: service down (12.1.1 step 6), wrong port, wrong password.
+
+## 4. Create the `shopcore` Database — GUI Way
+
+1. Expand **Servers → Local PostgreSQL 18 → Databases**.
+2. Right-click **Databases** → **Create** → **Database…**
+3. **Database** field: type `shopcore`. **Owner:** `postgres`. Leave everything else default.
+4. Click **Save**. The `shopcore` database appears in the tree.
+
+## 5. Open the Query Tool — Your SQL Workbench
+
+1. Click **`shopcore`** in the tree to select it.
+2. Toolbar → **Query Tool** (the SQL icon, looks like a page with `>_`), or **Tools → Query Tool**, or press `Alt + Shift + Q`.
+3. A new panel opens at the bottom with an editor area and a results grid. Lightning bolt = execute; `F5` = execute; `Ctrl + Enter` = execute current statement.
+
+### Your first query
+
+```sql
+SELECT version();
+```
+
+Press **F5** (or the lightning bolt). You should see one row, e.g. `PostgreSQL 18.7 on x86_64...`. If the status panel reports an error, read it — pgAdmin shows the exact Postgres error message and position.
+
+### Create the ShopCore tables and data — GUI-assisted
+
+Copy the **canonical DDL** from [11.1.3 The ShopCore Schema](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema) into the query editor, then press **F5**. You will see one success message per statement in the script — 6 `CREATE TABLE` + 4 `CREATE INDEX` + constraint/ledger statements — each reported as `Query returned successfully`. Paste the **seed** script the same way and run it - `INSERT 0 3` etc. will be reported.
+
+### Inspect what you built
+
+- Expand **shopcore → Schemas → public → Tables**.
+- Right-click **products** → **View/Edit Data** → **All Rows**. The grid shows KB-01, MS-02, BK-03 with exact `price_cents`.
+- Click the **Columns** node to see every column with its type and constraints.
+- Right-click a table → **Properties** to see indexes and foreign keys — compare them against 11.1.3.
+
+## 6. pgAdmin vs. psql, Side by Side
+
+| Task | pgAdmin (GUI) | psql (CLI) |
+| :-- | :-- | :-- |
+| List databases | Tree → Databases | `\l` |
+| Connect to shopcore | Click it | `\c shopcore` |
+| List tables | Tree → Tables | `\dt` |
+| Describe products | Tree → Columns | `\d products` |
+| Run a .sql file | Open file in tool, run | `\i file.sql` or `psql -f file.sql` |
+| See roles | Tree → Login/Group Roles | `\du` |
+
+Memorize neither yet — close the menus for one task and try its twin in the terminal. Cross-training now prevents GUI dependence later.
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| "Application does not support SSL connections" on connect | Change **SSL mode** to `Prefer` (not `Require`) — local Postgres has no cert |
+| "The server requested a password but none was supplied" and Save password didn't stick | Tick **Save password** on the Connection tab, or re-enter it when prompted per session |
+| Tree shows red X next to server | Service stopped — start `postgresql-x64-18` (12.1.1 step 6) |
+| Query Tool greyed out | You haven't **selected a database** — click `shopcore` first |
+| Ran seed twice, got duplicate key errors | Expected! Wipe and reload: run `DROP TABLE ... CASCADE;` + DDL again, or `TRUNCATE users, categories, products, orders, order_items, payments RESTART IDENTITY CASCADE;` then re-run seed |
+
+## 8. Practice
+
+**Guided exercise.** Register the server, create `shopcore`, run the DDL and seed, and open the **View/Edit Data** grid for `orders`. Confirm order 1 totals `24700` cents (use the GROUP BY query from 11.1.3 and press F5).
+
+**Independent exercise.** Using only GUI menus (no SQL): create a new database `scratch`, expand its Tables node, screenshot it (empty), then delete the database with right-click → **Delete/Drop** (tick "CASCADE" when offered) and confirm it vanished.
+
+**Challenge.** Connect pgAdmin to a database on a *different* machine over LAN by changing **Host name/address** to that machine's IP. What must be true on the remote machine for this to work? (Service running, port 5432 reachable, correct credentials.)
+
+**Assessment checklist**
+
+- [ ] I opened pgAdmin, set a master password, and registered my local server.
+- [ ] I created `shopcore` and ran the canonical DDL + seed through the Query Tool.
+- [ ] I can find a table in the tree and open its data grid and its Columns node.
+- [ ] I know the psql twin of every pgAdmin task I used.
+- [ ] I can recover from a stopped service or wrong-password error without panicking.
+
+</BookNodePage>

@@ -1,0 +1,63 @@
+---
+id: "09-1-1-objects-references-and-mutability"
+title: "09.1.1 Objects, References and Mutability"
+sidebar_label: "09.1.1 Objects, References and Mutability"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-1-core-syntax-and-data-model/09-1-1-objects-references-and-mutability"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s1-t1">
+
+In Python, **everything is an object**—integers, strings, lists, functions, and `None`. Variables are **labels bound to object references**, never fixed-size memory slots holding raw copies.
+
+## 1. Indentation, Primitives, and `is` vs. `==`
+
+Python defines code blocks with **4 spaces** (never mix tabs and spaces). Core primitives are immutable: `int` (arbitrary precision—no `2^53` limit!), `float`, `bool`, `str` (f-strings: `f"{name}: {total:.2f}"`), and `None`.
+
+- **`==` compares values** (`[1, 2] == [1, 2]` is `True`).
+- **`is` compares object identity in memory** (`id(a) == id(b)`). **Always check `None` with `is None` / `is not None`**, never `== None`!
+
+## 2. Mutability & Aliasing Traps
+
+- **Immutable types:** `int`, `float`, `str`, `bool`, `tuple`, `frozenset`. Operations return brand-new objects.
+- **Mutable types:** `list`, `dict`, `set`, most custom classes. Modifying in place affects **every name pointing to that same object**:
+
+```python
+original = {"user": "Ada", "tags": ["admin"]}
+alias = original            # Points to the SAME dict!
+alias["user"] = "Grace"
+print(original["user"])     # "Grace"
+
+import copy
+isolated = copy.deepcopy(original) # Independent nested copy
+isolated["tags"].append("billing")
+print(original["tags"])     # ['admin'] — untouched!
+```
+
+## 3. The Classic Mutable Default Argument Trap
+
+Python evaluates default parameter values **once when `def` executes**, not on every function call!
+
+```python
+# BUGGY: every call shares the SAME list object!
+def add_item_buggy(item: str, bucket: list[str] = []) -> list[str]:
+    bucket.append(item)
+    return bucket
+
+# SAFE: use `None` sentinel and create a fresh list per call
+def add_item_safe(item: str, bucket: list[str] | None = None) -> list[str]:
+    target = [] if bucket is None else list(bucket)
+    target.append(item)
+    return target
+
+print(add_item_safe("a")) # ['a']
+print(add_item_safe("b")) # ['b'] — clean!
+```
+
+## Mastery Checklist
+
+- [ ] Uses `4` spaces consistently and checks `None` with `is None` / `is not None`.
+- [ ] Avoids mutable default arguments (`= []` or `= {}`) using `= None` sentinel values.
+
+</BookNodePage>

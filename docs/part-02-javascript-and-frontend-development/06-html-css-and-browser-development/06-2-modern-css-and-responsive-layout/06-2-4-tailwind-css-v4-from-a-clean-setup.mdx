@@ -1,0 +1,171 @@
+---
+id: "06-2-4-tailwind-css-v4-from-a-clean-setup"
+title: "06.2.4 Tailwind CSS v4 — Explicit Install & Verification"
+sidebar_label: "06.2.4 Tailwind CSS v4 — Explicit Install & Verification"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-2-modern-css-and-responsive-layout/06-2-4-tailwind-css-v4-from-a-clean-setup"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s2-t4">
+
+Chapter 08 scaffolds Next.js with `--tailwind` and it works silently. That is convenient — and fragile if you never learn what the scaffold actually did. This lesson installs **Tailwind CSS v4** explicitly in a fresh project, explains what each file does, and proves the install with a production build instead of "it looks styled in dev mode."
+
+**Prerequisites:** `03.1.4` (Node.js + npm), `06.2.1–06.2.3` (box model, Flexbox/Grid, responsive units).
+
+## 1. What Tailwind Is (and Is Not)
+
+Tailwind is a **utility-first CSS framework**: instead of writing custom CSS classes like `.note-card { … }`, you compose single-purpose utility classes in markup (`class="rounded-2xl border p-4 shadow-sm"`). It ships *generated* CSS — only the utilities you actually use make it into the production bundle.
+
+- It is **not** a component library (buttons, modals) — it styles elements; you build the components.
+- It is **not** a replacement for knowing CSS — utilities map 1:1 onto the box model, cascade, and responsive rules you learned in `06.2.1–06.2.3`.
+- **v4 vs v3 matters:** v4 is **CSS-first**. No `tailwind.config.js` by default; no `@tailwind base;` directives; the PostCSS plugin lives in a separate package (`@tailwindcss/postcss`). Instructions mixing `@tailwind base` with `npm i tailwindcss@latest` are stale v3 material — do not combine them.
+
+| v3 (legacy) | v4 (current) — Next 16 | v4 (current) — Vite |
+| :--- | :--- | :--- |
+| `npm i -D tailwindcss postcss autoprefixer` | `create-next-app --tailwind` → `tailwindcss` + `@tailwindcss/turbopack` (Turbopack loader) | `npm i tailwindcss @tailwindcss/vite` |
+| `postcss.config.js` with `tailwindcss: {}` | None — `next.config.ts` turbopack rules | None — `vite.config.ts` `plugins: [tailwindcss()]` |
+| `@tailwind base; …` in CSS | `@import "tailwindcss";` | `@import "tailwindcss";` |
+| `tailwind.config.js` mandatory | Content auto-detected; no JS config needed (legacy `@config` opt-in only) | Same |
+
+## 2. Path A — What the Book's Scaffold Actually Did (Next.js 16, scaffold output as of November 2026 — re-run the command yourself to confirm)
+
+```bash
+npx create-next-app@latest shopcore-web --typescript --tailwind --eslint --app --src-dir
+cd shopcore-web
+npm run dev
+```
+
+Running the scaffold as of November 2026 (Next **16.4.6**, React **19.3.0** — exact versions drift; re-run and compare) produces:
+
+- `tailwindcss@4.3.3` + `@tailwindcss/turbopack@4.3.3` in devDependencies — **no `postcss.config.mjs` is generated**
+- `next.config.ts` wired for Turbopack:
+
+```ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,
+  turbopack: {
+    rules: {
+      "*.css": { loaders: ["@tailwindcss/turbopack"], as: "*.css" },
+    },
+  },
+};
+
+export default nextConfig;
+```
+
+- `@import "tailwindcss";` at the top of `src/app/globals.css`
+
+Verify before trusting any of it:
+
+```bash
+npm ls tailwindcss @tailwindcss/turbopack
+cat next.config.ts
+grep -n "tailwindcss" src/app/globals.css
+npm run build      # must complete without Tailwind/PostCSS errors
+```
+
+If all four resolve, Path A is done. If `--tailwind` ever emits a `postcss.config.mjs` again (versions change!), the same greps will tell you — trust the greps, not this page. Next.js 15 and earlier scaffold differently (`postcss.config.mjs` with `"@tailwindcss/postcss"`); check [nextjs.org/docs](https://nextjs.org/docs) for your version.
+
+## 3. Path B — Explicit Install in a Vite Project
+
+```bash
+npm create vite@latest tailwind-lab -- --template vanilla-ts
+cd tailwind-lab
+npm install
+npm install tailwindcss @tailwindcss/vite
+```
+
+**`vite.config.ts`** (Vite vanilla-ts template already creates one):
+
+```ts
+import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  plugins: [tailwindcss()],
+});
+```
+
+**`style.css`** — replace its contents with one import line (the template links it from `index.html` already):
+
+```css
+@import "tailwindcss";
+```
+
+> Next.js projects use the Turbopack-loader wiring shown in Path A (`@tailwindcss/turbopack` in `next.config.ts`); older Next.js (≤ 15) generates `postcss.config.mjs` with `"@tailwindcss/postcss"` instead. Both are official Tailwind v4 setups — **do not** mix `postcss.config.mjs` into a Vite project or `@tailwindcss/vite` into Next.js. If `create-next-app` ever changes what it scaffolds, trust `npm ls`/`grep` over this page (§2).
+
+## 4. A Working Styled Component
+
+Replace the contents of `index.html`'s body with:
+
+```html
+<main class="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+  <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">In Stock</p>
+    <h1 class="mt-1 text-2xl font-bold text-slate-900">Ergonomic Desk Lamp</h1>
+    <p class="mt-2 text-sm text-slate-600">Warm 2700K LED, dimmable, USB charging base.</p>
+    <div class="mt-4 flex items-center justify-between">
+      <span class="text-xl font-bold text-slate-900">$49.00</span>
+      <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        Add to Cart
+      </button>
+    </div>
+  </div>
+</main>
+```
+
+What each cluster does — read it like CSS, because it *is* CSS:
+
+| Utility cluster | Meaning |
+| :--- | :--- |
+| `min-h-screen flex items-center justify-center` | Full-height flexbox, centered both axes |
+| `w-full max-w-sm rounded-2xl border … shadow-sm` | Fluid card capped at 24rem, rounded, subtle elevation |
+| `text-xs uppercase tracking-wide text-blue-600` | Badge typography |
+| `hover:bg-blue-700 focus:ring-2` | State variants — no custom CSS required |
+| `text-sm text-slate-600` | Body copy hierarchy without a theme file |
+
+## 5. Build Verification (Not "It Looks Fine in Dev")
+
+```bash
+npm run dev      # visual check at the printed URL
+npm run build    # production build
+```
+
+Then confirm the utilities were generated into the output CSS. In a Vite project the CSS lands in `dist/assets/index-*.css`; in Next.js check `.next/static/chunks/`:
+
+```bash
+grep -o 'items-center' dist/assets/*.css | head -1
+grep -o 'rounded-2xl' .next/static/chunks/*.css | head -1
+```
+
+Both must print a match. If dev mode looked styled but the built CSS has zero matches, your import path is wrong (most often `@import "tailwindcss"` in the wrong file).
+
+## 6. Common Mistakes
+
+1. **Mixing v3 and v4 instructions** — `@tailwind base` + `tailwindcss@latest` = silent no-op styles.
+2. **`content: []` cargo-cult** — v4 auto-detects sources; a stale `content` array in a JS config is ignored anyway unless loaded via `@config`.
+3. **Expecting `tailwind.config.js` to be picked up** — v4 requires explicit `@config` opt-in for legacy config files.
+4. **Skipping the build check** — dev server masks missing-injection problems; only the production build proves the pipeline.
+5. **Stale Next.js-era instructions** — `postcss.config.mjs` with `"@tailwindcss/postcss"` is the **Next ≤15** path; Next 16 scaffolds `@tailwindcss/turbopack` in `next.config.ts` instead. Both are official v4 setups — pick the one your `create-next-app` version actually emitted.
+
+## Acceptance Criteria
+
+- [ ] For Path A (Next 16): `npm ls tailwindcss @tailwindcss/turbopack` resolves, `next.config.ts` contains the turbopack rule, `globals.css` starts with `@import "tailwindcss";` — and the grep output matched what is printed above.
+- [ ] For Path B (Vite): `npm ls tailwindcss @tailwindcss/vite` resolves, `vite.config.ts` loads the plugin.
+- [ ] The product card above renders styled (rounded card, centered, hover on button).
+- [ ] `npm run build` succeeds and the built CSS contains the utilities used (`items-center`, `rounded-2xl`).
+- [ ] You can explain, in one sentence each, what `@import "tailwindcss"`, the PostCSS plugin, and the dev-vs-build check do.
+
+## References
+
+- [Tailwind CSS — Installing with Vite](https://tailwindcss.com/docs/installation/using-vite) and [with PostCSS](https://tailwindcss.com/docs/installation/using-postcss) (verified v4.x, November 2026)
+- [Tailwind CSS v4 Upgrade Guide](https://tailwindcss.com/docs/upgrade-guide)
+- [Next.js — create-next-app CLI](https://nextjs.org/docs/app/api-reference/cli/create-next-app)
+
+**Next:** [06.3.1 DOM Tree, Events and Delegation](/book/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-3-the-browser-dom-and-web-apis/06-3-1-dom-tree-events-and-delegation)
+
+</BookNodePage>

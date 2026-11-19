@@ -1,0 +1,152 @@
+---
+id: "32-1-2-tools-resources-and-prompt-templates"
+title: "32.1.2 Tools, Resources and Prompt Templates"
+sidebar_label: "32.1.2 Tools, Resources and Prompt Templates"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-1-protocol-architecture-and-primitives/32-1-2-tools-resources-and-prompt-templates"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32-s1-t2">
+
+MCP exposes exactly three primitives. Picking the wrong one is the most common design error in a new server — usually "everything is a tool." This lesson teaches the division, builds the ShopCore examples, and shows the debug loop. **Verified November 2026** against the `2026-07-28` spec and Python SDK `mcp` 2.3.0 (v1's `FastMCP` was renamed `MCPServer`; the v2 line serves both protocol eras).
+
+## 1. The Three Primitives — Division of Labor
+
+| Primitive | What it is | Side effects? | Controlled by | Model or user picks? |
+| :-- | :-- | :-- | :-- | :-- |
+| **Tool** | A function with a JSON Schema `inputSchema` | Yes — that's the point | The model | Model chooses when to call |
+| **Resource** | Read-only context addressed by URI (`shopcore://orders/ORD-2026-004417`, `file://…`, `postgres://…`) | No | The host/user | Host or user attaches; model may request |
+| **Prompt** | Parameterized message template (`/triage-this-ticket {ticket_id}`) | No (it emits messages) | User (slash command) | User picks explicitly |
+
+Decision test: *If the model needs data to answer but should not act → resource. If the model must do something or query live state → tool. If a human repeats the same instruction weekly → prompt template.*
+
+**Tools** carry `name`, `description`, `inputSchema` (JSON Schema), optional `outputSchema` and annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`). Annotations are **hints** — hosts may display them, servers must not trust them from other servers. **Resources** are `uri`, `name`, `mimeType`, optional size; supports templates (`shopcore://orders/{order_id}`) and (in current SDKs) subscriptions for change notification. **Prompts** are `name`, `description`, `arguments[]`; `prompts/get` returns a message list the host injects — it is user-invoked, never model-invoked.
+
+## 2. Worked ShopCore Examples
+
+**Tool — `lookup_order`** (live state, parameterized):
+
+```python
+# server.py — Python SDK v2 (MCPServer)
+from mcp.server import MCPServer
+from pydantic import Field
+
+mcp = MCPServer("shopcore-policy")
+
+@mcp.tool()
+def lookup_order(order_id: str = Field(pattern=r"^ORD-[0-9]{4}-[0-9]{6}$")) -> str:
+    """Fetch one order by exact ID. Use when the ticket names an order ID."""
+    row = db.execute("SELECT status, paid_cents, placed_at FROM orders WHERE order_id=%s",
+                     (order_id,)).mappings().one_or_none()
+    if row is None:
+        return "error: order not found; do NOT fabricate one"
+    return f"status={row['status']} paid_cents={row['paid_cents']} placed_at={row['placed_at']}"
+```
+
+**Resource — `shopcore-policy.md`** (static-ish context, cite-able, not callable):
+
+```python
+@mcp.resource("shopcore://policy/returns", name="shopcore-policy.md", mime_type="text/markdown")
+def returns_policy() -> str:
+    """Returns & refunds policy, v2026-Q4 — the exact text HelpBot cites."""
+    return Path("policy/returns.md").read_text(encoding="utf-8")
+```
+
+**Prompt — `/triage-this-ticket`** (recurring human task, one slash-command):
+
+```python
+@mcp.prompt()
+def triage_this_ticket(ticket_id: str) -> list[dict]:
+    """Classify a ShopCore support ticket and propose next action."""
+    return [{"role": "user", "content":
+             f"Ticket {ticket_id}: classify (refund_dispute|shipping|account|other), "
+             f"extract order_id if any, cite policy clause, propose next action. "
+             f"Never issue refunds; propose only."}]
+```
+
+Prompt templates earn their keep on **recurring, parameterized human tasks** — standup notes, weekly report, ticket triage, release notes. They encode your *best* phrasing once, so the junior (or the model) starts from it. They are not a substitute for tools.
+
+## 3. Choosing Between Tool and Resource — the Honest Table
+
+| Question | Tool | Resource |
+| :-- | :-- | :-- |
+| Needs parameters? | Yes — typed schema | URI (template) params only |
+| Live query / joins / aggregation? | Yes | No — read one addressed item |
+| Mutates anything? | Yes (or may) | Never |
+| Should appear in the model's automatically-injected context? | No | Yes, when host attaches it |
+| Citation semantics for HelpBot | Weak ("the tool said") | Strong (`[shopcore://policy/returns]` stable URI) |
+| Cache-friendly? | No | Yes (`ttlMs` hints, 2026-07-28) |
+
+If HelpBot keeps answering refund questions with model memory instead of the policy URI, your bug is *using a tool where a resource belongs* — the policy text should ride as context the model can cite verbatim.
+
+## 3.5 Input Schema Discipline — the Contract the Model Signs
+
+The model never sees your docstring as enforced law; it sees `inputSchema`. In the Python SDK v2 the schema is derived from type hints (and **validated inbound on the client side**, and — in v1 — enforced server-side before your handler ran; v2's low-level server does *not* re-validate, so your `@mcp.tool()` decorators and Pydantic models remain the enforcement). Rules that survive contact with production:
+
+- Every parameter typed; no bare `dict`. `Literal["damaged","not_received","wrong_item","duplicate","other"]` over free strings.
+- Ranges on money (`Field(ge=1, le=500_00)`), patterns on IDs, max lengths on anything the user typed.
+- Descriptions written for the *model*: when to call, when to refuse, what the error strings mean.
+- If `inputSchema` is `{}`, `tools/list` fails validation outright at 2026-07-28 — an empty object is not a schema.
+
+## 3.6 URI Design for Resources
+
+URIs are public API — treat them like REST paths in a public SDK:
+
+- Scheme: `shopcore://` for domain resources, `file://` only for genuinely file-backed content, `postgres://` avoided (credentials in URIs leak into logs — use `shopcore://orders/{id}` and resolve in the handler).
+- Stable, lowercase, kebab-free hierarchy: `shopcore://orders/ORD-2026-004417`, `shopcore://policy/returns`.
+- Never put secrets, tokens or PII in URIs; clients may cache and log them.
+- Templates (`shopcore://orders/{order_id}`) are RFC 6570 in current SDKs — `{+path}` and `{?query}` now work, and path-traversal in extracted values is rejected by default.
+- Enumerate cautiously: `resources/list` on a 50k-order table ships 50k URIs. Scope listings to the caller (recent/active only) and use templates for on-demand reads.
+
+## 4. Resource Subscriptions
+
+For changing resources (order status, policy docs updated quarterly): clients may open a `subscriptions/listen` stream naming the URIs/notification kinds they want (2026-07-28; replaces the old `resources/subscribe` + GET stream). The server publishes with `ctx.notify_resource_updated(uri)` (Python SDK v2) and clients re-read. Use it for: policy doc replaced, order state flip (paid → shipped), price list update. Do **not** use it for high-frequency telemetry — that belongs in your metrics pipeline, not in LLM context.
+
+## 4.5 Prompt Templates That Earn Their Keep — and Two That Don't
+
+ShopCore's recurring tasks: `/triage-this-ticket` (above), `/standup` ("First line: what shipped yesterday across helpbot + postmaster; second line: today's top risk; third: blocked items — read from the boards resource, do not invent"), `/weekly-report` (aggregates support volume + refund totals from a `shopcore://reports/week/{year}-W{week}` resource). Non-examples: "answer as a pirate" (style-only, no recurrence value) and "review my code" (not a parameterized template — a one-off conversation). A prompt earns its URI when: it recurs, it is parameterized, and a wrong first phrasing is expensive. If you cannot fill in the arguments signature, it is not a prompt — it is a habit, and habits belong in your editor snippets, not in `prompts/list`.
+
+Note the discovery asymmetry that confuses newcomers: `prompts/list` is shown **to users** (slash menus), while `tools/list` and `resources/list` are consumed **by the model**. Design each primitive for its actual consumer.
+
+## 5. Debugging with MCP Inspector
+
+**MCP Inspector** (`@modelcontextprotocol/inspector`, v2 line) is the official interactive debugger — a Node.js app, run with `npx`:
+
+```bash
+npx @modelcontextprotocol/inspector python shopcore_server.py     # stdio server
+npx @modelcontextprotocol/inspector --cli python shopcore_server.py --method tools/list
+```
+
+It prints a local URL; open it, and you get: **Tools** (auto-generated forms from your schemas — call them and see raw JSON), **Resources** (browse + read by URI), **Prompts** (render with arguments), plus the raw JSON-RPC frames in the traffic pane. `mcp dev shopcore_server.py` (from `mcp[cli]`) does the same for Python and pins the spawned environment to your installed SDK. Workflow: change code → Inspector reconnect → call tool → read frame → repeat. If a tool returns garbage, the Inspector frame shows whether the bug is your handler or the schema the model would see.
+
+**JSON-RPC frame introspection.** For stdio, watch raw carriage on the wire: log server-side to **stderr** (never stdout — stdout *is* the protocol channel), or run the server by hand and type frames: `{"jsonrpc":"2.0","id":1,"method":"tools/list"}` with a trailing newline. Every message is one JSON-RPC 2.0 object. In the Python SDK, protocol validation errors surface as JSON-RPC error responses (`-32602` invalid params, `-32603` internal, `-32020` header mismatch, `-32022` unsupported version) — see modelcontextprotocol.io/troubleshooting for the keyed list.
+
+## 6. Common Errors & Pitfalls
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Host shows no tools | Server crashed before `tools/list`; stdout polluted by `print()` | Log to stderr; run `mcp dev` first |
+| Tool form fields untyped | No type annotations / schema not emitted | Annotate params; check schema in Inspector |
+| `isError=true` on every call | Handler raised; v2 returns *sanitized* `-32603` unless `ToolError` | Raise domain errors as `ToolError` for model-visible text |
+| Resource reads fine, tool works, prompt empty | Returned dict instead of message list | Return `[{"role":"user","content": "..."}]` |
+| "Resource not found" only in host | URI mismatch; host requested `SHOPCORE://policy` case-sensitively | Keep URIs lowercase, stable; test read in Inspector |
+| Subscription silent | Client never sent `subscriptions/listen` | It's opt-in; host controls; verify filter names |
+
+## 7. Practice
+
+**Guided exercise.** Extend the server: add resource `shopcore://orders/{order_id}` (template) backed by the same `orders` query, and a prompt `/weekly-policy-digest`. Read all three primitives in Inspector.
+
+**Independent exercise.** Point HelpBot at `shopcore://policy/returns` instead of stuffing policy into its system prompt; confirm answers now cite the URI.
+
+**Challenge.** Add `subscriptions/listen` on the order resource; flip an order's status in Postgres; confirm the client receives the update notification and re-reads.
+
+**Assessment checklist**
+
+- [ ] I can pick tool vs resource vs prompt for a new capability without asking anyone.
+- [ ] My resources are read-only and my tools declare annotations honestly.
+- [ ] I have read a raw JSON-RPC frame and know where stderr fits.
+- [ ] I can debug any server with `npx @modelcontextprotocol/inspector` (or `mcp dev`).
+- [ ] I know resource subscriptions exist and what they're *not* for.
+
+</BookNodePage>

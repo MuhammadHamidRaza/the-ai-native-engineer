@@ -1,0 +1,161 @@
+---
+id: "00-10-4-github-and-technical-documentation"
+title: "00.10.4 GitHub and Technical Documentation"
+sidebar_label: "00.10.4 GitHub and Technical Documentation"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-4-github-and-technical-documentation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-4">
+
+Your **GitHub profile and project repositories** act as primary forensic evidence whenever a hiring lead, technical co-founder, or prospective client evaluates how you work. Long before anyone executes your application locally, an experienced reviewer opens a repository for sixty seconds and checks folder clarity, commit history, `.env.example`, schema structure, automated CI badges, and the root `README.md`.
+
+Great technical documentation is **not** redundant comments explaining obvious syntax (`// loop over users`). High-signal documentation acts as a **five-minute onboarding engine**: empowering any engineer—or your own future self six months later—to understand *what operational problem* the codebase solves, *how components interact*, *why key trade-offs were picked*, and *how to boot and test it cleanly* in minutes.
+
+## Anatomy of a Production-Grade Repository
+
+Whether publishing a focused backend service (`Part 04`), a custom MCP tool (`Part 08`), or your **Chapter 42 Integrated Capstone**, hold every flagship repository to this concrete structural bar:
+
+| Repository Artifact | Professional Standard | What Messy Beginner Repos Get Wrong |
+| :--- | :--- | :--- |
+| **Root `README.md`** | Concise problem summary, architecture diagram, stack choices, deterministic vs. AI boundaries, quickstart commands, test/eval commands, and honest known limits | Leaves framework boilerplate (`"This is a Next.js project bootstrapped with create-next-app..."`) untouched |
+| **`.env.example`** | Documents every required variable key + short purpose (`DATABASE_URL=`, `GEMINI_API_KEY=`), strictly zero live values | Omits environment keys completely—or catastrophically pushes a real `.env` file into Git |
+| **`docs/adr/` (Architecture Decision Records)** | Compact 1-page markdown memos capturing 2–4 major choices (*"Why PostgreSQL + pgvector over dual stores"*, *"Why idempotent worker queues for ingestion"*) | Forces teammates or interviewers to guess design trade-offs blindly |
+| **Commit History & PR Hygiene** | Cohesive, scoped commits (`feat(auth): verify workspace membership before query`, `fix(rag): enforce top-k tenant filter`) | One gigantic `"final upload"` dump or 35 messages reading `"fix"`, `"pls"`, `"test2"` |
+| **Automated CI (`.github/workflows/`)** | Runs `lint`, TypeScript `tsc --noEmit`, and unit/integration tests cleanly on pull requests | Zero automated checks—no machine-verifiable confidence in repository state |
+
+```text
+flagship-project-repo/
++-- .github/workflows/ci.yml      # Automated lint, typecheck & tests on PR
++-- docs/
+|   +-- adr/
+|   |   +-- 001-postgres-pgvector.md
+|   |   +-- 002-async-ingestion-queue.md
+|   +-- runbook.md                # Operator recovery & cost alert steps
++-- src/                          # Cleanly separated routes, services, db, ui
++-- tests/                        # Deterministic unit/integration + eval fixtures
++-- .env.example                  # Documented env var contract (NO secrets)
++-- .gitignore                    # Excludes .env*, node_modules/, .venv/
++-- docker-compose.yml            # Reproducible local Postgres + app services
++-- README.md                     # 5-minute onboarding guide
+```
+
+## A Reusable Flagship `README.md` Template
+
+Copy and adapt this crisp structure across every milestone repository from **Part 04** through **Part 10**:
+
+```markdown
+# Project Name — Crisp One-Line Outcome Summary
+
+## 1. Operational Problem & User Workflow
+Who encounters this problem, what fails in the manual As-Is process, and what
+verified To-Be workflow this system enables.
+
+## 2. System Architecture
+[Clean ASCII diagram showing Client -> Authenticated API -> PostgreSQL -> AI/Worker]
+
+- **Deterministic Core:** Session auth, tenant checks, Zod/Pydantic validation, SQL ACID writes
+- **AI Layer:** Structured extraction / hybrid pgvector RAG / bounded tool loop + golden evals
+
+## 3. Key Trade-Offs (Summary / ADRs)
+- [ADR-001](./docs/adr/001-postgres-pgvector.md) — Single PostgreSQL + pgvector store for atomic tenant filtering
+- [ADR-002](./docs/adr/002-async-ingestion-queue.md) — Background worker queue with idempotency keys
+
+## 4. Local Boot & Verification (Under 5 Minutes)
+1. Copy `.env.example` to `.env` and fill local configuration
+2. Start services: `docker compose up -d`
+3. Apply migrations & realistic seed records: `npm run db:migrate && npm run db:seed`
+4. Run deterministic tests & AI eval fixture suite: `npm test`
+
+## 5. Known Limitations & Next Improvements
+Honest scoping notes (e.g., scanned OCR tables require higher-DPI pre-processing; rate caps tuned for single-region starter tier).
+```
+
+## Writing Compact Architecture Decision Records (ADRs)
+
+Notice that an ADR is **not** a 10-page academic essay. Five crisp sections fitting inside 35 lines tell a senior reviewer everything needed:
+- **Title & Date:** `001 — Keep Vectors in PostgreSQL (pgvector) Instead of a Separate Vector Database`
+- **Context:** We store customer documents per `workspace_id` with soft deletes and permission levels.
+- **Decision:** Store chunk embeddings inside PostgreSQL `document_chunks` using `pgvector`.
+- **Alternatives Considered:** External managed vector store synced via webhook/CDC.
+- **Consequences:** Eliminates out-of-sync delete leaks and dual-vendor ops; acceptable index rebuild overhead up to hundreds of thousands of chunks before dedicated partitioning is needed.
+
+Writing one or two ADRs per major project immediately delivers **`00.4.8` Deliver More Than Code** cleanly on GitHub.
+
+## Practical Exercise: Audit and Upgrade an Existing Repository
+
+Open one GitHub repository you already own (even a small starter project). Time yourself for **five minutes** pretending you are an unfamiliar reviewer seeing it for the first time:
+1. Check whether `.env.example` and `.gitignore` cleanly isolate secrets.
+2. Inspect the top-level `README.md`: does it still contain generator boilerplate, or can another engineer install, seed, and test it strictly from those instructions?
+3. Inspect the last five commit messages: rewrite future commit discipline around clear intent prefixes (`feat:`, `fix:`, `docs:`, `test:`) so your project history reads like a reliable engineering log.
+
+## Automated CI & Secret-Free `.env.example` Templates
+
+Reviewer trust jumps sharply when every pull request runs deterministic verification automatically inside `.github/workflows/ci.yml`:
+
+```yaml
+# .github/workflows/ci.yml — proves hygiene & deterministic invariants on every push
+name: Verify Build & Tests
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+```
+
+Pair that CI file with a crisp `.env.example` containing descriptive non-secret placeholders so cloning never turns into guesswork:
+
+```dotenv
+# Copy to .env for local development — NEVER commit filled .env secrets
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/app_dev"
+SESSION_SECRET="replace-with-32-byte-random-hex"
+GEMINI_API_KEY="your-server-side-api-key-here"
+MAX_DAILY_AI_TOKENS="250000"
+```
+
+## Conventional Commit Discipline That Signals Maturity
+
+Clean commit logs act like breadcrumbs when tracking down regressions weeks later:
+- `feat(auth): enforce workspace membership check on document download`
+- `fix(worker): deduplicate webhook payloads via external_event_id hash`
+- `test(reconcile): verify 422 response when negative unit quantity submitted`
+- `docs(adr): record single Postgres + pgvector isolation decision`
+
+Avoid bundling unrelated formatting changes, three new features, and schema edits inside one giant `updated files` commit.
+
+## Reproducible Seed Script & Pull Request Self-Review Gate
+
+Notice what separates repositories reviewers trust within sixty seconds from repos they abandon after two failing setup commands: a deterministic `seed` script and a crisp self-review discipline before merging pull requests:
+
+```bash
+# What a 5-minute reviewer boot sequence looks like inside package.json / README
+cp .env.example .env
+docker compose up -d db
+npm run db:migrate     # Creates normalized tables cleanly from scratch
+npm run db:seed        # Inserts anonymized demo tenant, sample docs & eval records
+npm test               # Passes deterministic + mocked boundary test suite
+```
+
+Before opening or merging any pull request—especially when collaborating with AI coding tools (`00.7.3`)—walk through four non-negotiable checks on `git diff`:
+1. **Secret & Scope Check:** Confirm zero hardcoded tokens, personal file paths, or missing `WHERE workspace_id = $1` filters slipped into the diff.
+2. **Migration Reversibility Check:** Verify schema changes correspond strictly to tracked migration files rather than manual edits applied silently against a local database GUI.
+3. **Documentation Sync Check:** If you added an environment variable, route, or worker command, update `.env.example` and `README.md` inside the exact same commit so documentation never drifts behind the code.
+4. **Honest Eval / Test Proof:** Include the exact terminal test summary inside the PR description (`"vitest: 18 passed; evals: 19/20 matched"`) rather than vague comments like `"works locally"`.
+
+## Official Primary References
+
+- [GitHub Actions Quickstart Documentation](https://docs.github.com/en/actions/writing-workflows/quickstart)
+- [Conventional Commits Specification (`conventionalcommits.org`)](https://www.conventionalcommits.org/)
+- [Michael Nygard — Documenting Architecture Decisions (ADR Origin)](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
+
+</BookNodePage>

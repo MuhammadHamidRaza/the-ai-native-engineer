@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "23.1 Latency, Profiling & Bottlenecks"
+sidebar_label: "23.1 Latency, Profiling & Bottlenecks"
+slug: "/part-06-system-design-and-production-quality/23-performance-and-scalability/23-1-latency-profiling-and-bottlenecks"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-23-s1">
+
+Every performance argument in this section ends one of two ways: a number that proves the fix, or a number that proves there is no problem. **23.1 is the measurement-first section** — frontend field data and lab audits on one side, backend profiles and load tests on the other. Skip the measurement and the rest of the chapter is folklore.
+
+## What Is In This Section
+
+- **23.1.1 Core Web Vitals and Frontend Bundle Budgets** — the three metrics Google actually uses to assess page experience (LCP, INP, CLS — all at the 75th percentile, field data), how to measure with `web-vitals`, Lighthouse and CrUX, enforceable **bundle budgets in CI** (`bundlesize`), route-level code splitting with Vite/dynamic `import()`, image discipline (`srcset`/`sizes`, WebP/AVIF, lazy loading, `fetchpriority`), React render performance with a measure-first stance, CDN caching, and `preconnect`/`dns-prefetch` for third-party origins.
+
+- **23.1.2 Backend Profiling and Load Testing** — why averages lie and percentiles decide; reading a real `node --prof` V8 CPU profile (ticks by section, `--prof-process`); event-loop lag with `monitorEventLoopDelay`; clinic.js as the diagnostic wrapper; k6 load tests with thresholds that fail the build (100 VUs against ShopCore); `hey`/`vegeta`/`autocannon` as alternates; p50/p95/p99 reading; USE vs RED for triage; the CPU-vs-IO-vs-DB-vs-network bottleneck decision tree, with ShopCore's load scenario and its pass/fail numbers.
+
+## How the Two Lessons Fit
+
+```text
+  23.1.1 (browser edge)                 23.1.2 (server edge)
+  ---------------------                  ----------------------
+  web-vitals / Lighthouse / CrUX   ->   k6 stages: ramp to 100 VUs
+  bundle budget fails CI            ->   thresholds fail CI
+  fix: split, budget, cache, lazy   ->   fix: profile, remove, pool, offload
+             |                                    |
+             +------------- both verify ----------+
+                          p75 / p95 / p99
+```
+
+Both lessons teach the same reflex: **capture the number, change one thing, capture the number again.** That reflex is the whole skill.
+
+## Exit for This Section
+
+You are done with 23.1 when you can show: a green Lighthouse run inside committed budgets, a k6 report with p95 < 300 ms and error rate < 1% on the ShopCore read path, and one real bottleneck you found by profile — not by guess — and removed.
+
+</BookNodePage>

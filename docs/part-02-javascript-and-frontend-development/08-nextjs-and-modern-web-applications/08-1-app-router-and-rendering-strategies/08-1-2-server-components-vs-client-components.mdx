@@ -1,0 +1,96 @@
+---
+id: "08-1-2-server-components-vs-client-components"
+title: "08.1.2 Server Components vs Client Components"
+sidebar_label: "08.1.2 Server Components vs Client Components"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-1-app-router-and-rendering-strategies/08-1-2-server-components-vs-client-components"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08-s1-t2">
+
+Every component in the App Router is a **Server Component by default**. Understanding the boundary between Server Components and Client Components (`"use client"`) is the #1 skill in modern Next.js—because putting `"use client"` at the top of the wrong file ships secrets, bloats bundles, or triggers hydration errors.
+
+## 1. Server vs. Client Capabilities
+
+| Capability | Server Component (Default) | Client Component (`"use client"`) |
+| :--- | :---: | :---: |
+| `async` component + direct `await db/fs/env` | **Yes** | No |
+| Zero client JS bundle weight | **Yes** | Shipped to browser |
+| `useState`, `useEffect`, `onClick`, `onChange` | No | **Yes** |
+| Browser APIs (`window`, `localStorage`) | No | **Yes** |
+
+**Golden Rule:** Keep Server Components as the outer shell (fetching data and reading server secrets), and **push `"use client"` down to the smallest interactive leaf component** (such as a `<LikeButton />` or `<FilterInput />`).
+
+## 2. Clean Composition Across the Boundary
+
+Never import a Server Component directly *inside* a `"use client"` file (that pulls it into the client bundle). Instead, fetch on the server and pass data as **JSON-serializable props**—or pass Server Components via `children`:
+
+```tsx
+// src/app/projects/page.tsx (Server Component — default)
+import { TaskFilterClient } from "./TaskFilterClient";
+
+export default async function ProjectsPage() {
+  // Runs ONLY on the server: process.env.API_SECRET is safe here!
+  const tasks = [
+    { id: "1", title: "Configure PostgreSQL", done: true },
+    { id: "2", title: "Deploy staging build", done: false },
+  ];
+
+  return (
+    <main className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Projects</h1>
+      <TaskFilterClient initialTasks={tasks} />
+    </main>
+  );
+}
+```
+
+```tsx
+// src/app/projects/TaskFilterClient.tsx (Interactive Client Island)
+"use client";
+
+import { useState } from "react";
+
+export function TaskFilterClient({
+  initialTasks,
+}: {
+  initialTasks: { id: string; title: string; done: boolean }[];
+}) {
+  const [query, setQuery] = useState("");
+  const visible = initialTasks.filter((t) =>
+    t.title.toLowerCase().includes(query.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-3">
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Filter tasks..."
+        className="border rounded px-3 py-1.5"
+      />
+      <ul>
+        {visible.map((t) => <li key={t.id}>{t.title}</li>)}
+      </ul>
+    </div>
+  );
+}
+```
+
+## 3. Debugging Hydration Mismatches
+
+Even Client Components render initial HTML **once on the server** and then **hydrate** in the browser. If the HTML rendered on the server differs from the browser's first render—e.g., rendering `new Date().toLocaleTimeString()` or `window.innerWidth` directly in JSX—React logs **`Hydration failed because the server rendered HTML didn't match the client`**. Fix it by reading browser-only APIs inside `useEffect` after mount, or formatting dates deterministically on the server.
+
+## 4. Practice Exercises
+
+1. Build an `async` Server Component page that reads a fake server config/dataset and passes only safe fields into a small `"use client"` interactive counter/filter island.
+2. Notice the error when adding `onClick={() => {}}` to a component missing `"use client"`, then fix it cleanly without turning the parent page into a Client Component.
+
+## Mastery Checklist
+
+- [ ] Leaves components as Server Components by default and pushes `"use client"` to interactive leaves.
+- [ ] Passes only JSON-serializable props (no functions, class instances, or raw `Date`/`Map`/`Set` objects) from Server to Client Components. (Dates, Maps and Sets ARE supported in *server-action* return values and `use cache` serialization — a different, richer serializer — but not as props on the RSC boundary.)
+- [ ] Knows what causes hydration mismatches and fixes them cleanly.
+
+</BookNodePage>

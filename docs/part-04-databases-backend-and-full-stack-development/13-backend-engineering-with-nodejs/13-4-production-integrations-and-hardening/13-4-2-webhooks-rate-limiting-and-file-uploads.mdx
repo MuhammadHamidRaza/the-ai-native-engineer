@@ -1,0 +1,198 @@
+---
+id: "13-4-2-webhooks-rate-limiting-and-file-uploads"
+title: "13.4.2 Webhooks, Rate Limiting and File Uploads"
+sidebar_label: "Webhooks, Rate Limiting and File Uploads"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-2-webhooks-rate-limiting-and-file-uploads"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s4-t2">
+
+Public HTTP endpoints that accept third-party webhooks, high-volume login attempts, or user file uploads sit directly on the internet's hostile perimeter. A single unverified webhook lets anyone mark invoices as `"paid"`; an unthrottled login endpoint invites credential stuffing; a naive file upload handler invites path traversal and stored XSS.
+
+## 1. Verifying Webhook Signatures Safely
+
+When Stripe, GitHub, Resend, or Slack sends an HTTP `POST` webhook to your server, you **never trust the JSON body alone**. Instead, the provider computes an **HMAC-SHA256** digest over the timestamp and **exact raw request bytes** using a shared `WEBHOOK_SECRET`.
+
+Two classic Express mistakes break webhook security:
+
+1. **Parsing JSON before signature check:** Mounting `app.use(express.json())` globally alters whitespace/key formatting so HMAC verification fails or forces developers to disable verification. Always mount `express.raw({ type: "application/json" })` on the webhook route *before* `express.json()`.
+2. **Using `===` instead of `crypto.timingSafeEqual`:** Standard string comparison exits early on the first mismatched byte, leaking timing side-channel information, and omitting a timestamp window (`5 minutes`) allows **replay attacks**.
+
+### Runnable Webhook Signer & Verifier Test (`node:test`)
+
+Save as `webhook-verify.test.mjs` and run `node --test webhook-verify.test.mjs`:
+
+```javascript
+import test from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+
+function signWebhook(secret, timestampSec, rawBodyBuffer) {
+  const payload = `${timestampSec}.${rawBodyBuffer.toString("utf8")}`;
+  const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return `t=${timestampSec},v1=${sig}`;
+}
+
+function verifyWebhookSignature({
+  secret,
+  headerValue,
+  rawBodyBuffer,
+  nowSec = Math.floor(Date.now() / 1000),
+  toleranceSec = 300,
+}) {
+  if (!headerValue || !Buffer.isBuffer(rawBodyBuffer)) {
+    return { ok: false, reason: "MISSING_SIGNATURE_OR_RAW_BODY" };
+  }
+
+  const parts = Object.fromEntries(
+    headerValue.split(",").map((pair) => {
+      const [k, v] = pair.split("=");
+      return [k?.trim(), v?.trim()];
+    })
+  );
+
+  const timestamp = Number(parts.t);
+  const receivedHex = parts.v1;
+
+  if (!Number.isFinite(timestamp) || !receivedHex) {
+    return { ok: false, reason: "MALFORMED_SIGNATURE_HEADER" };
+  }
+
+  if (Math.abs(nowSec - timestamp) > toleranceSec) {
+    return { ok: false, reason: "EXPIRED_TIMESTAMP" };
+  }
+
+  const expectedHex = crypto
+    .createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBodyBuffer.toString("utf8")}`)
+    .digest("hex");
+
+  const expectedBuf = Buffer.from(expectedHex, "hex");
+  const receivedBuf = Buffer.from(receivedHex, "hex");
+
+  // timingSafeEqual throws RangeError if buffer lengths differ!
+  if (
+    expectedBuf.length !== receivedBuf.length ||
+    !crypto.timingSafeEqual(expectedBuf, receivedBuf)
+  ) {
+    return { ok: false, reason: "INVALID_HMAC" };
+  }
+
+  return { ok: true, event: JSON.parse(rawBodyBuffer.toString("utf8")) };
+}
+
+test("accepts valid signature within tolerance", () => {
+  const secret = "whsec_test_secret_123";
+  const raw = Buffer.from('{"id":"evt_1","type":"invoice.paid"}');
+  const now = 1_760_000_000;
+  const header = signWebhook(secret, now, raw);
+
+  const res = verifyWebhookSignature({
+    secret,
+    headerValue: header,
+    rawBodyBuffer: raw,
+    nowSec: now + 30,
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.event.id, "evt_1");
+});
+
+test("rejects tampered body and replayed timestamps", () => {
+  const secret = "whsec_test_secret_123";
+  const raw = Buffer.from('{"id":"evt_1","amount":100}');
+  const now = 1_760_000_000;
+  const header = signWebhook(secret, now, raw);
+
+  const tampered = verifyWebhookSignature({
+    secret,
+    headerValue: header,
+    rawBodyBuffer: Buffer.from('{"id":"evt_1","amount":999999}'),
+    nowSec: now + 5,
+  });
+  assert.deepEqual(tampered, { ok: false, reason: "INVALID_HMAC" });
+
+  const replayed = verifyWebhookSignature({
+    secret,
+    headerValue: header,
+    rawBodyBuffer: raw,
+    nowSec: now + 601,
+  });
+  assert.deepEqual(replayed, { ok: false, reason: "EXPIRED_TIMESTAMP" });
+});
+```
+
+Expected output:
+
+```text
+# tests 2
+# pass 2
+# fail 0
+```
+
+In production Express 5, return `200 OK` immediately after verifying the signature and persisting the `event.id` into an inbox/job table (`ON CONFLICT (event_id) DO NOTHING`). Process slow downstream work asynchronously so provider retries never time out.
+
+## 2. Rate Limiting Without Breaking Legitimate Users
+
+Rate limiting protects login forms, password resets, OTP endpoints, and paid AI endpoints from brute force and runaway scripts.
+
+| Algorithm | How It Works | Strengths | Trade-offs |
+| :--- | :--- | :--- | :--- |
+| **Fixed Window** | Counter resets every `60s` bucket | Simplest (`INCR` + `EXPIRE`) | Allows 2x burst right across the minute boundary |
+| **Sliding Window** | Tracks timestamps or weighted prior window | Smooth enforcement, eliminates boundary burst | Slightly higher memory/query cost |
+| **Token Bucket** | Bucket refills at `R` tokens/sec up to capacity `B` | Allows healthy short bursts while capping sustained rate | Needs atomic Lua/SQL update for multi-instance APIs |
+
+### Rate Limiting Rules of Thumb
+
+- **Configure `trust proxy` accurately:** If Express runs behind Nginx, Caddy, or Cloudflare without `app.set("trust proxy", 1)`, `req.ip` is always `127.0.0.1` — meaning **one abusive user triggers a global lockout for every user on your site!** Never set `trust proxy: true` blindly either, because attackers can spoof `X-Forwarded-For` unless a trusted proxy overwrites it.
+- **Return standard headers:** Set `Retry-After` (seconds) on `429 Too Many Requests` and `RateLimit-Limit` / `RateLimit-Remaining` so honest clients back off cleanly.
+- **Use Redis in multi-container deployments:** `express-rate-limit` defaults to in-memory storage (useful locally or single-node); plug in `rate-limit-redis` when scaling horizontally.
+
+## 3. Safe File Uploads & Direct-to-Object-Storage Presigned URLs
+
+Accepting files directly onto your Node container's local disk fails in two ways: **security** (filename traversal like `../../.env`, spoofed `Content-Type`, zip bombs, SVG XSS) and **scalability** (container disks are ephemeral and wiped on every deploy).
+
+### The 5 Mandatory Rules for File Uploads
+
+1. **Stream to Object Storage (S3 / Cloudflare R2 / GCS):** Prefer **presigned upload URLs** where the authenticated API validates permissions and returns a 60-second signed `PUT` URL with strict `Content-Length` bounds, keeping heavy binary bytes off your Node event loop.
+2. **Never use `file.originalname` on disk or in URLs:** Generate a fresh UUID key (`uploads/${userId}/${crypto.randomUUID()}.bin`), and store the display name strictly as database metadata.
+3. **Sniff Magic Bytes, Don't Trust Extensions or `Content-Type`:** Any client can rename `exploit.html` to `avatar.png`. Inspect the leading magic bytes (e.g., PNG starts with `89 50 4E 47`, PDF with `%PDF-`) using a library like `file-type`.
+4. **Never Serve User Uploads Inline on Your App Origin:** An uploaded `.svg` or `.html` served on `https://app.example.com/uploads/pic.svg` executes JavaScript with your users' cookies! Serve user files from a separate isolated domain/CDN bucket with `Content-Disposition: attachment` or `X-Content-Type-Options: nosniff`.
+5. **Enforce Hard Byte Caps & Timeouts:** Configure `limits: { fileSize: 5 * 1024 * 1024, files: 1 }` in `multer` (if proxying through Node) so an attacker cannot stream a 20 GB file into RAM.
+
+## 4. Integration Testing Express Routes with `supertest`
+
+Test middleware chains (rate limit headers, webhook raw body check, auth rejection, file size limits) by importing your Express `app` *without* calling `app.listen()` inside `app.js`. The ShopCore reference exports the app instance directly (`examples/shopcore/src/app.js`); if your project wraps assembly in `createApp()`, import that instead — same idea, one fewer listener.
+
+```javascript
+// tests/webhooks.test.mjs (using node:test + supertest)
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import request from 'supertest';
+import app from '../src/app.js';
+
+test('POST /webhooks/billing rejects missing signature with 400', async () => {
+  const res = await request(app)
+    .post('/webhooks/billing')
+    .set('Content-Type', 'application/json')
+    .send(JSON.stringify({ id: 'evt_test' }));
+
+  assert.equal(res.status, 400);
+});
+```
+
+## Practice Exercises
+
+1. **Multi-Secret Rotation:** Update `verifyWebhookSignature` so it accepts `[currentSecret, previousSecret]`, allowing zero-downtime webhook secret rotation across deploys.
+2. **Upload Sanitizer:** Write a pure function `safeAttachmentPath(baseDir, uploadId)` using `path.resolve` that rejects any path escaping `baseDir` (e.g., `../secrets`) and verify it against traversal inputs with `node:test`.
+
+## Mastery Checklist
+
+- [ ] Mounts `express.raw()` for webhook routes before `express.json()` and verifies HMAC digests with `crypto.timingSafeEqual` plus timestamp replay bounds.
+- [ ] Sets `app.set("trust proxy", ...)` deliberately before deploying IP-based rate limits.
+- [ ] Rejects spoofed uploads by ignoring client filenames, validating magic bytes, capping file sizes, and isolating storage on S3/R2 rather than ephemeral container disk.
+- [ ] Separates `app.js` (no `listen`) from `server.js` so HTTP integration tests run fast with `supertest`.
+
+</BookNodePage>

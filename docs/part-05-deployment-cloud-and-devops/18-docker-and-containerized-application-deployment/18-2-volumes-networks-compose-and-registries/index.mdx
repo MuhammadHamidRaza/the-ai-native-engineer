@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "18.2 Volumes, Networks, Compose & Registries"
+sidebar_label: "18.2 Volumes, Networks, Compose and Registries"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s2">
+
+**Subchapter 18.2** answers the two questions that appear the moment a container exits: *where did my data go?* and *how do containers talk to each other?* Then it turns the answers into a repeatable, two-service stack you can ship anywhere, plus a registry account to distribute it.
+
+## Lessons in Subchapter 18.2
+
+1. **[18.2.1 Volumes, Bridge Networks and Env Injection](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-1-volumes-bridge-networks-and-env-injection):** Named volumes vs bind mounts, port-mapping semantics, the default bridge vs user-defined networks and container DNS, `-e`/`--env-file` injection — proven with a Postgres container whose data survives `docker rm`.
+2. **[18.2.2 Docker Compose Stacks and Container Registries](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries):** Compose v2 (`docker compose`) — a Node API + Postgres stack with `depends_on` healthchecks and `env_file`, `up -d`/`logs`/`down -v`, then `docker login`, `tag` and `push` to Docker Hub.
+
+Complete 18.2.1 before 18.2.2 — Compose is just a YAML description of the exact primitives you practiced by hand.
+
+</BookNodePage>

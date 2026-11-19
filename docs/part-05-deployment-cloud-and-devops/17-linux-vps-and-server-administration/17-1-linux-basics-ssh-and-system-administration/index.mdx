@@ -1,0 +1,22 @@
+---
+id: "index"
+title: "17.1 Linux Basics, SSH & System Administration"
+sidebar_label: "17.1 Linux Basics, SSH & System Administration"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s1">
+
+**Subchapter 17.1** builds the operational foundation: a Linux environment on your Windows machine (WSL2), a shell you are fluent in, SSH key-based access to a server, and the four administrative skills every Linux session uses — filesystem/permissions, packages, processes, and services.
+
+## Lessons in Subchapter 17.1
+
+1. **[17.1.1 Linux Shell, WSL2, SSH Keys and Server Access](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration/17-1-1-linux-shell-wsl2-ssh-keys-and-server-access):** `wsl --install`, Ubuntu's first boot, ed25519 key pairs, `ssh-agent`, `chmod 600`, the public key on GitHub/VPS, `~/.ssh/config` aliases.
+2. **[17.1.2 Filesystem, Users, Permissions and Packages](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration/17-1-2-filesystem-users-permissions-and-packages):** The FHS (`/`, `/etc`, `/var`, `/home`, `/usr`), `adduser`, groups and `sudo`, `chmod`/`chown` numeric and symbolic, the `apt` workflow, `dpkg`/`rpm` pointers, and a snap caution.
+3. **[17.1.3 Processes, systemd Services and Journal Logs](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration/17-1-3-processes-systemd-services-and-journal-logs):** `ps`, `top`/`htop`, `kill`/signals, `nice`, systemd unit anatomy (`ExecStart`, `Restart=`, `[Install]`), enabling at boot, and `journalctl -u/-f/--since`.
+
+Work in order — 17.1.2 assumes the shell from 17.1.1; 17.1.3 assumes both. Every lesson here runs on WSL2 before you touch a real VPS.
+
+</BookNodePage>

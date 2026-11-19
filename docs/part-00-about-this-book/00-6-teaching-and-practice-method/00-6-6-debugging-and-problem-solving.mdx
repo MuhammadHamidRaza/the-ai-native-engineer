@@ -1,0 +1,78 @@
+---
+id: "00-6-6-debugging-and-problem-solving"
+title: "00.6.6 Debugging and Problem Solving"
+sidebar_label: "00.6.6 Debugging and Problem Solving"
+slug: "/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-6-debugging-and-problem-solving"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-6-6">
+
+Beginners treat bugs as frustrating interruptions keeping them away from "real coding." Senior engineers know reality works the other way around: **debugging is not an interruption from software engineering—systematic debugging IS software engineering.** Across production services, customer field deployments, and AI-powered applications, engineers spend far more hours diagnosing unexpected behavior, isolating mismatched contracts, reading failure logs, and preventing edge-case regressions than typing greenfield syntax.
+
+Unfortunately, modern AI tools encourage a seductive bad habit whenever an error hits the terminal: copying a cropped traceback into chat, typing *"it's broken, fix it,"* applying three blind diffs, breaking two unrelated files, and spiraling through thirty minutes of random guesswork. **Section 00.6.6** replaces panicked guessing with a calm, repeatable **scientific debugging discipline** applied across **Part 01 (`Ch 03`)**, **Part 06 (`Ch 22`)**, and every build in between.
+
+## 1. The Five-Step Scientific Debugging Protocol
+
+Whenever software misbehaves—whether a React button ignores clicks, PostgreSQL rejects an insert, Docker fails startup, or an AI agent loops infinitely—execute these five steps strictly in order:
+
+1. **Reproduce deterministically:** Turn vague complaints (*"login randomly fails"*) into an exact, repeatable trigger: what URL, HTTP method, headers, JSON payload, database state, or `.env` configuration triggers the failure? If behavior seems intermittent, ask what external state differs between passing and failing runs (stale browser cookies, unseeded DB, race timing, cache hits, timezone boundary).
+2. **Read primary evidence word for word:** Never paraphrase an error from memory. Inspect the **exact** HTTP status code + JSON error body in DevTools Network, the **first frame inside your own source directory** within a Python/Node traceback, PostgreSQL's exact SQLSTATE error, or full container `stdout`/`stderr` logs. Most bugs announce their root location plainly in the line beginners skim past.
+3. **Bisect the system boundary:** Real apps form a clear chain: *Browser UI State → Network Request → Auth / Validation Middleware → Business Logic → PostgreSQL Query → External API / LLM Provider*. Inspect or log values right at the **middle boundary** (for instance, inspect the incoming request payload arriving inside the backend handler). Within thirty seconds you eliminate half the architecture from suspicion.
+4. **State one falsifiable hypothesis before editing code:** Formulate an explicit sentence: *"I suspect `POST /api/chunks` passes `doc_id` as a string `"42"` rather than integer `42`, failing strict Pydantic validation or missing the query match."* Test that single hypothesis directly via debugger breakpoint, targeted log line, or minimal curl check—never change four unrelated files simultaneously.
+5. **Fix the root cause and lock in a regression check:** Once confirmed, repair the underlying invariant cleanly—never slap on a blind `try/catch` hiding the crash—and add one automated test case or validation rule ensuring that exact bug stays dead permanently.
+
+## 2. Layer-by-Layer Diagnostic Toolkit
+
+Use this quick diagnostic map across the full **AI-Native Engineer** stack whenever something fails unexpectedly:
+
+| Failing Stack Layer | Primary Diagnostic Tool | High-Signal Questions to Verify First |
+| :--- | :--- | :--- |
+| **Browser UI / React / Next.js** | Browser DevTools (`Console`, `Network`, React Components tab) | Did the HTTP call actually fire? Which status & JSON returned? Is a Server vs. Client boundary crossing non-serializable props or stale state? |
+| **Backend API (`FastAPI` / `Node.js`)** | `curl -i`, structured JSON logs, interactive debugger (`breakpoint()` / `--inspect`) | Did Zod/Pydantic validation reject inputs? Are `.env` variables loaded in this shell/container? Did a missing `await` leave an unresolved `Promise`? |
+| **PostgreSQL / Relational Data** | `psql` shell, migration status (`\dt`, `\d table`), `EXPLAIN ANALYZE` | Did all migrations run on this database instance? Is a `UNIQUE` / `FOREIGN KEY` constraint catching invalid data? Is an unindexed query timing out? |
+| **Docker / Networks / Reverse Proxy** | `docker compose logs -f`, `docker exec -it ... sh`, `env`, `curl localhost:port/health` | Is the app listening on `0.0.0.0` (not `127.0.0.1` inside container)? Are container services calling each other by service name instead of `localhost`? |
+| **LLM / RAG / Agent Workflows** | Complete logged trace (`prompt_version`, retrieved `chunk_ids`, raw JSON, tool arguments) | Did retrieval fail to fetch the needed chunk (`ACL` filter or keyword mismatch), did the model emit invalid schema arguments, or did tool validation reject input cleanly? |
+
+## 3. Concrete Walkthrough: Isolating a "Broken AI Feature" in Three Minutes
+
+Suppose a user clicks **"Analyze Contract"** in your React app and sees a red toast: *"Analysis failed."* Here is how scientific debugging isolates the true defect in minutes rather than hours of random prompt rewriting:
+
+1. **Check Browser DevTools Network Tab:** The `POST /api/contracts/analyze` call returned `HTTP 422 Unprocessable Entity` with JSON `{ "detail": [{ "loc": ["body", "contract_id"], "msg": "Input should be a valid UUID" }] }`. *Result:* Immediately eliminated the AI model, prompt, PostgreSQL, and Docker—it is an API payload mismatch!
+2. **Bisect frontend call:** Inspecting the React `fetch` payload shows `contract_id` was `undefined` because the route param `params.contractId` wasn't extracted cleanly before submit.
+3. **Fix + regression check:** Fix prop extraction cleanly in TypeScript (so compile checks catch `undefined` upfront), retest with `curl` and UI click, inspect persisted DB row, and move on in three minutes instead of pasting backend files into AI chat unnecessarily.
+
+## 4. When and How to Bring AI Into Debugging Safely
+
+AI assistants are phenomenal debugging sparring partners **after** you collect primary evidence:
+
+- Provide: *(1)* exact failing request/input, *(2)* full verbatim traceback/status code, *(3)* relevant 30 lines of surrounding code, and *(4)* your current hypothesis.
+- Prompt cleanly: *"Based on this exact `psycopg` foreign key error and schema snippet, confirm whether my transaction order violates constraint X and suggest the cleanest test case to reproduce it."*
+
+Never outsource observation itself.
+
+## 5. Mini Practice Exercise
+
+Read this realistic symptom without touching a computer yet:
+
+*"My local Node.js backend talks cleanly to PostgreSQL via `DATABASE_URL=postgres://postgres:pass@localhost:5432/app`. After packaging the backend into a Docker container inside `docker-compose.yml` alongside a `db` service, the backend crashes on boot with `Error: connect ECONNREFUSED 127.0.0.1:5432`."*
+
+1. Identify **which layer boundary** broke (OS/Network isolation inside Docker containers).
+2. Explain in two clear sentences *why* `localhost` inside the backend container does not reach the `db` container—and write the corrected `DATABASE_URL` hostname needed inside Compose networking.
+
+Notice the exact clean diagnosis once you apply Step 2 & Step 3 (**Read Evidence → Bisect Network Boundary**): inside a Docker container, `localhost` (`127.0.0.1`) always refers exclusively to *that container's own loopback interface*, never the host OS or sibling containers! Inside `docker-compose.yml`, services resolve each other across Compose's bridge network using their declared **service name** (`db`): `DATABASE_URL=postgres://postgres:pass@db:5432/app`. Similarly, when a codebase worked yesterday and broke after twenty commits, reach for `git bisect` (`Ch 03.2`) rather than manually guessing which commit introduced a subtle regression—binary search across commits pinpoints the exact offending change in `O(log N)` steps.
+
+## Key Takeaways
+
+- Systematic debugging follows five disciplined steps: **Reproduce → Read Primary Evidence → Bisect Boundaries → Form One Hypothesis → Fix Root + Regress-Test**.
+- Reading verbatim status codes, stack frames, `psql` output, and container logs solves most failures far faster than blind AI patching.
+- Every bug resolved methodically across **Parts 01–10** builds lasting calm in high-pressure production and field engagements.
+
+## References and Further Reading
+
+- [Google SRE Book — Effective Troubleshooting](https://sre.google/sre-book/effective-troubleshooting/)
+- [Chrome DevTools Documentation — Inspecting Network & Console Traces](https://developer.chrome.com/docs/devtools/network/)
+- [Chapter 03 Curriculum Preview — Developer Tools, Git, Debugging & AI Learning](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning)
+
+</BookNodePage>

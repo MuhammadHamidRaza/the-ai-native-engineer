@@ -1,0 +1,171 @@
+---
+id: "18-2-1-volumes-bridge-networks-and-env-injection"
+title: "18.2.1 Volumes, Bridge Networks and Env Injection"
+sidebar_label: "18.2.1 Volumes, Bridge Networks and Env Injection"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-1-volumes-bridge-networks-and-env-injection"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s2-t1">
+
+Containers are ephemeral by design: delete one and its writable layer vanishes. This lesson covers the three things that make containers stateful and social — volumes, networks and environment variables — and proves persistence with Postgres.
+
+## 1. Volumes — Keeping Data Alive
+
+Three mount behaviors exist; knowing which is which prevents every "where did my data go" mystery:
+
+| Kind | Syntax | Lifetime | Use for |
+| :-- | :-- | :-- | :-- |
+| Writable container layer | (default) | Dies with the container | Never for data you care about |
+| Named volume | `-v shopdb_data:/var/lib/postgresql/data` | Until `docker volume rm` | Databases, uploads |
+| Bind mount | `-v /host/path:/container/path` | As long as the host path exists | Dev live-reload, config files |
+| tmpfs | `--tmpfs /tmp` | Memory only | Scratch space, secrets-in-RAM |
+
+Named volume vs bind mount: named volumes are Docker-managed (portable, hard to leak into git, permission-sane); bind mounts mirror an exact host directory (great for `npm run dev` hot reload, painful across OSes). Production databases = named volumes; development source = bind mounts.
+
+Inspect what you created:
+
+```bash
+docker volume ls
+docker volume inspect shopdb_data     # shows Mountpoint on Linux
+docker volume prune                   # removes unused volumes — check first, always
+```
+
+**Development hot-reload pattern** (bind mount + anonymous volume to shield `node_modules`):
+
+```bash
+# PowerShell
+docker run --rm -p 5173:5173 -v "${PWD}:/app" -v /app/node_modules -w /app node:22-alpine npm run dev
+# bash/WSL2
+docker run --rm -p 5173:5173 -v "$PWD:/app" -v /app/node_modules -w /app node:22-alpine npm run dev
+```
+
+The `/app/node_modules` anonymous volume keeps the container's Linux-built modules from being shadowed by your host's `node_modules` — the classic cross-platform bug.
+
+Verify persistence end to end (yes, for real — run these):
+
+```bash
+# Where to run: bash, PowerShell or WSL2 — Docker must be running
+docker volume create shopdb_data
+docker run -d --name shopdb -e POSTGRES_PASSWORD=devpass -v shopdb_data:/var/lib/postgresql/data -p 5432:5432 postgres:17-alpine
+docker exec -it shopdb psql -U postgres -c "CREATE TABLE demo(id serial primary key, note text); INSERT INTO demo(note) VALUES ('persisted');"
+docker rm -f shopdb
+docker run -d --name shopdb2 -e POSTGRES_PASSWORD=devpass -v shopdb_data:/var/lib/postgresql/data -p 5432:5432 postgres:17-alpine
+docker exec -it shopdb2 psql -U postgres -c "SELECT * FROM demo;"
+```
+
+Expected: the second container prints `persisted` — the container died, the data did not. Cleanup: `docker rm -f shopdb2 && docker volume rm shopdb_data`.
+
+## 1.5 Disk Pressure and Cleanup Discipline
+
+Volumes keep Docker "healthy" while quietly eating the VPS disk. Monthly ritual:
+
+```bash
+docker system df                    # Images / Containers / Local volumes breakdown
+docker volume ls --format '{{.Name}}'
+docker image prune -a               # delete ALL unused images (keep your tagged ones)
+docker builder prune                # build cache — often the biggest chunk
+docker volume prune                 # removes ALL unreferenced volumes — read the list first!
+```
+
+Rule: prune images and build cache freely; treat `volume prune` as a deliberate act — read the list it prints, confirm nothing is a database, *then* confirm. A missing production Postgres volume is not recoverable from `docker volume prune` — it is just gone.
+
+## 2. Networks — How Containers Find Each Other
+
+Every container joins a network; the default is the `bridge` network, but **user-defined bridge networks add automatic DNS** — containers can reach each other by name, which the default bridge does not do.
+
+```bash
+docker network create shopnet
+docker run -d --name shopdb --network shopnet -e POSTGRES_PASSWORD=devpass postgres:17-alpine
+docker run -d --name shopapi --network shopnet -p 3000:3000 yourdockerhubuser/shopcore-api:1.0.0
+# Inside shopapi, the database host is literally "shopdb":
+#   DATABASE_URL=postgres://postgres:devpass@shopdb:5432/shopcore
+```
+
+Key semantics:
+
+- **Bridge (user-defined):** private virtual switch on one host; name-based DNS; the right default.
+- **Host:** shares the host's network namespace (`--network host`) — no port mapping, Linux-only semantics, avoid unless you know why.
+- **None:** no networking; for isolated batch work.
+- **Port mapping:** `-p HOST:CONTAINER` — `-p 5432:5432` means "host 5432 → container 5432". Reversing the order is the #1 beginner bug; the container always listens on its own port.
+
+```bash
+docker network ls
+docker network inspect shopnet
+docker port shopapi
+```
+
+## 3. Environment Variables — -e and --env-file
+
+```bash
+docker run --rm -e NODE_ENV=production -e LOG_LEVEL=debug nginx:alpine
+docker run --rm --env-file .env yourdockerhubuser/shopcore-api:1.0.0
+```
+
+`.env` (no spaces around `=`, one per line, `KEY=value`):
+
+```text
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=postgres://postgres:devpass@shopdb:5432/shopcore
+JWT_SECRET=change-me-in-real-env
+```
+
+Precedence: `-e` beats `--env-file` beats `ENV` in the Dockerfile. **Never commit `.env`** — add it to `.gitignore` and `.dockerignore`; the image must stay secret-free (18.3 covers layer leakage).
+
+Gotchas that bite on Windows and CI: `.env` files checked out with CRLF line endings can smuggle `\r` into values; values with `#` or spaces need quotes per Docker's parsing rules; an unset `KEY` with no `=` inherits from your shell instead of erroring — use explicit defaults in code (`process.env.PORT ?? 3000`). Passing a secret inline (`-e JWT_SECRET=abc123`) also lands in `docker inspect` output and shell history — prefer `--env-file` for real values.
+
+## 4. Backing Up and Restoring a Named Volume
+
+Volumes survive container deletion, not disk failure. The canonical backup one-liner — a throwaway container mounts the volume and a host folder, then `tar`s the data out:
+
+```bash
+docker run --rm -v shopdb_data:/data -v "$PWD:/backup" postgres:17-alpine \
+  tar czf /backup/shopdb_data-backup.tgz -C /data .
+
+# Restore into a fresh volume:
+docker volume create shopdb_data_restored
+docker run --rm -v shopdb_data_restored:/data -v "$PWD:/backup" postgres:17-alpine \
+  tar xzf /backup/shopdb_data-backup.tgz -C /data
+```
+
+Schedulable via cron/systemd timer on a VPS; in the cloud, snapshot EBS or use RDS. Practice once on the lab volume so the command isn't new during a real incident.
+
+## 5. Port Mapping Semantics, Carefully
+
+`-p HOST:CONTAINER` — always. The container never knows or cares what host port you chose; it only binds its own. So `-p 5433:5432` is "host 5433 forwards to the Postgres port inside"; `-p 5432:5433` almost never does what you meant. `EXPOSE` in a Dockerfile is documentation only — it opens nothing. Bind to localhost only when you want no external access: `-p 127.0.0.1:3000:3000` — the default binds `0.0.0.0`, i.e., all interfaces including your LAN. In the cloud this interacts with security groups (Chapter 19) but **does not replace them**. Checking: `docker port <name>` and `ss -tlnp`/`netstat -ano` on the host.
+
+## 6. Compose Preview (full treatment in 18.2.2)
+
+Everything above maps 1:1 to YAML — a bridge network, a named volume, `env_file`, and `ports`. Compose just stops you retyping `docker run` flags.
+
+## 7. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Data gone after `docker rm` | Writable layer, not a volume | Always `-v name:/path` for databases; verify with `docker volume ls` |
+| `psql` works on host, app cannot connect | App used `localhost` instead of service name | Inside a user-defined network use the container name (`shopdb`), not `localhost` |
+| DNS name not resolving | Default bridge (no DNS) | `docker network create` and attach both containers |
+| `address already in use` on 5432 | Local Postgres service occupies the port | Map a different host port: `-p 5433:5432` |
+| Env var empty in container | `.env` not passed / BOM or spaces in values | `docker exec env \| sort` to see what actually arrived |
+| Bind mount empty on Windows | Path or drive sharing issue | Prefer named volumes on Windows; check Desktop file-sharing settings |
+
+## 8. Practice
+
+**Guided.** Repeat the Postgres persistence lab end-to-end, including cleanup, and write down the exact `docker volume` commands used.
+
+**Independent.** Create `shopnet`, attach Postgres and an `nginx` container, and confirm from the nginx container that `shopdb:5432` is reachable (`docker exec -it <nginx> getent hosts shopdb` or `ping`).
+
+**Challenge.** Take the ShopCore API image from 18.1.2; run it on `shopnet` with an `--env-file` pointing at your database; hit `/api/health`; then stop and recreate the API container and prove the DB data survives (it is in the volume, not the container).
+
+**Assessment checklist**
+
+- [ ] I can explain named volume vs bind mount and when to use each.
+- [ ] I know `-p` is `HOST:CONTAINER` and can read `docker port`.
+- [ ] I can create a user-defined bridge network and reach a container by name.
+- [ ] I can inject env vars two ways and predict the precedence.
+- [ ] I never commit `.env`; I understand layers leak baked secrets.
+- [ ] I verified data persistence by deleting a container and re-reading the row.
+
+</BookNodePage>

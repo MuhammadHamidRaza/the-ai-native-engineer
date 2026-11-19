@@ -1,0 +1,48 @@
+---
+id: "index"
+title: "23. Performance & Scalability"
+sidebar_label: "23. Performance & Scalability"
+slug: "/part-06-system-design-and-production-quality/23-performance-and-scalability"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-23">
+
+Chapter 21 decided the shape of ShopCore; Chapter 22 attacked and measured it. **Chapter 23 is where you make it fast — and prove it.** Performance is a measurement discipline before it is a tuning discipline: every lesson here starts with a number (Lighthouse, k6, `EXPLAIN ANALYZE`, an event-loop delay histogram) and ends with a number you can show. If you cannot measure it, you have not optimized it — you have only decorated it.
+
+**Chapter 23 (`8 Focused Hours`)** follows the path every millisecond takes from the browser to the database and back:
+
+**Load → Respond → Cache → Scale**
+
+1. **Load** — 23-1-1 teaches Core Web Vitals as the user-perceived contract (LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1, 75th percentile, field data), then bundle budgets enforced in CI so the site cannot silently get slower.
+2. **Respond** — 23-1-2 profiles the backend: `node --prof` reading a V8 CPU profile, event-loop lag with `perf_hooks`, a 100-VU k6 load test with thresholds, and the RED/USE split for triage.
+3. **Cache** — 23-2-1 puts Redis in front of the catalog with cache-aside, TTL + jitter, single-flight stampede protection, invalidation-on-write, stale-while-revalidate HTTP caching, and a Redis rate limiter on checkout.
+4. **Scale** — 23-2-2 makes every API instance interchangeable: JWT vs sessions, L4 vs L7 load balancing, connection draining, Nginx/HAProxy snippets, autoscale triggers, WebSockets, and liveness vs readiness.
+
+## Chapter 23 Structure
+
+- **23.1 Latency, Profiling & Bottlenecks** — Core Web Vitals with field vs lab measurement; bundle budgets and code splitting; backend profiling (`node --prof`, event-loop delay, clinic.js) and k6 load testing; p50/p95/p99 reading and USE-vs-RED triage.
+- **23.2 Caching & Horizontal Scaling** — Redis cache-aside with worked ShopCore TTLs; stampede prevention and invalidation; rate limiting; stateless service design; L4/L7 load balancing, connection draining, autoscale triggers, health vs readiness; the ShopCore reference architecture.
+
+## What You Will Have After This Chapter
+
+- A **Lighthouse + CrUX report** for ShopCore's storefront, a committed **bundle budget** that fails CI when exceeded, and before/after route-level code-splitting numbers.
+- A **100-VU k6 script** for `GET /api/products` and `POST /v1/orders` with thresholds (`p(99) ≤ 300 ms` per NFR-001, `rate < 0.01`) that exits non-zero when ShopCore regresses.
+- A **`node --prof` walkthrough** you have actually executed — one real bottleneck found and fixed, with the profile to prove it.
+- A **catalog cache layer** (TTL + jitter, single-flight, invalidate-on-write) pushing cache hit rate above 90%, and a **double standard** for rate limiting: permissive for browsing, strict for ordering.
+- A **horizontal scaling plan** for ShopCore: stateless API pods behind a load balancer, with an autoscale trigger you chose on purpose (and can defend).
+- An **ASCII architecture diagram** you can draw from memory: CDN → LB → API×3 → Postgres primary/replica + Redis.
+
+## How to Work Through This Chapter
+
+1. Do 23-1-1 before 23-1-2. Frontend latency is usually where "checkout feels slow" actually lives, and bundle budgets are the cheapest win in the whole chapter.
+2. In 23-1-2, run every command against your real local ShopCore. A k6 script you cannot execute is decoration, not engineering.
+3. In 23-2-1, break your own cache on purpose: flush Redis mid-load-test and watch the stampede. Then fix it. That 10 minutes teaches more than an hour of reading.
+4. Keep the 22.3 SLO in view throughout: every latency change in this chapter is judged against checkout's 300 ms p99 target.
+
+Prerequisites: Chapters 21 and 22, and [15.4 Verification & Shipping](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping) (ShopCore builds in CI). If you have never run a load test, do not panic — the first one is always humbling, and that is the point.
+
+**Exit gates.** This chapter is complete when: a Lighthouse run on ShopCore passes your committed budgets; a k6 run exits 0 with p99 ≤ 300 ms; you can read your own `node --prof` output without searching; Redis is serving the catalog with measured hit rate; and you can explain, with numbers, what the next bottleneck will be after you fix the current one.
+
+</BookNodePage>

@@ -1,0 +1,98 @@
+---
+id: "09-2-1-functions-decorators-and-context-managers"
+title: "09.2.1 Functions, Decorators and Context Managers"
+sidebar_label: "09.2.1 Functions, Decorators and Context Managers"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-2-functions-oop-and-type-hints/09-2-1-functions-decorators-and-context-managers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s2-t1">
+
+Three Python features show up constantly in FastAPI, SQLAlchemy, pytest, and AI SDKs: flexible functions, **decorators** (`@app.get`, `@pytest.fixture`), and **context managers** (`with open(...)`). Teaching each separately makes their syntax immediately transparent instead of feeling like magic.
+
+## 1. Functions, `*args`, `**kwargs`, and Scope
+
+```python
+def create_invoice(customer: str, *line_items: int, currency: str = "USD", **meta: str) -> dict:
+    # *line_items packs extra positional arguments into a tuple
+    # **meta packs extra keyword arguments into a dict
+    return {
+        "customer": customer,
+        "total_cents": sum(line_items),
+        "currency": currency,
+        "meta": meta,
+    }
+
+print(create_invoice("Acme", 1500, 2500, currency="EUR", source="web"))
+```
+
+**Scope Lookup Rule (`LEGB`):** Python searches **Local** -> **Enclosing** (closures) -> **Global** (module) -> **Built-in** (`len`, `print`). Inside a nested function, modifying an enclosing variable requires `nonlocal count` rather than plain assignment.
+
+## 2. Decorators: Wrapping Functions Cleanly
+
+A **decorator** is simply a function that takes another function, wraps it with extra behavior (logging, timing, auth checks, caching), and returns the wrapper. Always decorate the wrapper with `@functools.wraps(fn)` so the original function keeps its `__name__` and docstring!
+
+```python
+import functools
+import time
+from typing import Callable, TypeVar
+
+T = TypeVar("T")
+
+def timed(fn: Callable[..., T]) -> Callable[..., T]:
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs) -> T:
+        start = time.perf_counter()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            print(f"[timed] {fn.__name__} ran in {elapsed_ms:.2f}ms")
+    return wrapper
+
+@timed
+def compute_sum(limit: int) -> int:
+    return sum(range(limit))
+
+print("Result:", compute_sum(50_000))
+```
+
+*(Note: `@timed` above `def compute_sum` is exact shorthand for `compute_sum = timed(compute_sum)`.)*
+
+## 3. Context Managers (`with` Statement)
+
+A **context manager** guarantees cleanup code runs **even if an exception occurs inside the `with` block**—closing files, releasing locks, or rolling back database transactions.
+
+You can write a context manager either as a class implementing `__enter__` and `__exit__`, or cleanly with `@contextlib.contextmanager`:
+
+```python
+from contextlib import contextmanager
+import time
+
+@contextmanager
+def step_timer(label: str):
+    start = time.perf_counter()
+    print(f"-> Starting: {label}")
+    try:
+        yield  # Code inside the `with` block executes right here
+    finally:
+        elapsed = (time.perf_counter() - start) * 1000
+        print(f"<- Finished: {label} ({elapsed:.2f}ms)")
+
+with step_timer("prepare report"):
+    data = [x * x for x in range(1000)]
+```
+
+## 4. Practice Exercises
+
+1. Write a decorator `@retry_once` that catches `ValueError` on the first call, prints a warning, retries the function one more time, and propagates the error if the second attempt also fails.
+2. Write a `@contextmanager` called `temporary_env(key, value)` that sets `os.environ[key]` inside the `with` block and restores its previous value (or removes it) in `finally`.
+
+## Mastery Checklist
+
+- [ ] Understands `*args`, `**kwargs`, and LEGB scope order.
+- [ ] Writes decorators using `@functools.wraps` so metadata is preserved.
+- [ ] Uses `with` and `@contextlib.contextmanager` with `try/finally` for guaranteed cleanup.
+
+</BookNodePage>

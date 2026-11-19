@@ -1,0 +1,130 @@
+---
+id: "12-1-4-hosted-postgresql-neon-and-supabase"
+title: "12.1.4 Hosted PostgreSQL: Neon and Supabase"
+sidebar_label: "12.1.4 Hosted PostgreSQL"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-1-install-and-run-postgresql/12-1-4-hosted-postgresql-neon-and-supabase"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s1-t4">
+
+You do not always need to install PostgreSQL. **Hosted (managed) PostgreSQL** gives you a real Postgres database inside a browser dashboard — same SQL, same constraints, zero maintenance: no installers, no ports, no Windows services to babysit. This lesson sets up two excellent hosted providers: **Neon** and **Supabase**. Use whichever you prefer; both work with every command in this book.
+
+## 1. Local vs Hosted — When to Use Which
+
+| | Local (12.1.1–12.1.3) | Hosted (this lesson) |
+| :-- | :-- | :-- |
+| Cost | Free | Free tier → paid as you grow (check current pricing pages) |
+| Setup | 5–10 minutes, once | 2 minutes |
+| Best for | Learning, offline work, tuning | Deployed apps, portfolio projects, team access |
+| Your data lives | On your disk | In the provider's cloud region |
+| Sleep/limits | None | Free tiers may pause idle projects, cap compute/storage |
+| Connection | `localhost:5432` | Internet host + TLS + password |
+
+Both are real PostgreSQL 18-ish servers — `psql`, pgAdmin (with a connection string), and your Node apps connect identically. **SQL is SQL; only the host changes.**
+
+## 2. Neon — Step by Step
+
+**Official site:** https://neon.tech
+
+1. **Create an account.** Click **Sign Up** → continue with GitHub/Google or email. Verify email if asked.
+2. **Create a project.** Dashboard → **New Project**. Pick a name (`shopcore`), a **region** closest to you, and (usually) the latest **Postgres version**. Default database name is `neondb`; you may rename or create `shopcore`.
+3. **Where the connection details live.** The **Connection Details** panel shows **Connection string** variants:
+   - **Pooled** (has `-pooler` in the host, use for apps with many connections, e.g., serverless)
+   - **Direct** (use for migrations, psql, admin tasks like `CREATE DATABASE`)
+   Format: `postgresql://USER:PASSWORD@ep-xxxx-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require`
+   Click the eye icon / **Reset password** if you need to see or regenerate the password.
+4. **Create your `shopcore` database.** In the dashboard: **Databases** → **New Database** → name `shopcore`. Or connect and run `CREATE DATABASE shopcore;`.
+5. **Connect with psql** (exact command; paste your own values):
+
+   ```bash
+   psql "postgresql://USER:PASSWORD@ep-xxxx.us-east-2.aws.neon.tech/shopcore?sslmode=require"
+   ```
+
+   The `?sslmode=require` is **mandatory** — hosted Postgres refuses unencrypted connections. At the `shopcore=#` prompt, run the DDL and seed files:
+
+   ```sql
+   \i 'C:/books/the-ai-native-engineer/shopcore_schema.sql'
+   \i 'C:/books/the-ai-native-engineer/shopcore_seed.sql'
+   SELECT count(*) FROM products;   -- expect 3
+   ```
+
+6. **Connect pgAdmin.** Register → Server → Connection tab: **Host** = the `ep-xxxx-...neon.tech` part, **Port** = `5432`, **Username** = `USER`, **Password** = `PASSWORD`, **SSL mode** = `Require`, maintenance database = `shopcore`. Then use it exactly like 12.1.2.
+
+## 3. Supabase — Step by Step
+
+**Official site:** https://supabase.com
+
+1. **Create an account.** **Sign Up** → GitHub/Google/email.
+2. **New project.** Dashboard → **New Project** → pick Organization (personal), **Name** `shopcore`, generate a strong **Database Password** — **save it immediately** (it is shown once; you can reset it in Settings → Database but it invalidates old clients), choose **Region** (closest to you) and the free **Plan** for learning.
+3. **Where the connection details live.** Project → **Project Settings** → **Database** → **Connection string** → choose **URI** (there are also direct connection params: host `db.<ref>.supabase.co`, port `5432`). Toggle **Use connection pooling** (port **6543**, transaction mode) for app traffic; keep **direct** (5432) for migrations and psql.
+   Format: `postgresql://postgres:PASSWORD@db.<ref>.supabase.co:5432/postgres`
+4. **Create your schema.** Supabase gives you a ready `postgres` database — you can create tables directly (or create a `shopcore` database via the SQL Editor / psql with `CREATE DATABASE shopcore;`). Load the DDL + seed through the **SQL Editor** (paste → Run) or psql `\i` exactly as with Neon.
+5. **Connect with psql** as above with your URI. For the app, prefer the **pooled** URI with `sslmode=require`.
+
+## 4. Feature Availability & Free-Tier Realities (verify before you rely)
+
+Both providers change plans and limits regularly. **Check their pricing pages before production use** — as of late 2026, expect roughly: per-project limits on storage/compute, possible **auto-pause of inactive free projects**, and retention limits on backups. Supabase additionally ships an in-browser Postgres GUI, auth and storage APIs (beyond scope here, but your portfolio projects can use them free). Neon is serverless (scales to zero) with branch-per-dev-environment — great for PR workflows.
+
+**Billing risk rule:** set a billing alert on day one in whichever provider you choose, and never share your account password or commit a connection string.
+
+## 5. Security Rules — Non-Negotiables
+
+1. **A connection string embeds the password.** Treat it like a key. Never commit it, paste it in chat/screenshots, or upload it to GitHub (even in a "private" repo).
+2. Put it in `.env` and **gitignore** it (Chapter 13 teaches `.env` end-to-end):
+   ```text
+   DATABASE_URL=postgresql://user:password@host:port/db?sslmode=require
+   ```
+3. `.gitignore` must contain `.env` — verify with `git check-ignore .env`.
+4. Use the **least-privilege role** for apps: create a dedicated `shopcore_app` role with only `SELECT, INSERT, UPDATE, DELETE` (12.3.2 teaches exactly how) — never the superuser.
+5. Prefer **IP restrictions** / private endpoints once offered by your plan; at minimum, reset the password if it ever leaks.
+6. Delete test databases/projects when finished so free-tier slots stay available.
+
+## 6. Connecting from Application Code — Preview (full code in Ch. 13)
+
+With Neon/Supabase, your Node code is identical to local except for the string:
+
+```javascript
+// .env (NEVER committed)
+// DATABASE_URL=postgresql://user:password@host/shopcore?sslmode=require
+
+// in code
+import pg from 'pg';
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },   // required by hosted TLS without extra certs
+});
+```
+
+`ssl: { rejectUnauthorized: false }` encrypts the connection but skips strict cert verification — acceptable for learning; for production, install the provider's CA cert and use `rejectUnauthorized: true`.
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `psql: FATAL: password authentication failed` | Copy the string again from the dashboard — the password is **URL-encoded** there (e.g. `@` → `%40`), always copy the ready-made string rather than retyping |
+| `psql: FATAL: database "shopcore" does not exist` | Create it first (Neon: Databases → New; Supabase SQL Editor: `CREATE DATABASE shopcore;`), or connect to `postgres`/`neondb` and create from there |
+| `connection timed out` | Hostname typo, or your network blocks outbound 5432 — try another network; verify SSL param `sslmode=require` |
+| pgAdmin "SSL is required" | Set **SSL mode = Require** in server settings |
+| Dashboard shows "Project paused" | Free-tier inactivity pause — click **Resume** in the dashboard |
+| "too many connections" | You used direct URI for many serverless clients — switch to the pooled `-pooler` host |
+| You committed the string by accident | Reset DB password in dashboard **immediately**, then scrub it from git history |
+
+## 8. Practice
+
+**Guided exercise.** Create a free Neon (or Supabase) project, then a `shopcore` database, load the canonical DDL+seed via psql with `\i`, and screenshot `SELECT count(*) FROM products;` returning 3. Delete the test project afterwards if it is not your portfolio piece.
+
+**Independent exercise.** Do the same flow a second time on the other provider (Neon ↔ Supabase). Note every UI difference — both work, you must be fluent in at least one.
+
+**Challenge.** Connect the pooled URI from psql and a direct URI from `\c shopcore`. For Neon, pass a single conninfo string instead of a password argument, e.g. `\c "postgresql://user:pass@ep-xxx.neon.tech/shopcore?sslmode=require"` (the `\c` command takes exactly one connection string **or** positional `dbname [user] [host] [port]` arguments), and explain when you must use each (pooled vs direct).
+
+**Assessment checklist**
+
+- [ ] I can reach a hosted ShopCore database from psql and pgAdmin.
+- [ ] I can create/reset the database password and understand its encoding in URLs.
+- [ ] I know the difference between pooled and direct connections and when to use each.
+- [ ] My connection string lives only in `.env`, never in git history.
+- [ ] I know where the pricing/limits pages are for my provider and checked them today.
+
+</BookNodePage>

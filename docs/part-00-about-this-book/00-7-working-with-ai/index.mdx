@@ -1,0 +1,99 @@
+---
+id: "index"
+title: "00.7 Working With AI"
+sidebar_label: "00.7 Working With AI"
+slug: "/part-00-about-this-book/00-7-working-with-ai"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="sec-00-7">
+
+Every software engineer entering the industry in 2026 operates inside a workspace permanently reshaped by capable coding models, terminal coding agents, and instant synthesis tools. Pretending AI coding assistants do not exist produces unnecessarily slow habits on boilerplate and test generation; using them blindly like a magic code slot machine produces brittle architectures, subtle security holes, and rapid skill atrophy.
+
+**Section 00.7 — Working With AI** establishes the strict engineering charter governing how you use AI tools across **The AI-Native Engineer**. Notice the distinction right away: **Part 07 (`Chapters 25–27`)** and **Part 08 (`Chapters 28–36`)** teach you how to *engineer software powered by AI in production*; **Section 00.7** teaches you how to *work responsibly alongside AI assistants yourself starting today*—while ensuring you become genuinely stronger rather than dependent.
+
+## 1. The Core Operating Model: Specification → Context → Review → Verification
+
+Unverified "vibe coding" treats AI as an autonomous author while the human acts as a passive spectator clicking *Accept All*. Professional AI-augmented engineering flips that hierarchy completely: **you act as the lead systems architect and verifier; the model acts as a fast, fallible drafting and exploration assistant.**
+
+```text
+  [HUMAN ENGINEER]                                    [AI CODING ASSISTANT]
+  1. Define boundary, invariants & non-goals   --->   Reads Context Packet (00.7.2)
+  2. Supply real schemas, types & error logs   --->   Drafts scoped patch / tests
+  3. Audit diff hunk-by-hunk for logic & sec   <---   Proposes implementation
+     (00.7.3 Review)
+  4. Run tests, linter, curl & live edge cases <---   NEVER trusted on faith alone
+     (00.7.4 Empirical Verification)
+```
+
+Look closely at what breaks when a developer omits any step of that loop:
+- Omit **Step 1–2 (`00.7.2`)** and the model fills missing context with plausible guesses: deprecated library APIs, mismatched field names, missing auth checks, or duplicated helpers.
+- Omit **Step 3 (`00.7.3`)** and subtle logic bugs—unbounded `useEffect` loops, missing `WHERE tenant_id = ?` scoping, swallowed `catch` blocks, or quadratic `O(n²)` array scans—enter your main branch cleanly formatted.
+- Omit **Step 4 (`00.7.4`)** and you fall into the most common AI trap in modern coding: trusting confident prose (*"This handles all edge cases and passes validation"*) without executing the exact tests and inspecting actual runtime output.
+
+## 2. Roadmap of the Six Rules in Section 00.7
+
+| Topic | Core Engineering Discipline | Risk Eliminated | Concrete Habit You Practice |
+| :--- | :--- | :--- | :--- |
+| **`00.7.1` AI as a Learning Partner** | Use models for Socratic interrogation, counter-examples, and conceptual debugging | Passive homework-skipping where zero mental model sticks | Asking *"critique my mental model of X"* instead of *"write X for me"* |
+| **`00.7.2` Providing Context to AI** | Supply exact file snippets, DB schemas, runtime versions, constraints, and non-goals | Hallucinated imports, stale framework patterns, architectural sprawl | Authoring structured 5-part Context Packets before nontrivial prompts |
+| **`00.7.3` Reviewing AI-Generated Code** | Read every generated line across correctness, security, state, types, and simplicity | Merging plausible-looking vulnerabilities or unmaintainable bloat | Four-pass diff inspection before accepting any generated patch |
+| **`00.7.4` Verifying AI Outputs** | Treat every claim, shell command, package name, and patch as untrusted until run | Silent failures, fake package names, untested edge-case crashes | Running `tsc`, linter, automated tests, and negative-path probes |
+| **`00.7.5` Avoiding Overdependence** | Protect unassisted coding intervals and solo debugging endurance intentionally | Atrophy of syntax recall, trace reading, and live interview fluency | Weekly manual-only sprints + 10-minute solo diagnosis rule |
+| **`00.7.6` Developing Independent Engineering Judgment** | Cultivate taste around trade-offs, deletion, simplicity, and operational cost | Letting statistical token averages dictate system architecture | Rejecting over-engineered AI suggestions in favor of clean, boring designs |
+
+## 3. Why AI Amplifies Existing Discipline (Both Good and Bad)
+
+A striking divide appears inside engineering teams adopting AI coding tools: **AI behaves as a pure multiplier on the engineer's pre-existing standards.**
+
+Consider what happens when two developers receive the exact same task—*"Add CSV export for filtered customer invoices in our Next.js + PostgreSQL app"*—and open the exact same frontier coding model:
+
+- **Developer A (Undisciplined AI Usage):** Pastes a one-sentence prompt (*"Make an endpoint and button to export invoices as CSV"*). Accepts a 260-line diff without noticing that the query lacks pagination (loading 100,000 rows into Node memory at once), omits organization ownership verification (allowing any logged-in user to export another tenant's invoices by changing a query param), leaves CSV formula injection (`=CMD|...`) unescaped, and swallows database errors with a `200 OK` empty string. It "works" on 3 test rows in localhost, so it gets committed.
+- **Developer B (Section `00.7` Discipline):** First checks the existing auth middleware, PostgreSQL schema, and streaming utilities (`00.7.2`). Prompts the model with exact TypeScript types, tenant scoping rules, cursor-based streaming constraints, and CSV cell-sanitization requirements. Reads every hunk of the generated diff (`00.7.3`), rejects an unnecessary third-party dependency the model tried to pull in (`00.7.6`), prompts for unit tests covering unauthorized tenants and malicious `=HYPERLINK` cells, executes the tests and inspects actual `curl` headers (`00.7.4`), and commits a clean, safe feature in half the usual time.
+
+Both engineers used AI. One created a silent security and reliability liability; the other delivered production-grade software rapidly.
+
+## 4. Phase Rules: How AI Usage Changes Across This Curriculum
+
+Your relationship with AI coding tools should intentionally **evolve** as your fundamentals strengthen from Part 01 through Part 10:
+
+1. **Part 01 (`Ch 01–03`): Strictly Socratic & Diagnostic Partner Only.** During foundations, write your shell commands, Git flows, and logic exercises completely manually. Use AI **only** to quiz your understanding, translate cryptic error terminology, or compare mental models (`00.7.1`)—never to write exercises for you.
+2. **Parts 02–04 (`Ch 04–15`): Manual Core First, AI for Edge-Case Testing & Refactor Review.** Implement core algorithms, DOM logic, React state, Python APIs, SQL schemas, and auth routes by hand first (`00.6.3`). Use AI to generate boundary test fixtures, critique your SQL indexes, or review completed code for security flaws (`00.7.3`).
+3. **Parts 05–10 (`Ch 16–42`): Full Spec-Driven Engineering Co-Pilot.** Once you genuinely recognize bad TypeScript, unsafe SQL, or broken async state on sight, pair spec-driven prompting (`Ch 27`) with strict diff auditing and automated verification across cloud configs, multi-service backends, AI pipelines, and your Chapter 42 capstone.
+
+## 5. Anatomy of a High-Signal Engineering Request to AI
+
+Before you ask an assistant to touch any real codebase across this curriculum, verify that your prompt contains five concrete inputs (explained in full in **`00.7.2`**):
+
+1. **Exact runtime & stack versions:** State explicitly (for example: *"Next.js App Router, TypeScript strict mode, PostgreSQL 16 via parameterized SQL, Node 26 LTS"*). Models frequently mix older patterns unless pinned.
+2. **Authoritative interface or schema:** Paste the real TypeScript types, SQL table DDL, or API payload contract so the assistant cannot invent column names.
+3. **Explicit invariants & security rules:** Specify row-level ownership (`WHERE organization_id = $1`), auth checks, error status codes, and input validation boundaries.
+4. **Explicit non-goals:** Tell the assistant what *not* to touch (for example: *"Do not install new npm packages or rewrite unrelated auth middleware"*).
+5. **Required verification step:** Demand matching negative-path unit tests or `curl` verification commands alongside the code change so you immediately test failure cases (`00.7.4`).
+
+## 6. Common Mistakes When Collaborating With AI
+
+1. **Prompt-thrashing on bugs instead of reading the error:** Pasting a whole file back into chat five times saying *"still broken, fix it"* creates wild regressions because neither you nor the model isolated the failing invariant. Read line numbers, inspect variable values, and reproduce in isolation first (`00.6.6`, `00.7.5`).
+2. **Trusting package names and CLI flags blindly:** Models occasionally invent plausible-sounding flags or obsolete library APIs from older major versions (for example, mixing older React/Next.js or MCP patterns with current 2026 releases). Always check `--help` or official documentation (`00.9.9`) before installing or configuring.
+3. **Accepting huge multi-file refactors in one shot:** Large unreviewed diffs hide subtle regressions. Demand small, testable steps verified after each change.
+
+## 6. Practical Charter Activity (10 Minutes)
+
+Write a brief three-rule **"Personal AI Charter"** at the top of your learning notes before advancing to **`00.7.1`**:
+1. **My Manual-First Boundary:** Name which exercises you commit to solving completely without AI code generation during Parts 01–04.
+2. **My Mandatory Verification Gate:** List the exact checks (typecheck, linter, unit test, negative-input curl/browser check) you will run before trusting any AI-suggested edit.
+3. **My Context Rule:** Commit to providing exact error output, relevant types, and explicit constraints rather than one-line vague prompts whenever asking AI for help.
+
+## 7. Key Takeaways
+
+- **You own every line you ship:** Whether typed by your fingers or drafted by an assistant, responsibility for correctness, security, and maintainability belongs 100% to the engineer.
+- **Follow the four-step loop (`00.7.2`–`00.7.4`):** Clear specification + rich context → scoped draft → line-by-line review → empirical execution.
+- **Protect manual mastery early (`00.7.5`)** so you build the independent judgment (`00.7.6`) that makes AI tools genuinely powerful in production.
+
+## 8. Further Reading & References
+
+- **Curriculum Implementation:** [Chapter 03.3: Debugging & AI-Assisted Learning](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-3-debugging-and-ai-assisted-learning) and [Chapter 27: AI-Assisted & Spec-Driven Engineering](/book/part-07-ai-native-software-development/27-spec-and-plan-agentic-development).
+- **Industry Engineering Guides:** [Google Engineering Practices: What Code Reviewers Look For](https://google.github.io/eng-practices/review/reviewer/looking-for.html) and [Anthropic / OpenAI Prompt & Evaluation Best Practices](https://platform.openai.com/docs/guides/evals).
+
+</BookNodePage>

@@ -1,0 +1,109 @@
+---
+id: "12-4-3-modeling-documents-embedded-vs-referenced"
+title: "12.4.3 Modeling Documents: Embedded vs Referenced"
+sidebar_label: "12.4.3 Document Modeling"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-3-modeling-documents-embedded-vs-referenced"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4-t3">
+
+MongoDB gives you no `REFERENCES` — **designing where the data lives is your job**. The whole art of document modeling is one rule, applied relentlessly:
+
+> **Data that is read and written together lives together (embedded). Data that is shared, unbounded, or updated independently lives in its own collection (referenced).**
+
+## 1. Embedded Documents — One Document Is One Whole Thing
+
+```javascript
+db.orders.insertOne({
+  userId: "ada@example.com",
+  status: "paid",
+  createdAt: new Date(),
+  items: [
+    { sku: "KB-01", title: "Mechanical Keyboard", qty: 1, unitPriceCents: 12900 },
+    { sku: "MS-02", title: "Ergonomic Mouse",     qty: 2, unitPriceCents: 5900 },
+  ],
+  shippingAddress: { city: "Bengaluru", pincode: "560001", line1: "MG Road" },
+});
+```
+
+Why this shape wins for orders:
+
+- One read returns the entire order — never a JOIN, never N round-trips.
+- Items and address are **transactionally** written with the order — atomicity by document.
+- The data is bounded (2–50 items) and updated only with the order.
+
+**Use embedding when:** the sub-item belongs to exactly one parent; the array size is bounded (< hundreds); you always want them together (`order.items`); you want atomic single-document writes.
+
+## 2. Referenced Documents — `_id` as a Pointer
+
+```javascript
+// customers collection
+db.customers.insertOne({ _id: ObjectId("66f000000000000000000001"), email: "ada@example.com", name: "Ada" });
+
+// orders collection — reference by id
+db.orders.insertOne({
+  customerId: ObjectId("66f000000000000000000001"),
+  status: "paid",
+  items: [ ... ],
+});
+
+// join on reads (aggregation $lookup) — or fetch customer separately in app code
+db.orders.aggregate([{ $lookup: { from: "customers", localField: "customerId", foreignField: "_id", as: "customer" } }]);
+```
+
+**Use referencing when:**
+1. The referenced entity is updated independently of thousands of parents (`customers` referenced by 10,000 orders — updating a name must not rewrite 10,000 docs).
+2. The child grows without bound (millions of `comments` per post — never embed unbounded arrays; 16 MB BSON document limit!)
+3. The data is reused across many parents (`products` referenced by orders and carts).
+
+## 3. The 16 MB Hard Limit — Design Against It
+
+Every BSON document is capped at **16 megabytes**. Estimate worst case: 1 KB per item × 16 MB = 16,000 items — appears huge until you store photos as base64 or logs inside documents. **Practical ceiling: keep embedded arrays under a few hundred (or a few thousand) entries.** Reference the rest.
+
+## 4. Applying the Rule to ShopCore
+
+| Data | Decision | Why |
+| :-- | :-- | :-- |
+| `order.items` (SKU, qty, price snapshot) | **Embed** | Bounded (< 50), read together, price is a historical snapshot — same philosophy as SQL `order_items` |
+| Customer identity on order | Embed minimal snapshot (`email`) or reference `customers` | Balance: snapshot protects history; reference keeps one source of truth |
+| Product catalog | Referenced (own collection) | Products are edited constantly, displayed in listings, shared across orders |
+| Customer's full profile | Own collection | Updated independently |
+| Activity/audit log | Referenced, separate capped collection | Unbounded growth |
+
+## 5. Consistent Data Types — `ObjectId` vs String Keys
+
+Pick one style and never mix within a collection:
+
+```javascript
+// Style A — ObjectId references (Mongo-idiomatic)
+{ customerId: ObjectId("66f0...") }
+
+// Style B — natural-key references (simple, debuggable, fine at ShopCore scale)
+{ userId: "ada@example.com" }
+```
+
+This book uses **Style A semantics but natural keys for readability in lessons** (as in 12.4.2/12.4.5 examples). Production apps should use ObjectIds consistently — and always `new ObjectId(string)` when querying (12.4.2 section 6). Never an int `1` in one doc and `"1"` in another — mixed types silently break indexes.
+
+## 6. Duplicate by Design? Snapshots Are OK
+
+Like `unit_price_cents` in SQL, embedding a **snapshot** of mutable data is intentional denormalization: `order.items[].unitPriceCents` is the price at purchase time forever. It is duplication on purpose; document the rule ("orders store their own price, never join-reload past prices").
+
+## 7. Practice
+
+**Guided exercise.** For a blogging platform you're building, classify each as embed/reference: post comments; author profile; post tags; comment likes count; post revision history. Explain one in one line each.
+
+**Independent exercise.** Model a **shopping cart**: `db.carts` with embedded `items` (product snapshot + qty) and reference to `customers`. Insert one example cart, then read all carts of that customer.
+
+**Challenge.** Estimate the size of an order document with 200 items (each ~200 bytes of fields) — how close are you to 16 MB, and which items belong in a separate `order_items` collection instead? (Order document is fine — 200×200B = 40 KB. Now consider 100,000-item enterprise orders — reference wins.)
+
+**Assessment checklist**
+
+- [ ] I can state the one modeling rule and apply it to any new entity.
+- [ ] I know exactly when to embed vs reference (bounded/together vs shared/unbounded).
+- [ ] I can name the 16 MB BSON limit and its consequence.
+- [ ] I can justify ShopCore's embed/reference decisions table from memory.
+- [ ] I never mix ObjectId and string for the same field in one collection.
+
+</BookNodePage>

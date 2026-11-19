@@ -1,0 +1,19 @@
+---
+id: "index"
+title: "05.3 Type-Safe Application Contracts"
+sidebar_label: "05.3 Type-Safe Application Contracts"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-3-type-safe-application-contracts"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s3">
+
+The most dangerous myth about TypeScript is believing it validates API responses, form submissions, or environment variables at runtime. **It does not.** When TypeScript compiles to JavaScript, every interface and type disappears completely. Subchapter **05.3** closes that gap using **runtime schema validation (`Zod`)** at trust boundaries and **discriminated unions** inside your application state.
+
+## Lessons in Subchapter 05.3
+
+1. **[05.3.1 Typing API Payloads and Runtime Validation](/book/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-3-type-safe-application-contracts/05-3-1-typing-api-payloads-and-runtime-validation):** Type erasure explained, why `res.json()` is untrusted, installing `zod`, validating payloads with `.safeParse()`, and deriving static types via `z.infer`.
+2. **[05.3.2 Discriminated Unions for Domain State](/book/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-3-type-safe-application-contracts/05-3-2-discriminated-unions-for-domain-state):** Replacing ambiguous `{ isLoading, data, error }` boolean soup with tagged unions and compile-time `never` exhaustiveness checks.
+
+</BookNodePage>

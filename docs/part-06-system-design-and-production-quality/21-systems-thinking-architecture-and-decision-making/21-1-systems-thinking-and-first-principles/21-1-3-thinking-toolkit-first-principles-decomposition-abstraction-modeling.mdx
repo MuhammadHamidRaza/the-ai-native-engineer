@@ -1,0 +1,159 @@
+---
+id: "21-1-3-thinking-toolkit-first-principles-decomposition-abstraction-modeling"
+title: "21.1.3 The Thinking Toolkit: First Principles, Decomposition, Abstraction and Modeling"
+sidebar_label: "21.1.3 The Thinking Toolkit: First Principles, Decomposition, Abstraction and Modeling"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles/21-1-3-thinking-toolkit-first-principles-decomposition-abstraction-modeling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s1-t3">
+
+Systems thinking (21.1.1) tells you to look; the two moves (21.1.2) tell you when. This lesson is the toolbox: seven reasoning tools that produce the artifacts in both moves. Each is shown with a real ShopCore scenario and a checklist — because a tool you cannot apply on demand is trivia, not engineering.
+
+## 1. First Principles — Delete and Rebuild the Price Engine
+
+First principles means refusing inherited assumptions and rebuilding from what must be true. ShopCore's pricing rule evolved: base price × (1 − discount) − loyalty credit + tax, with three special cases bolted on by three different engineers. Delete it. What *must* be true?
+
+1. A line total is never negative.
+2. Money is decimal; floating point is forbidden (`0.1 + 0.2 ≠ 0.3`).
+3. Rounding happens once, at the documented layer — per line, not per sum.
+4. Tax jurisdiction is determined by ship-to address, not session.
+
+Rebuild from those four invariants and you recover 90% of the old behavior — cleaner, and the three special cases become explicit, tested branches. The 30 minutes you spend deleting code is the highest-leverage 30 minutes in this chapter.
+
+**Checklist**
+- [ ] I listed the invariants before looking at the existing code.
+- [ ] The rebuild reproduces the old outputs on a golden-master test set.
+- [ ] The old code is deleted, not commented out.
+
+## 2. Decomposition — Split Checkout In-Place
+
+Decomposition is cutting a thing into parts that can change independently. ShopCore's `POST /checkout` is 800 lines doing capture, verify and settle. Split it **in place** (same deploy, same module tree) before you ever split deployables:
+
+```text
+checkout/
+  capture.ts    // collect cart, create payment intent   (fast, user-facing)
+  verify.ts     // signature checks, fraud score, stock re-check  (can fail)
+  settle.ts     // charge, decrement stock, enqueue email         (async OK)
+```
+
+Now `verify` can get stricter without redeploying `capture`; `settle` can move to a worker without touching the HTTP path. In-place decomposition is the cheap rehearsal for service extraction (21.3.1).
+
+**Checklist**
+- [ ] Each piece has one reason to change.
+- [ ] Each piece is unit-testable without the others (21.1.2's boundary, made local).
+- [ ] Deployment is still atomic — no distributed change yet.
+
+## 3. Abstraction — The Surrogate Interface
+
+Abstraction is an interface that hides the vendor. Define `PaymentProvider` once; Stripe becomes one implementation; a sandbox fake becomes another.
+
+```ts
+// surrogate: the only shape checkout is allowed to know
+export interface PaymentProvider {
+  capture(intentId: string): Promise<CaptureResult>;   // never throws for declines
+  refund(chargeId: string, cents: number): Promise<RefundResult>;
+}
+```
+
+Production binds Stripe; CI binds `FakePaymentProvider` (deterministic, zero network). The day you evaluate a second provider, checkout does not change. This is also the seam 22-2-2 uses to decide mock-vs-real honestly.
+
+**Checklist**
+- [ ] The interface speaks *your* domain's language, not the vendor's (`CaptureResult`, not `Stripe.Response`).
+- [ ] Errors are values, not exceptions, across the boundary.
+- [ ] There is a fake implementation used in at least one test suite.
+
+## 4. Modeling — Diagrams and State Machines
+
+Four models carry 90% of ShopCore's design weight. Draw all four before writing code; they are cheap and brutal:
+
+- **Context diagram** — who/what is inside the boundary (21.1.1).
+- **Domain (ER) model** — entities, keys, ownership of each table (21.2.3).
+- **Deployment diagram** — where processes run: SPA on CDN, API on PaaS, PG on Neon, Redis on a managed instance (see [16.3.2](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-3-managed-platform-and-full-stack-deployment/16-3-2-deploying-node-python-apis-and-hosted-databases)).
+- **Order state machine** — the diagram that kills "impossible" bugs:
+
+```text
+   cart
+     | customer pays
+     v
+ payment_pending --webhook payment_succeeded--> paid
+     |                                              | fulfill
+     | webhook payment_failed                       v
+     v                                        fulfilled --> delivered
+  payment_failed                                    |
+     |                                              | customer requests
+     v                                              v
+  cancelled <---- refund ---- refunded <---- return_requested
+```
+
+Any transition not in this machine is a bug by definition. Encode it as a CHECK constraint or a status enum, not as hope.
+
+## 5. Causal Thinking — Failure Trees
+
+A **failure tree** decomposes "checkout fails" into finite, testable causes:
+
+```text
+checkout fails
+ ├── 4xx from our own API (validation, auth)
+ ├── payment_declined  (Stripe says no)
+ ├── db_unavailable    (pool exhausted / Neon down)
+ ├── stock_race        (last unit, two buyers — 21.4.1)
+ ├── webhook_duplicate (double decrement — 22-1-1's idempotency rule)
+ └── redis_down        (cache + rate limiter gone — degrade, do not die)
+```
+
+Every leaf maps to: a metric (22-3-2), an alert or an accepted risk, and a test that reproduces it. If a leaf has none of the three, your failure model is fiction.
+
+**Checklist**
+- [ ] Finite leaves; "miscellaneous" is banned.
+- [ ] Each leaf has owner, detection, and a runbook line.
+
+## 6. Probabilistic Reasoning — p99 and SLO Math
+
+Averages lie. ShopCore's checkout p50 is 90 ms and p99 is 2.4 s: half your users are fine and one in a hundred is furious. Three calculations every ShopCore engineer does on a napkin:
+
+- **Percentiles.** Report p50/p95/p99, never the mean, for latency SLOs.
+- **Error budget.** 99.9% monthly availability = **43.2 minutes** of downtime per 30-day month (43200 min × 0.001). 99.95% = 21.6 min. Spending the budget is a *decision*, not an oops.
+- **Capacity.** Black Friday target: 40 orders/min peak ≈ 0.67 rps — trivial. But catalog browsing is 100× that: ~70 rps, each 15 SQL queries ≈ 1000 qps. Your database, not checkout, is the ceiling. Size for the read path.
+
+Little's law in one line: `concurrency = arrival rate × latency`. At 70 rps and 200 ms average, ~14 concurrent requests — well within an Express pool if the pool is 20+.
+
+**Checklist**
+- [ ] I can compute the monthly error budget for any SLO on request.
+- [ ] My capacity estimate names the bottleneck component and its number.
+
+## 7. Design Thinking and Decisions Under Uncertainty
+
+**Design thinking** (empathize → define → ideate → prototype → test) is the front half of feature work: before any of the above tools fire on "add gift wrapping," spend two hours watching real checkout sessions. Most ShopCore features nobody uses die here, cheaply.
+
+**Decision-making under uncertainty** — the Bezos Type 1/Type 2 heuristic: one-way doors (irreversible — migrating the primary DB) deserve slow, full-process decisions with ADRs; two-way doors (cache TTL, button copy) get fast, reversible decisions. Default to classifying decisions honestly; teams that treat every decision as Type 1 are slow, and teams that treat everything as Type 2 are reckless. When unsure, buy more information: the thin prototype from 21.2.1 is the cheapest uncertainty-reducer you own.
+
+## 8. Toolkit Reference Table
+
+| Tool | Reach for it when | ShopCore artifact |
+| :-- | :-- | :-- |
+| First principles | "That's how it's always worked" | Price-engine invariants doc |
+| Decomposition | One file owns everything | `checkout/{capture,verify,settle}.ts` |
+| Abstraction | Vendor leaking into domain | `PaymentProvider` interface |
+| Modeling | Arguments about reality | 4 diagrams + order state machine |
+| Causal/failure tree | Incident reviews | `docs/runbooks/checkout-failures.md` |
+| Probabilistic | "It feels slow" | SLO table + capacity napkin math |
+| Design thinking / Type 1-2 | "Should we build it?" | Prototype + 24h of session replay |
+
+## 9. Practice
+
+**Guided exercise.** Rebuild the pricing rule from Section 1 against the Chapter 15 golden outputs. List the four invariants; make all old tests pass without opening the legacy pricing file until they do.
+
+**Independent exercise.** Draw the order state machine and wire two of its failure transitions (`payment_failed`, `webhook_duplicate`) to actual log lines from your app. What does the log say that makes diagnosis unambiguous?
+
+**Challenge.** Compute error budgets for 99.9/99.95/99.99 on a napkin, then look at your last quarter's uptime and answer honestly: did ShopCore spend its budget, and on what?
+
+**Assessment checklist**
+
+- [ ] I can apply all seven tools to a named ShopCore scenario without notes.
+- [ ] I can produce the four models from memory for checkout.
+- [ ] I can recite the 99.9% → 43.2 minutes derivation.
+- [ ] I can distinguish Type 1 from Type 2 decisions correctly three times in a row.
+
+</BookNodePage>

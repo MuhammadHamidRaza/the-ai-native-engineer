@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "12.3 PostgreSQL in Practice"
+sidebar_label: "12.3 PostgreSQL in Practice"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s3">
+
+**Subchapter 12.3** moves from "querying" to "running a real PostgreSQL database": constraints and migrations that keep schemas healthy as your app evolves, least-privilege roles and verified backups for production, and PostgreSQL's three superpowers — JSONB documents, full-text search, and pgvector for AI.
+
+## Lessons in Subchapter 12.3
+
+1. **[12.3.1 Schemas, Constraints and Migrations](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-1-schemas-constraints-and-migrations):** CHECK/NOT NULL/UNIQUE/FK constraints, `ALTER TABLE` safely, and forward-only numbered migrations with a `schema_migrations` table.
+2. **[12.3.2 Users, Roles, Backups and Restores](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores):** `CREATE ROLE` least-privilege for apps, `pg_hba.conf` in plain words, and a real `pg_dump` / `pg_restore` rehearsal.
+3. **[12.3.3 JSONB, Full-Text Search and pgvector](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-3-jsonb-full-text-search-and-pgvector):** Semi-structured specs with GIN-indexed JSONB, `tsvector` search that beats ILIKE, and pgvector for AI embeddings — including installing pgvector itself.
+
+</BookNodePage>

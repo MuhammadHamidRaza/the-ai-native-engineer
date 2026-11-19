@@ -1,0 +1,52 @@
+---
+id: "index"
+title: "28. AI-Powered Applications & RAG"
+sidebar_label: "28. AI-Powered Applications & RAG"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28">
+
+ShopCore's support inbox answers the same questions every day: "Can I return this after 30 days?" "Where is my order?" "How do you store my payment data?" The answers all live in six policy documents — but the customers who need them cannot search internal PDFs. **Retrieval-Augmented Generation (RAG)** is the pattern that closes that gap: retrieve the relevant policy passages, put them in the model's context, and generate an answer that is *grounded* in your documents and *cites* them.
+
+## What RAG Actually Is
+
+RAG is not a product you buy; it is a pipeline you build in two halves:
+
+```text
+INGESTION (offline, on every doc change)          QUERY (online, per question)
+
+ PDF/DOCX/HTML/MD                                  user question
+     |                                                 |
+  parser --> chunker --> embedder --> vector index   |
+                                        |             |
+                                   retriever --> reranker
+                                        |             |
+                                   top-k chunks --> LLM --> cited answer
+```
+
+Answer quality is decided mostly in the left half (ingestion). Most "the bot is dumb" reports are actually "empty retrieval" or "wrong chunk" reports — fix retrieval before touching prompts.
+
+## RAG vs the Alternatives
+
+| Approach | Best when | Fails when | Cost profile |
+| :-- | :-- | :-- | :-- |
+| **RAG** | Knowledge changes often, must be cited, private data | Documents unparsable; answers need exact row lookups (use SQL) | Low infra, moderate build |
+| **Fine-tuning** | Style/format/persona at scale; latency-critical | Facts must be current — fine-tunes freeze at training time | High upfront + retraining |
+| **Prompt stuffing** | Corpus fits in context and changes rarely | Context bloat, cost, "lost in the middle" on long inputs | Pay per token, every call |
+| **Long-context models** | Whole-doc reasoning, one-off analysis | Multi-user scale, repeated identical queries | 1M-token contexts help; still pricey at volume |
+
+ShopCore HelpBot is a RAG textbook case: policy docs change quarterly, answers must cite the exact clause, and nothing about refund rules should come from model memory.
+
+## Chapter Contents
+
+- **28.1 Embeddings & Ingestion Pipelines** ([28.1.1 Document Parsing and Chunking Strategies](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines/28-1-1-document-parsing-and-chunking-strategies), [28.1.2 Vector Indexing and Metadata Filtering](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines/28-1-2-vector-indexing-and-metadata-filtering)) — turn six policy docs into searchable, filterable, correctly-chunked vectors.
+- **28.2 Retrieval Quality & Grounded Generation** ([28.2.1 Hybrid Search and Reranking](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation/28-2-1-hybrid-search-and-reranking), [28.2.2 Citations, Hallucination Mitigation and UX](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation/28-2-2-citations-hallucination-mitigation-and-ux)) — make retrieval trustworthy, answers cited, and failure graceful.
+
+## Outcomes and Prerequisites
+
+You will finish Chapter 28 with a working retrieval layer behind ShopCore HelpBot: 6 policy docs ingested into Postgres + pgvector, hybrid search with reranking, and a citation-disciplined prompt that says "I don't know" rather than invent policy. Prerequisites are Part 04 (Node/Express/Postgres) and Part 07 (LLM vocabulary). Model and embedding IDs cited here were verified against official OpenAI docs in November 2026 — re-verify before production, APIs drift.
+
+</BookNodePage>

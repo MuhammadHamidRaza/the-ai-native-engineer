@@ -1,0 +1,153 @@
+---
+id: "29-1-1-deterministic-pipelines-vs-dynamic-loops"
+title: "29.1.1 Deterministic Pipelines vs Dynamic Loops"
+sidebar_label: "29.1.1 Deterministic Pipelines vs Dynamic Loops"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai/29-1-workflows-vs-autonomous-agents/29-1-1-deterministic-pipelines-vs-dynamic-loops"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-29-s1-t1">
+
+Every agent discussion degenerates into vibes unless you fix the vocabulary first. This lesson fixes it: what a deterministic pipeline is, what an agent actually is, where the line sits, and why the ShopCore Postmaster's front door is a pipeline — deliberately.
+
+## 1. The Spectrum — Not a Binary
+
+"Workflow or agent?" is a false dichotomy. Real systems sit on a spectrum:
+
+```text
+DETERMINISTIC                                    AUTONOMOUS
+|-----------------|------------------|------------------|
+Cron/queue job     LLM one-shot        Tool-using         Open-ended agent
++ fixed steps      classifier + code   workflow: model    loop: model decides
++ no LLM in path   routes to fixed     picks next step    tools, steps, retries,
+                   handlers            among a known      done-ness, within
+                                       menu               hard budgets
+```
+
+| Property | Deterministic pipeline | Tool-using workflow | Autonomous agent |
+| :-- | :-- | :-- | :-- |
+| Who picks the next step | Your code (`if/else`, switch) | Model, from a fixed tool menu | Model, freely |
+| Audit trail | Exact: same input → same path | Mostly: logged choices + tool calls | Plausible but variable |
+| Cost per run | ~0 (CPU only) | Low (1–3 model calls) | Variable (N calls until stop) |
+| Failure visibility | Obvious (stack trace) | Good (trace of choices) | Murky (why did it do *that*?) |
+| Best at | Compliance, money movement, PII | Routing + bounded actions | Ambiguous investigation |
+
+**The deciding question is never "is the model smart enough?" It is "does this step need judgment?"** If the next step is derivable from the data, code should take it. If it requires weighing unstructured evidence, a model should — inside boundaries you set.
+
+## 2. When Each End Wins
+
+**Deterministic wins when:** the rules are known and the stakes are compliance-shaped. Refund math (`refund_total <= paid` aggregate invariant from Part 06's consistency chapter), address-change validation against verified identity, tax/discount computation, anything a regulator or Stripe will audit. A pipeline costs nothing per run, cannot hallucinate, and replays identically in an incident review.
+
+**Agent wins when:** the task is exploration under uncertainty — reading a customer's history, noticing the refund request contradicts the delivery scan, deciding the ticket is actually a churn-risk save rather than a refund. No `switch` statement captures that; a model with tools can.
+
+**Hybrid wins most often in practice:** deterministic shell, model core. Rules decide *whether* the agent may act and *what it may touch*; the model decides *which allowed action fits*. That is the Postmaster's architecture, in full:
+
+```text
+Ticket arrives (mailbox / HelpBot hand-off / API)
+        |
+        v
++--------------------+
+| STAGE 1: PIPELINE  |  normalize → dedupe (idempotency key) →
+| (deterministic)    |  PII redaction → keyword+LLM classify
++--------------------+
+        |
+        +--> refund_dispute -------> +---------------------------+
+        +--> address_change -------> | STAGE 2: BOUNDED AGENT    |
+        +--> inventory_shortfall --+ | (loop, max 8 turns,       |
+        +--> novel/ambiguous ------+ |  tools, approval gates)   |
+        |                            +---------------------------+
+        v                                     |
+  STAGE 3 (deterministic): execute writes via Express API,
+  record decision trace, enqueue human review if gated
+```
+
+**Why the triage entry point IS a pipeline:** (1) auditors ask "why did we open this order?" — "because the `if` on line 40" beats "because the model felt like it"; (2) 60%+ of volume in a typical operations mailbox is one of three known intents — paying a model to re-derive a regex is waste; (3) the classifier's failure mode is *misrouting to a safe queue*, not *taking a wrong action*; (4) you can shadow-mode a deterministic classifier before trusting it, which you cannot do with a free agent loop. The agent exists *inside* stage 2 because that is where judgment lives.
+
+## 3. Failure Modes of Each
+
+| Architecture | Failure mode | What it looks like | Mitigation |
+| :-- | :-- | :-- | :-- |
+| Pipeline | Silent misroute | Refund dispute lands in "general" queue; nobody notices for 6 days | Confidence score + unmatched → default safe handler (human) |
+| Pipeline | Rule rot | New ShopCore ticket type appears; pipeline applies stale rule | Weekly "unknown share" report; alert when unknown > 10% |
+| Workflow | Menu drift | Model picks `search_orders` when it should call `get_order` | Tool naming/description hygiene (29.1.2); tool-call evals |
+| Agent | Unbounded loop | Model re-queries the same order 40 times | `max_turns` budget (29.2.1); watchdog reaper |
+| Agent | Wrong-but-confident action | "Address updated" — actually a different customer's order | Approval gates (29.2.1); code-side invariants, not prompt promises |
+| Agent | Cost blowup | One pathological ticket burns 80 model calls | Token budget per ticket + daily spend cap with circuit breaker |
+
+**Case-study numbers — framed as typical, not universal.** In reference runs on a mid-size ShopCore-like mailbox (roughly 400 tickets/day), a deterministic pre-classifier with an LLM fallback routed ~55–70% of tickets with zero agent involvement; hybrid runs cost ~5–10x less per ticket than free-loop agents and produced traces a human could audit in under a minute. An all-agent design resolved roughly the same share of tickets but with ~3x median latency and a non-trivial tail of "I looped until max_turns" tickets. Treat these as directional engineering economics, not benchmarks — your mailbox differs.
+
+## 3.5 The Mailbox Audit — Find Your Numbers Before Designing
+
+Every number in this chapter came from an audit. Do yours before touching a framework. Export or hand-label **100 recent tickets** and tabulate:
+
+| Metric | How to compute | What it decides |
+| :-- | :-- | :-- |
+| Unknown-intent share | tickets matching none of the three intents / 100 | Whether you need a human-first default path (usually yes) |
+| Three-intent concentration | top-3 intents / 100 | If < 50%, stage-2 is too small — renegotiate scope before building |
+| Avg tickets per day × 30 | Volume trend | Token budget derivation (29.2.1) |
+| Refund $ p50 / p95 | Refund amounts on dispute tickets | The $50/$500 tier thresholds — adjust to YOUR distribution |
+| Tickets needing >1 system read | e.g. order + shipping + customer tier | Tool count for stage 2 and loop depth needed |
+
+**Worked example (typical, illustrative):** 100 tickets → 58 clear intent, 12 partial, 30 ambiguous. Of the 58 clear, 31 are refund disputes ($40 median, $410 p95), 19 address changes, 8 shortfalls. Design falls out of the table: auto-approve refunds ≤ $100 covers ~70% of dispute volume; $500 cap covers ~97%; the 3% tail always goes to a human. An agent loop depth of 6 turns covers p95 of the refund flow (lookup → tier → shipping scan → propose → gate → confirm). You are not guessing anymore — the mailbox told you.
+
+## 4. Designing the Postmaster Spec (Exercise You Keep)
+
+Write this down before Chapter 30 — one page, no code:
+
+1. **Entry:** ticket source, dedupe key (`provider_message_id`), PII handling.
+2. **Stage 1 rules:** the three intents + `unknown`. Unknown goes to humans, never to a guess.
+3. **Stage 2 contract:** given intent + order context, the agent may: read order/customer/inventory; propose refund ≤ $50 auto, $50–$500 with one-tap human approval, > $500 never auto; update address only pre-dispatch and only with verified identity match; flag shortfalls, never place POs autonomously.
+4. **Forbidden actions:** see the checklist in 29.2.1 — it lives in both this spec's prompt text and in code.
+5. **Exit:** every path ends in either an API-side effect + logged decision, or a human queue item with full context. No path ends in silence.
+
+One-page spec skeleton you will fill in and carry to Chapter 30:
+
+```text
+SHOPCORE POSTMASTER — SPEC v0.1
+Entry:      mailbox extractor (poll 60s) + dedupe(provider_message_id); PII redacted
+Intents:    refund_dispute | address_change | inventory_shortfall | unknown → humans
+Stage 2 tools (refund):  lookup_order, get_customer_tier, lookup_shipment_status,
+                         open_dispute_ticket, issue_refund (cap $500 in code)
+Gates:      ≤ $50 auto | $50.01–$500 one-tap human | > $500 never offered
+Exit:       API effect + decision log, or human queue with context + correlation_id
+Fallback:   stage-1 rules route to humans; agent is optional acceleration
+Budgets:    max_turns=8 | 40k tokens/ticket | 120s wall clock | $25/day breaker (29.2.1)
+Forbidden:  see 29.2.1 checklist (prompt AND code enforced)
+```
+
+## 5. Common Mistakes
+
+- Building the agent first, then bolting on a pipeline "for later." Later never comes; ship the pipeline.
+- Putting money movement *inside* the free loop because "the model is careful." Money moves through deterministic code after the model decides, every time.
+- Measuring only accuracy. Measure cost/ticket, p95 latency, human-override rate, and unknown-share. A measurable agent beats an opaque one — always.
+- Letting the agent see more tools than the task needs. Tool surface area *is* your blast radius (29.1.2).
+
+**Pipeline vs agent — troubleshooting the rollout**
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| "Unknown" share drifts up week over week | New ticket type arrived; taxonomy stale | Weekly unknown-share report; add intent + tests before enabling it |
+| Agent loop p95 is 3× median | One tool is slow (order lookup N+1) | Fix the tool, not the model; check `generation` vs `function` span times in the trace |
+| Refund tickets bypass the gate | Gate placed in prompt only | Enforce in tool code (`needs_approval`/cap); prompts are advisory |
+| Humans override the agent > 30% of the time | Prompt too eager; tools lack data | Narrow the agent's scope; add the read tool the human keeps checking |
+| Deterministic route can't explain a decision | Unlogged `if` branch | Structured decision log JSON per ticket: `{"branch": "refund<=100_auto", "inputs": {...}}` |
+| Cost per ticket crept up 40% | Prompt grew; context not trimmed | Re-run context budgeting (Part 07); measure before adding instructions |
+
+## 6. Practice
+
+**Guided exercise.** Take 20 real or synthetic ShopCore tickets. Label each with intent. Time yourself writing the Stage-1 rules — then ask what the agent adds on top.
+
+**Independent exercise.** Pick one more intent (e.g. `churn_risk_save`). Specify its Stage-2 contract: tools, bounds, gates, exit.
+
+**Challenge.** Red-team your own spec: write five tickets that exploit the boundaries (a $49.99 refund × 3 under the limit; an address change on a dispatched order; an injection-flavored dispute email). Verify each fails safe.
+
+**Assessment checklist**
+
+- [ ] I can place any ShopCore operation on the spectrum and defend the placement.
+- [ ] I can explain why triage is a pipeline and name the four properties that force it.
+- [ ] I drew the three-stage Postmaster diagram from memory.
+- [ ] I can list three failure modes per architecture and its mitigation.
+- [ ] I understand hybrid = deterministic shell, model core — not a model with extra steps.
+
+</BookNodePage>

@@ -1,0 +1,152 @@
+---
+id: "11-2-1-transactions-and-acid-guarantees"
+title: "11.2.1 Transactions and ACID Guarantees"
+sidebar_label: "11.2.1 Transactions and ACID"
+slug: "/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases/11-2-1-transactions-and-acid-guarantees"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-11-s2-t1">
+
+Imagine transferring $50 from Account A to Account B: you debit A, and right before crediting B the server restarts. Without a **transaction**, the $50 evaporates — A is short the money, B never received it, and nobody's ledger balances. Every serious database engine solves exactly this problem.
+
+All SQL below runs against the [ShopCore canonical schema](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema) (`users.id`, `products.id`, `orders.id` are `BIGINT IDENTITY` — always integers, never strings).
+
+## 1. What a Transaction Is
+
+A **transaction** is a group of SQL statements that the database treats as a single indivisible unit:
+
+```sql
+BEGIN;                       -- start the unit
+  -- statement 1
+  -- statement 2
+  -- statement 3
+COMMIT;                      -- make everything permanent
+-- or
+ROLLBACK;                    -- undo everything, as if it never happened
+```
+
+`COMMIT` makes the whole group permanent; `ROLLBACK` cancels all of it. There is no half-way state visible to anyone.
+
+## 2. The Four ACID Guarantees, One by One
+
+### Atomicity — All or Nothing
+Either every statement inside `BEGIN ... COMMIT` happens, or `ROLLBACK` undoes them all. The classic test: power lost between debit and credit → atomicity means the debit is undone too. A withdrawn-but-never-deposited $50 can never exist.
+
+### Consistency — The Database Never Breaks Its Own Rules
+A transaction may never leave the database violating its constraints. ShopCore enforces this at the schema level:
+
+```sql
+-- These are the guards Consistency depends on:
+stock_qty   INTEGER NOT NULL CHECK (stock_qty >= 0)   -- no negative stock
+price_cents INTEGER NOT NULL CHECK (price_cents >= 0) -- no negative prices
+status      TEXT NOT NULL CHECK (status IN ('pending','paid','shipped','cancelled'))
+```
+
+If a buggy script tries to drive `stock_qty` to `-1`, the transaction is rejected and rolled back — the constraint is enforced **inside the database**, not just by careful application code.
+
+### Isolation — Concurrent Transactions Don't Corrupt Each Other
+Many users run transactions at once. Isolation levels define how much of another transaction's in-progress work you can see:
+
+| PostgreSQL level | What you may see | Use case |
+| :-- | :-- | :-- |
+| `READ COMMITTED` (default) | Only rows committed before your statement started | Normal web apps; combine with atomic conditions (see below) |
+| `REPEATABLE READ` | The same snapshot for the whole transaction | Reports and receipts that must be stable |
+| `SERIALIZABLE` | As if transactions ran one at a time | Strict finance; callers must retry on `SQLSTATE 40001` |
+
+### Durability — Committed Means Permanent
+Once `COMMIT` returns, the changes are written to the **write-ahead log (WAL)** on disk. Even if the server loses power the next millisecond, committed data survives — PostgreSQL replays the WAL on startup.
+
+## 3. The Lost Update — The Race You Must Defeat
+
+Never compute new values in application memory and write them back:
+
+```javascript
+// DANGEROUS — two requests both read 1, both write 0, store oversells by 1
+const { rows } = await pool.query('SELECT stock_qty FROM products WHERE id = $1', [id]);
+const newStock = rows[0].stock_qty - 1;
+await pool.query('UPDATE products SET stock_qty = $1 WHERE id = $2', [newStock, id]);
+```
+
+Two people checking out the last keyboard simultaneously both read `stock = 1`; both write `0`; you sold two keyboards you didn't have.
+
+**The correct pattern — one statement, evaluated inside the database:**
+
+```sql
+BEGIN;
+
+-- Atomic conditional decrement: the WHERE clause is re-evaluated
+-- against the row's CURRENT value inside the UPDATE.
+UPDATE products
+SET stock_qty = stock_qty - 1
+WHERE id = 1 AND stock_qty >= 1
+RETURNING id, stock_qty;
+-- If zero rows are returned, the item is out of stock:
+-- ROLLBACK; respond 409 Conflict.
+
+INSERT INTO orders (user_id, status) VALUES (1, 'paid');
+INSERT INTO order_items (order_id, product_id, qty, unit_price_cents)
+VALUES (currval(pg_get_serial_sequence('orders', 'id')), 1, 1, 12900);
+COMMIT;
+```
+
+Note the identifiers: `products.id = 1` (integer key), `user_id = 1` (Ada). Never write `WHERE id = 'prod_keyboard'` — the column is `BIGINT`, a string literal will not match.
+
+For stricter control, `SELECT ... FOR UPDATE` locks the selected rows until `COMMIT`, forcing concurrent transactions to queue behind you instead of racing.
+
+## 4. A Complete ShopCore Transaction You Can Run
+
+```sql
+-- Ada places a paid order for KB-01 (id = 1) exactly once.
+BEGIN;
+
+UPDATE products
+SET stock_qty = stock_qty - 1
+WHERE id = 1 AND stock_qty >= 1
+RETURNING stock_qty;
+
+INSERT INTO orders (user_id, status) VALUES (1, 'paid');
+
+INSERT INTO order_items (order_id, product_id, qty, unit_price_cents)
+VALUES (currval(pg_get_serial_sequence('orders', 'id')), 1, 1, 12900);
+
+INSERT INTO payments (order_id, amount_cents, provider, status)
+VALUES (currval(pg_get_serial_sequence('orders', 'id')), 12900, 'manual', 'succeeded');
+
+COMMIT;
+```
+
+If any statement fails (out of stock, constraint violation, connection dropped), run `ROLLBACK;` — no partial order, no negative stock, no orphaned payment.
+
+## 5. Savepoints — Partial Undo Inside a Transaction
+
+`SAVEPOINT` lets you roll back only part of a transaction:
+
+```sql
+BEGIN;
+UPDATE products SET stock_qty = stock_qty - 1 WHERE id = 1 AND stock_qty >= 1;
+SAVEPOINT item_ok;
+INSERT INTO order_items (order_id, product_id, qty, unit_price_cents)
+VALUES (currval(pg_get_serial_sequence('orders', 'id')), 1, 1, 12900);   -- if THIS fails:
+ROLLBACK TO SAVEPOINT item_ok;  -- undo just this statement, keep the stock decrement
+COMMIT;
+```
+
+## 6. Practice
+
+**Guided exercise.** In psql (Chapter 12), open two SQL sessions. In session A: `BEGIN; UPDATE products SET stock_qty = stock_qty - 1 WHERE id = 1;` (do not commit). In session B: `SELECT stock_qty FROM products WHERE id = 1;` — what do you see and why? Now `COMMIT;` in A and repeat the SELECT in B.
+
+**Independent exercise.** Write one `BEGIN...COMMIT` block that: decrements `products.id = 3` stock by 1, inserts a `pending` order for user 2, inserts its line item (qty 1, snapshot `4500`), and a `payments` row with `status = 'succeeded'`. Then verify totals with the join query from 11.1.3.
+
+**Challenge.** Implement the same purchase flow but protect it with `SELECT ... FOR UPDATE` on the product row, and explain when you would prefer it over the atomic `WHERE stock_qty >= 1` conditional update.
+
+**Assessment checklist**
+
+- [ ] I can explain Atomicity, Consistency, Isolation and Durability with one example each.
+- [ ] I never compute `newStock = stock - 1` in application code.
+- [ ] I can write a multi-table ShopCore transaction with `BEGIN/COMMIT/ROLLBACK`.
+- [ ] I know the default isolation level and when to use `REPEATABLE READ`/`SERIALIZABLE`.
+- [ ] I can explain what a savepoint is and when partial rollback helps.
+
+</BookNodePage>

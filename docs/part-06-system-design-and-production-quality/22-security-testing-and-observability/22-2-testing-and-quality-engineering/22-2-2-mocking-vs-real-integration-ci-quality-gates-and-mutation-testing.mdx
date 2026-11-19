@@ -1,0 +1,120 @@
+---
+id: "22-2-2-mocking-vs-real-integration-ci-quality-gates-and-mutation-testing"
+title: "22.2.2 Mocking vs Real Integration: CI Quality Gates and Mutation Testing"
+sidebar_label: "22.2.2 Mocking vs Real Integration: CI Quality Gates and Mutation Testing"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-2-testing-and-quality-engineering/22-2-2-mocking-vs-real-integration-ci-quality-gates-and-mutation-testing"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s2-t2">
+
+Tests are only worth what they prove when the code breaks. A suite where the mocks agree with each other and nothing real is exercised is a morale instrument, not a safety net. This lesson draws the mock-vs-real line honestly, makes CI un-skippable with gates and a ratchet, and finishes with mutation testing — the tool that answers "if my code were wrong, would any test notice?"
+
+## 1. When Mocks Are Correct — and When They Lie
+
+| Dependency | Verdict | Why |
+| :-- | :-- | :-- |
+| Stripe API | Prefer **real test-mode** calls; mock only failure injection | Test keys are free; your mock will drift from Stripe's actual decline codes |
+| Email/SMS (SES, Twilio) | Mock, or capture to a sink (Mailhog) | Slow, paid, spams humans on every test run |
+| Date/clock | Mock (`vi.useFakeTimers()`) or inject clock | Time is the #1 source of flaky tests |
+| Randomness/UUID | Seed or inject | Same determinism argument |
+| Payment math floats | Never mock — use integer cents, test real code | Mocking arithmetic tests nothing |
+| Postgres/Redis | **Real**, disposable containers | Covered in 22-2-1; mocking PG tests your mock |
+| Courier/3PL APIs | Mock + contract test (Pact) | Sandbox exists but rate-limits CI |
+| Fraud scoring (3rd-party ML) | Mock the transport; property-test our handling | Non-deterministic by design |
+
+Rule of thumb: **mock what you don't own and can't hurt; exercise what you own.** And the mock must be *contract-checked* (Pact) or it is fiction that happens to pass.
+
+## 2. The Hermetic CI Recipe
+
+"Works on my machine" in CI is always a missing service or a leaked env var. ShopCore's hermetic pipeline, one job:
+
+```yaml
+# .github/workflows/ci.yml (essence; link 19.2.1 for the full Actions tutorial)
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: test, POSTGRES_DB: shopcore_test }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@<full-sha>
+      - run: npm ci                      # lockfile, never npm install
+      - run: npm run lint && npm run typecheck
+      - run: npm run migrate && npm run seed:test
+      - run: npm test -- --ci --coverage
+      - run: npm run build
+      - run: npm run test:contract       # pact verify against stubbed Shipping
+```
+
+Same recipe locally in compose for the dev inner loop — one `docker compose up -d postgres redis` and the same scripts. Nothing in CI that a laptop can't reproduce with two commands. Note [18.2.2](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries) for compose authoring and [19.2.2](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-2-devops-workflows-and-cicd-pipelines/19-2-2-testing-artifacts-ci-secrets-and-rollback-pipelines) for the secrets side.
+
+## 3. Flaky Tests — Quarantine with a Leash
+
+A flaky test is a broken test that sometimes passes — not "unlucky", not "just retry it". The honest protocol:
+
+1. **Detect:** statistical flake rate per test (e.g., 3 failures in 50 runs over 7 days) — from CI history, not vibes.
+2. **Quarantine immediately:** `it.skip` or `@Flaky()` tag with a tracking issue, owner, and **two-week expiry**. Quarantined tests do not block merge — they block *closure* of the epic until fixed or deleted.
+3. **Root-cause modes (in frequency order):** shared mutable state (missing truncate/rollback), real time leaking in, network timing, ordering assumptions between files, resource exhaustion in containers.
+4. **Never** "fix" by retrying in CI (`--retries=2` hides the disease and trains everyone to ignore red), and never delete without telling anyone why it existed. If you can't fix it in two weeks, delete it and say so — a skipped-forever suite is worse than none.
+
+## 4. Mutation Testing — Does Your Suite Actually Fail?
+
+Coverage tells you lines ran; **mutation testing** tells you bugs were *detected*. [StrykerJS](https://stryker-mutator.io/) rewrites your source (`+` → `-`, `>` → `>=`, `true` → `false`, removes statements) and re-runs your suite: each mutant either **killed** (a test failed — good) or **survived** (suite is blind — a real gap).
+
+```bash
+npx stryker run --reporters progress,clear-text
+```
+
+ShopCore example — discount boundary: `discountPct: 150` tests (22-2-1) exist because a surviving mutant flipped `>` to `>=` in the clamp and the old suite never noticed. Targets: start at 60% mutation score on `src/pricing/**`, ratchet upward; full-repo mutation runs are slow (minutes) — run on nightly, module-scoped on PRs. A 100% coverage suite routinely scores 70% mutation — that gap is where your production bugs live.
+
+## 5. The CI Quality Gate Ladder — and the Ratchet
+
+Fixed order, every step cheaper than the next failure mode it prevents:
+
+```text
+lint  →  typecheck  →  unit+contract+integration tests  →  build  →  migration-check
+```
+
+- **lint** (`eslint`) catches style + real bugs (unused vars, no-float-promises) in seconds.
+- **typecheck** (`tsc --noEmit` or JSDoc-checked `tsc`) is the cheapest semantic review you have.
+- **tests** — Section 2; coverage report emitted, not yet gated (ratchet comes next).
+- **build** — catches import/env/bundling breakage QA can't see.
+- **migration-check** — lint migrations (e.g. `squawk` for Postgres: no table rewrite on hot tables, no `NOT NULL` without default), then apply against a shadow DB and run the integration suite.
+
+**The quality ratchet:** store baseline metrics (coverage %, mutation score, build time) in the repo (`.quality-baseline.json`); CI compares and **fails the PR on any decrease**, even a fraction of a point. Improvement is celebrated by ratcheting the baseline up. The ratchet never lets quality silently erode — and never gates on absolute targets, which teams learn to game.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| CI green, prod breaks on Stripe decline path | Mocked Stripe drifting from decline codes | Test-mode integration for the 3 decline codes + Pact on webhook |
+| PR adds 200 LoC, zero tests, passes | No ratchet, no coverage gate | Enable Section 5 ratchet; require tests per changed file |
+| Suite flaky only on main | Parallel files sharing seed rows | Per-file truncate; unique keys everywhere |
+| Mutation run takes 40 min | Full-repo on every PR | Scope to changed modules; nightly full run |
+| `npm ci` fails on lockfile mismatch | `npm install` was used once | Regenerate lockfile on the branch; forbid `npm install` in CI |
+
+## 7. Practice
+
+**Guided exercise.** Add the hermetic compose service set for your ShopCore fork. Break `migrate` on purpose (bad SQL in a migration) and watch the migration-check step fail the pipeline — then fix it.
+
+**Independent exercise.** Run StrykerJS on `src/pricing`. List every surviving mutant; convert each into a failing test. Re-run: report the before/after mutation score.
+
+**Challenge.** Implement the ratchet in CI: `.quality-baseline.json` with coverage and build time; a job that fails if either regresses. Open a PR that decreases coverage by 1 line and capture the red build — this is the artifact to show a skeptical teammate.
+
+**Assessment checklist**
+
+- [ ] I can state the mock-vs-real verdict for Stripe, PG, email, time and money.
+- [ ] I can write the hermetic CI recipe (services + steps) from memory.
+- [ ] I can run the quarantine protocol — detect, leash, fix or delete — honestly.
+- [ ] I have run StrykerJS and eliminated at least one surviving mutant.
+- [ ] I can explain why the ratchet beats absolute coverage gates.
+
+</BookNodePage>

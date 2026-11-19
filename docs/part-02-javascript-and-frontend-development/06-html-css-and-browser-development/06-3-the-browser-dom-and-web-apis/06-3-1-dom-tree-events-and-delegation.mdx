@@ -1,0 +1,88 @@
+---
+id: "06-3-1-dom-tree-events-and-delegation"
+title: "06.3.1 DOM Tree, Events and Delegation"
+sidebar_label: "06.3.1 DOM Tree, Events and Delegation"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-3-the-browser-dom-and-web-apis/06-3-1-dom-tree-events-and-delegation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s3-t1">
+
+When a browser loads HTML, it turns every element into a live **DOM node** you can inspect and update from JavaScript. Knowing how to update DOM nodes safely (without security vulnerabilities) and attach **one** delegated event listener instead of 500 individual listeners keeps vanilla DOM code fast and leak-free.
+
+## 1. Safe DOM Creation: `textContent` vs. `innerHTML`
+
+**Security Rule:** **Never inject user-entered text using `.innerHTML`**! If a user sets their task title to `<img src=x onerror="alert('XSS')">`, assigning `.innerHTML` executes attacker JavaScript in every viewer's browser (**Cross-Site Scripting / XSS**).
+
+Instead, build elements with `document.createElement` and assign `.textContent`, which automatically escapes HTML characters:
+
+```javascript
+export function createTaskElement(task) {
+  const li = document.createElement("li");
+  li.className = "task-item";
+  li.dataset.taskId = task.id;
+
+  const titleSpan = document.createElement("span");
+  titleSpan.textContent = task.title; // Safe against XSS!
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.dataset.action = "delete";
+  deleteBtn.textContent = "Delete";
+  deleteBtn.setAttribute("aria-label", `Delete ${task.title}`);
+
+  li.append(titleSpan, deleteBtn);
+  return li;
+}
+```
+
+## 2. Event Bubbling & Event Delegation
+
+When a user clicks a `<button>` inside a `<li>` inside a `<ul>`, the click event **bubbles** upward through `button -> li -> ul -> main -> body -> document`. Rather than attaching a separate click listener to every new row you add dynamically, attach **one** listener on the parent `<ul>` and inspect `event.target.closest(...)`:
+
+```javascript
+const taskList = document.querySelector("#task-list");
+
+taskList.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("button[data-action]");
+  if (!actionButton) return; // Clicked somewhere else inside the list
+
+  const row = actionButton.closest("li[data-task-id]");
+  if (!row) return;
+
+  if (actionButton.dataset.action === "delete") {
+    row.remove();
+  }
+});
+```
+
+Notice why `.closest()` matters: even if a `<button>` later contains an icon `<span>`, clicking the icon makes `event.target` equal the `<span>`, and `.closest("button[data-action]")` still walks up cleanly to the button!
+
+## 3. `event.preventDefault()` on Form Submissions
+
+Listening to `"submit"` on a `<form>` catches *both* clicking the submit button and pressing `Enter` inside inputs. Call `event.preventDefault()` so the browser does not reload the entire page:
+
+```javascript
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(form);
+  const title = String(data.get("title") ?? "").trim();
+  if (!title) return;
+  taskList.append(createTaskElement({ id: crypto.randomUUID(), title }));
+  form.reset();
+});
+```
+
+## 4. Practice Exercises
+
+1. Build a small HTML page with an input form and `<ul>` list using `createTaskElement` + delegated `"click"` removal, and test entering `<script>alert(1)</script>` as a task title to prove `.textContent` renders it safely as literal text.
+2. Add a `"toggle"` button with `data-action="toggle"` handled inside the exact same delegated listener.
+
+## Mastery Checklist
+
+- [ ] Always uses `.textContent` (never `.innerHTML`) for untrusted/user strings.
+- [ ] Uses event delegation with `event.target.closest(...)` on parent containers.
+- [ ] Listens to `"submit"` (with `event.preventDefault()`) instead of only button `"click"`.
+
+</BookNodePage>

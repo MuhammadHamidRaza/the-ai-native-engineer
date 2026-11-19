@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "07.1 Component Architecture & Rendering"
+sidebar_label: "07.1 Component Architecture & Rendering"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-1-component-architecture-and-rendering"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s1">
+
+Components are reusable UI functions that accept `props` and return JSX describing what appears on screen. Subchapter **07.1** establishes the exact mental model for **JSX**, **unidirectional data flow**, **React's render-and-commit lifecycle**, **keys during reconciliation**, and **controlled form inputs**.
+
+## Lessons in Subchapter 07.1
+
+1. **[07.1.1 JSX, Props and Composition](/book/part-02-javascript-and-frontend-development/07-react-development/07-1-component-architecture-and-rendering/07-1-1-jsx-props-and-composition):** JSX syntax differences (`className`, `htmlFor`, `{expressions}`), typed props, `children` slots, and avoiding prop-drilling soup.
+2. **[07.1.2 Reconciliation and Rendering Lifecycle](/book/part-02-javascript-and-frontend-development/07-react-development/07-1-component-architecture-and-rendering/07-1-2-reconciliation-and-rendering-lifecycle):** Trigger -> Render -> Commit, pure render rules, why StrictMode renders twice in dev, and Virtual DOM diffing.
+3. **[07.1.3 Lists, Keys and Conditional UI](/book/part-02-javascript-and-frontend-development/07-react-development/07-1-component-architecture-and-rendering/07-1-3-lists-keys-and-conditional-ui):** Why stable IDs (never array indexes) prevent corrupted row state, the `0 && <UI />` render bug, and controlled `<form>` inputs.
+
+</BookNodePage>

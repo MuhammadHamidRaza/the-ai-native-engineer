@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "19.3 Infrastructure as Code: Terraform & Ansible"
+sidebar_label: "19.3 Infrastructure as Code: Terraform & Ansible"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-3-infrastructure-as-code-terraform-and-ansible"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s3">
+
+**Subchapter 19.3** removes the last manual step from your deployment story: the infrastructure itself. Terraform declares *what* should exist (VPC, instance, firewall) and converges reality to it; Ansible configures *inside* the machines that exist. Together they replace console-clicking with reviewable, replayable code.
+
+## Lessons in Subchapter 19.3
+
+1. **[19.3.1 Terraform: Providers, State, Modules and Cloud Provisioning](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-3-infrastructure-as-code-terraform-and-ansible/19-3-1-terraform-providers-state-modules-and-cloud-provisioning):** Install Terraform, `init`/`plan`/`apply`/`destroy`, the AWS provider (~> 6.x) declaring a VPC + EC2 + security group, why the state file is sensitive and local-for-learning, `variables.tf`, and modules — ending with a **mandatory `terraform destroy`**.
+2. **[19.3.2 Server Configuration Automation with Ansible](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-3-infrastructure-as-code-terraform-and-ansible/19-3-2-server-configuration-automation-with-ansible):** Install Ansible, `inventory.ini`, `ansible all -m ping`, a playbook that installs nginx and deploys a static site to your VPS, the idempotency guarantee (re-run → `changed=0`) and handlers that reload nginx only when config changed.
+
+**Prerequisites:** 19.1.1's billing alert and 19.1.2's teardown discipline; 19.3.1 creates real billable resources with the same mandatory cleanup. **Do not** put Terraform state or any `.tfvars` with secrets in git — `.gitignore` them on day one.
+
+</BookNodePage>

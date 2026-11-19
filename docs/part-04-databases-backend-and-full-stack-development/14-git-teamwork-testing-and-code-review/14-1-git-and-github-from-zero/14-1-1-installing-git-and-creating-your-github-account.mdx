@@ -1,0 +1,165 @@
+---
+id: "14-1-1-installing-git-and-creating-your-github-account"
+title: "14.1.1 Installing Git and Creating Your GitHub Account"
+sidebar_label: "14.1.1 Installing Git & GitHub"
+slug: "/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-1-git-and-github-from-zero/14-1-1-installing-git-and-creating-your-github-account"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-14-s1-t1">
+
+Everything in this chapter — branches, pull requests, reviews, releases — sits on one tool: **Git**. This lesson installs it, configures your identity, signs you up for **GitHub**, and proves a push/pull works end to end.
+
+## 1. What Git Is and Why You Need It
+
+Git is a **distributed version control system**: it records snapshots of your project (commits) along every line of development, on your machine, with full history — no server required. **GitHub** is a hosting service for Git repositories plus the collaboration layer around them (pull requests, reviews, CI, issues).
+
+Git (the tool) ≠ GitHub (the company). You work with Git daily in a terminal; you visit GitHub in a browser; remotes connect the two.
+
+> **Official downloads only:**
+> - Git: https://git-scm.com/downloads
+> - GitHub: https://github.com/
+
+## 2. Install Git
+
+### Windows 10/11 — Step by Step
+
+1. Go to **https://git-scm.com/download/win**. The page auto-offers the 64-bit installer (e.g., `Git-2.51.x-64-bit.exe`) — download it.
+2. Run the installer. Administrator prompt → **Yes**.
+3. Wizard options (accept these unless noted):
+   - **Select Components:** leave defaults + check **"Add a Git Bash profile to Windows Terminal"** if you use Windows Terminal.
+   - **Default editor:** choose the editor you already use (e.g., **Visual Studio Code**) — Git will open commit messages there.
+   - **Adjusting your branch name:** **"Override the default branch name"** → `main` (GitHub's standard).
+   - **Adjusting PATH:** **"Git from the command line and also from 3rd-party software"** (default).
+   - **Line endings (critical on Windows):** **"Checkout Windows-style, commit Unix-style line endings"** (`core.autocrlf=true`) — keeps repos LF-clean for teammates on macOS/Linux.
+   - **Terminal:** **"Use MinTTY"** (default), or Windows Console if MinTTY gives issues.
+   - **Credential helper:** default (**Git Credential Manager**) — caches your GitHub login securely.
+   - Remaining: defaults → **Install** → **Finish**.
+4. Open a **new** PowerShell: `git --version`.
+
+### macOS
+
+```bash
+brew install git        # or: xcode-select --install (Apple's bundled Git, older)
+git --version           # expect a recent 2.x
+```
+
+### Linux (Debian/Ubuntu)
+
+```bash
+sudo apt update && sudo apt install -y git
+git --version
+```
+
+Fedora/RHEL: `sudo dnf install git`.
+
+## 3. Verify and Configure Your Identity
+
+```bash
+git --version          # expect something like: git version 2.51.x
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+git config --global init.defaultBranch main
+git config --global core.autocrlf true   # Windows only; macOS/Linux: false
+git config --global --list
+```
+
+Expected in `--list`: `user.name`, `user.email`, `init.defaultbranch=main` (case-insensitive key), maybe `core.autocrlf=true`.
+
+**These three matter forever:** every commit you write is signed with this name/email — choose the email that will be on your GitHub account.
+
+## 4. Create Your GitHub Account
+
+1. Go to **https://github.com/** → **Sign up**.
+2. Enter email (use a real, permanent one), password, username — **username is public and permanent-ish; pick professionally** (`hamidr`, not `xx_haider_69_xx`).
+3. Verify email (GitHub emails you a code/link).
+4. Optional but wise: **Settings → Emails → Keep my email addresses private** and use the noreply address it shows (e.g., `12345+hamidr@users.noreply.github.com`) — set that one with `git config --global user.email`.
+
+## 5. Connect Git to GitHub — SSH (Recommended)
+
+HTTPS works with a password/token; **SSH is smoother** once set up — no password prompts, key-based.
+
+```bash
+# 1. Generate a key (accepts defaults; set a passphrase — do not skip)
+ssh-keygen -t ed25519 -C "you@example.com"
+
+# 2. Show the PUBLIC key and copy it
+cat ~/.ssh/id_ed25519.pub       # macOS/Linux
+type $env:USERPROFILE\.ssh\id_ed25519.pub    # Windows PowerShell
+
+# 3. On GitHub: avatar → Settings → SSH and GPG keys →
+#    New SSH key → paste the .pub text → Add SSH key
+
+# 4. Test
+ssh -T git@github.com
+```
+
+Expected:
+
+```text
+Hi hamidr! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+(If you see that message, you are correctly authenticated — GitHub refuses shell access but the identity check passed.)
+
+## 6. Your First Local Repository Lifecycle (Solo Preview)
+
+Chapter 14.1.2 takes you all the way through a first pull request; understand the shape now:
+
+```bash
+mkdir demo && cd demo
+git init                      # create repo
+echo "# ShopCore API" > README.md
+git add README.md             # stage
+git commit -m "docs: initial README"
+git branch -M main
+git remote add origin git@github.com:YOUR_USER/demo.git   # or HTTPS URL
+git push -u origin main
+```
+
+Inspect what changed: `git status` (clean tree after push), `git log --oneline` (one commit).
+
+## 7. .gitignore — Before Your First Real Commit
+
+In any real project:
+
+```text
+node_modules/
+.env
+build/
+*.log
+.DS_Store
+```
+
+Rule: **if it's generated (node_modules, build output) or secret (.env), it never belongs in the repo.** Verify with `git check-ignore node_modules .env`.
+
+## 8. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `git: command not found` / not recognized | New terminal first; then verify PATH (`where.exe git` on Windows) — reinstall with "Git from the command line" option |
+| `Permission denied (publickey)` on push | SSH key not added to GitHub or agent not loaded — re-add key; `ssh -T git@github.com` is the test |
+| Commits show wrong author | `git config --global user.email` — fix, future commits correct |
+| `fatal: not a git repository` | You're not inside a repo — `git init` or `cd` into one |
+| CRLF warnings on Windows | Expected with autocrlf=true; harmless |
+| Pushed `.env` by accident | **Rotate the secrets immediately**; remove from history with git filter-repo; never just delete the file |
+| Merge conflicts on push to main | You don't have permission — branch protection works; open the PR instead of pushing main |
+
+## 9. Practice
+
+**Guided exercise.** Install Git, configure name/email, create a GitHub account, generate and add an SSH key, pass the `ssh -T` check. Screenshot the success line.
+
+**Independent exercise.** Create `hello-git/`, `git init`, add a README, commit it with a Conventional Commit message (`docs: add README`), and push it to a brand-new `hello-git` repo on GitHub.
+
+**Challenge.** Fork a small open-source repo (or use your own), clone it via SSH, make one trivial commit on a branch, push, and open a pull request — you just completed the loop this whole chapter teaches.
+
+**Assessment checklist**
+
+- [ ] `git --version` works from a fresh terminal.
+- [ ] My global name and email are set and correct.
+- [ ] GitHub account exists, email verified, SSH key added.
+- [ ] `ssh -T git@github.com` authenticates successfully.
+- [ ] I know what belongs in `.gitignore` and why `.env` is never committed.
+
+</BookNodePage>

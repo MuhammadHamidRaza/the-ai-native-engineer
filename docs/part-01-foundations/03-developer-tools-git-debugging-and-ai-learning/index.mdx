@@ -1,0 +1,153 @@
+---
+id: "index"
+title: "03. Developer Tools, Git, Debugging & AI Learning"
+sidebar_label: "03. Developer Tools, Git, Debugging & AI Learning"
+slug: "/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-03">
+
+Knowing conceptually how CPUs execute code and how HTTP requests cross networks means very little if your daily workflow breaks whenever a terminal prompt fails to locate a script, a Git merge produces cryptic `<<<<<<< HEAD` markers, a stack trace crashes across four modules, or a messy package install pollutes your entire laptop. **Professional software engineering velocity comes from calm fluency with your workbench—your editor, command line, environment isolation tools, version control history, and systematic debugging loop.**
+
+**Chapter 03 (`10 Focused Learning Hours`)** bridges conceptual knowledge (`Chapter 01`) and analytical reasoning (`Chapter 02`) directly into your daily engineering hands. Across `03.1`, `03.2`, and `03.3`, you turn your local machine into a disciplined, repeatable engineering studio.
+
+## Why Tooling Fluency Eliminates 80% of Beginner Friction
+
+Notice what actually stalls self-taught developers during their first three months of real projects—it is rarely inability to understand `if/else` or loops. It is operational panic around five everyday situations:
+
+1. **Workspace disorganization (`03.1.1–03.1.2`):** Clicking endlessly through graphical folders while forgetting which directory the server started inside, missing syntax/lint warnings buried in red squiggles, or blindly copy-pasting terminal commands without knowing what flags or pipes do.
+2. **Global dependency collisions (`03.1.3`):** Installing global Python libraries across projects until Project B upgrades a package and silently breaks Project A—or forgetting why `node_modules/` never gets committed to Git.
+3. **Fear of Git (`03.2`):** Treating version control as a fragile magic spell (`git push --force` or deleting and re-cloning folders whenever branches diverge) instead of understanding commits as clean, recoverable filesystem snapshots.
+4. **Panic-driven debugging (`03.3.1–03.3.2`):** Changing three files blindly when an exception hits, never reading the actual line number inside the stack trace, and failing to build a small isolated reproduction.
+5. **Passive AI copy-pasting (`03.3.3`):** Asking AI *"fix my code"* without understanding why it broke—losing every learning opportunity embedded inside the bug.
+
+Chapter 03 replaces every single one of those habits with calm, repeatable workflows backed by primary **VS Code**, **POSIX shell**, **npm/Python `venv`**, and **Git 2.x** documentation.
+
+## Chapter 03 Execution Map (`10 Hours Total`)
+
+```text
++-----------------------------------------------------------------------------+
+|       CHAPTER 03 — DEVELOPER TOOLS, GIT, DEBUGGING & AI LEARNING (10h)      |
++-----------------------------------------------------------------------------+
+|                                                                             |
+|  [03.1 The Modern Developer Workspace]                                      |
+|   - VS Code navigation, WSL/Remote parity, ESLint/Pylance diagnostics       |
+|   - Command-line fluency: pipes, redirection, grep, exit codes, permissions |
+|   - Reproducible environments: npm lockfiles & Python venv / uv isolation   |
+|                                      |                                      |
+|                                      v                                      |
+|  [03.2 Version Control with Git]                                            |
+|   - Working tree -> Staging Index -> Repository Commits (SHA-1/256 graphs)  |
+|   - Safe branching & merging (`git switch`, `git restore`, conflict fixes)  |
+|   - GitHub remotes, SSH/gh auth, Pull Requests & `.gitignore` safety        |
+|                                      |                                      |
+|                                      v                                      |
+|  [03.3 Debugging & AI-Assisted Learning]                                    |
+|   - Parsing Python tracebacks, Node/Browser stack traces & HTTP logs        |
+|   - Minimal reproductions, binary isolation (`git bisect`), breakpoints     |
+|   - Using AI as a Socratic tutor for deep mastery without skill atrophy     |
++-----------------------------------------------------------------------------+
+```
+
+## Subchapter Breakdown & Learning Scope
+
+| Subchapter | Topics Inside | Practical Deliverables & Verified Skills |
+| :--- | :--- | :--- |
+| **[03.1 The Modern Developer Workspace](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-1-the-modern-developer-workspace)** | `03.1.1` Editors, Extensions & Shortcuts<br/>`03.1.2` Command Line Essentials<br/>`03.1.3` Package Managers & Environments<br/>`03.1.4` Installing Node.js, npm & Your First Project | Navigate VS Code keyboard-first; chain `find`, `grep`, pipes, and exit codes fluently; isolate project dependencies cleanly with `npm ci` + `package-lock.json` and `python3 -m venv .venv`; install Node.js LTS on Windows (WSL2/native), macOS, or Linux and run a first npm-managed project |
+| **[03.2 Version Control with Git](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git)** | `03.2.1` Repositories, Commits & History<br/>`03.2.2` Branching and Merging<br/>`03.2.3` Remote Repositories & GitHub Basics | Stage atomic diffs (`git add -p`), switch safely (`git switch`, `git restore`), resolve merge conflicts confidently by hand, enforce `.gitignore` secret hygiene, and open clean GitHub PRs |
+| **[03.3 Debugging & AI-Assisted Learning](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-3-debugging-and-ai-assisted-learning)** | `03.3.1` Reading Stack Traces and Logs<br/>`03.3.2` Systematic Isolation and Reproduction<br/>`03.3.3` Using AI as a Tutor Without Bypassing Mastery | Read Python/JS stack frames from cause to trigger; shrink failing apps down to 10-line minimal repros; hunt regressions cleanly via `git bisect`; prompt AI for conceptual diagnosis rather than blind answers |
+
+## Modern Git & Runtime Standards Used in Chapter 03
+
+Technology evolves cleanly—Chapter 03 aligns strictly with current primary documentation rather than decade-old forum habits:
+
+- **Modern Git workflow commands (`git-scm.com/docs`):** Uses explicit, safer split commands **`git switch`** (for branches) and **`git restore`** (for restoring working tree or staged files) alongside `git merge`, `git log --oneline --graph`, and `git bisect` rather than overloading `git checkout` for unrelated operations.
+- **Modern Node.js LTS (`v22`, `v24`, `v26 Active LTS`):** Explains `package.json` semantic versioning (`^` vs. exact locks), deterministic `package-lock.json` installs (`npm ci`), and notes that starting with **Node.js v25+**, **Corepack** is no longer bundled inside the default Node binary (`npm install -g corepack` if explicitly needed).
+- **Modern Python 3 Isolation (`docs.python.org/3/library/venv.html`):** Standardizes project-local `.venv/` isolation via `python3 -m venv .venv` (and introduces `uv` cleanly), keeping system OS Python protected (`PEP 668`) across Ubuntu/WSL 2 and macOS.
+- **Windows 11 + WSL 2 + VS Code Remote Parity:** Reinforces keeping every repository inside the native Linux filesystem (`~/code/ai-native-engineer`) rather than slow `/mnt/c/` paths so VS Code language servers, `git status`, and `npm` file watchers run at full native speed.
+
+## The Daily Engineering Loop You Build Here
+
+By the end of Chapter 03, every technical problem you tackle for the next **638 hours** follows one calm, predictable rhythm:
+
+1. **Create a clean workspace & branch:** Open project inside VS Code (`~/code/...`), verify virtual environment / Node LTS version, and branch cleanly (`git switch -c feat/...`).
+2. **Iterate & inspect small diffs:** Write small cohesive slices, check live ESLint/Pylance diagnostics, and inspect `git diff` frequently before staging.
+3. **Debug from evidence when stuck:** Read the exact exception message and line frame (`03.3.1`), shrink to a minimal repro (`03.3.2`), verify hypothesis with print/breakpoint logs, and consult AI strictly to test understanding—not bypass thinking (`03.3.3`).
+4. **Verify & commit cleanly:** Run tests/checks, confirm zero `.env` or secret leaks (`git status`), and commit with clear intent-first messages (`git commit`).
+
+## The Chapter 03 Emergency Recovery Cheat Sheet
+
+Pin this compact recovery matrix beside your monitor while learning Git, package environments, and debugging—it prevents panic-driven mistakes when something unexpected appears in your terminal:
+
+| Situation You Hit | Do NOT Do This | Do This Calmly Instead (`Chapter 03 Rule`) |
+| :--- | :--- | :--- |
+| **`git commit` missed a file or typoed message** | Never delete `.git/` or force-push blindly | Stage missed file (`git add`), run `git commit --amend` if unpushed (`03.2.1`) |
+| **Made edits on `main` instead of feature branch** | Never panic and `rm -rf` the folder | Create branch cleanly right where you stand: `git switch -c feat/my-fix` (`03.2.2`) |
+| **Merge stopped with `CONFLICT (content)`** | Never accept blindly without reading diff | Open markers (`<<<<<<<`, `=======`, `>>>>>>>`), decide true behavior, test, `git add`, `git commit` |
+| **Accidentally committed `.env` or secret token** | Never think deleting in next commit removes it | Rotate/revoke the exposed key immediately (`03.2.3`) before cleaning history! |
+| **`ModuleNotFoundError` right after `pip install`** | Never prepend `sudo pip install --break-system-packages` | Check `which python3` vs. `which pip` (`03.1.3`); activate `.venv` cleanly (`source .venv/bin/activate`) |
+| **Long unreadable crash dump in Node/Python** | Never paste full 120-line log blindly into AI | Locate the first stack frame pointing inside *your* code folder (`03.3.1`), inspect line inputs |
+| **Code stopped working after 15 commits** | Never stare at 400 lines guessing manually | Run `git bisect start` → mark `bad` and `good` commit → locate culprit in `O(log n)` steps (`03.3.2`) |
+
+## Hands-On Chapter 03 Sandbox Preparation (`2 Minutes`)
+
+Create one dedicated safe practice workspace right now inside your Linux/macOS/WSL 2 native home folder (never inside Windows `/mnt/c/...` on WSL 2!) so every lesson in `03.1`, `03.2`, and `03.3` executes smoothly:
+
+```bash
+mkdir -p ~/code/ai-native-engineer/ch03-sandbox
+cd ~/code/ai-native-engineer/ch03-sandbox
+pwd
+```
+
+Verify your Git global identity (`user.name`, `user.email`, `init.defaultBranch = main`) is already set so commits trace cleanly to you:
+
+```bash
+git config --global init.defaultBranch main
+git config --list --show-origin | grep -E "user\.name|user\.email|defaultbranch"
+```
+
+If `user.name` or `user.email` prints blank, set both right away (`git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"`). You are now completely equipped to master VS Code workflows, terminal power-tools, Git branching/PRs, and systematic debugging across `03.1` through `03.3`.
+
+## How Chapter 03 Workbench Habits Scale Across Parts 02–10
+
+Every workflow practiced here compounds immediately across the remaining curriculum:
+- **Parts 02–04 (`TypeScript, React, Next.js, FastAPI, PostgreSQL`):** Reproducible `npm ci` + `.venv` isolation (`03.1.3`), clean feature branching (`03.2.2`), and Browser DevTools Network inspection (`03.3.1`) turn multi-service full-stack projects from fragile messes into predictable routines.
+- **Parts 05–06 (`Docker, CI/CD, Testing & Observability`):** Every GitHub Actions pipeline runs cleanly because your repositories never depended on undocumented global OS packages or tracked `.env` files, and your structured logs (`03.3.1`) wire straight into production monitoring!
+- **Parts 07–10 (`AI-Native Workflows, Agents, Production Launch`):** Clean `git diff` audits, minimal reproductions (`03.3.2`), and Socratic AI verification (`03.3.3`) keep multi-agent codebases maintainable even at high AI-assisted speed.
+
+Verify your core workbench tooling baseline right now with one read-only diagnostic check:
+
+```bash
+git --version && node -v && python3 --version && code --version | head -n 1
+```
+
+Confirm all four print clean current versions without `"command not found"` (`if code is missing on macOS PATH, open VS Code Palette and run Shell Command: Install 'code' command in PATH`). If you use Windows 11 with **WSL 2 Ubuntu**, confirm your shell starts inside `/home/<user>/...` rather than `/mnt/c/...` and check `which git && which node` so you know Linux-side tooling runs natively inside Ubuntu rather than calling slow Windows executables across the filesystem bridge!
+
+## Chapter 03 Self-Verification Gate (`Part 01 Capstone Readiness`)
+
+Completing Chapter 03 finishes **all 26 hours of Part 01 — Foundations**. Before launching into **Part 02 — JavaScript & Frontend Development**, prove you can pass these five hands-on challenges unassisted:
+
+1. **Workspace & CLI (`03.1`):** Navigate VS Code using `Ctrl/Cmd+P` and `Ctrl/Cmd+Shift+P` without touching the mouse, locate a pattern across files using `grep -rn`, create a `.venv` Python environment without polluting system packages, and explain the difference between `npm install` and `npm ci`.
+2. **Git Snapshots & Merging (`03.2.1–03.2.2`):** Initialize a Git repo, inspect `git status` and `git diff`, make three atomic commits, branch cleanly via `git switch -c`, trigger an intentional two-branch line conflict, resolve it manually with zero stray markers, and verify graph history via `git log --oneline --graph --all`.
+3. **Remotes & Pull Requests (`03.2.3`):** Connect a local repo to GitHub over SSH or `gh`, verify `.gitignore` blocks `.env` and `node_modules/`, push a feature branch, and open/merge a clean Pull Request with an explicit verification note.
+4. **Tracebacks & Minimal Repro (`03.3.1–03.3.2`):** Given a multi-module crashing Python/JS repository, read the stack trace accurately to identify root line vs. symptom frame, shrink the failure down to a standalone 10-line reproduction script, and verify the fix with a regression check.
+5. **Disciplined AI Tutoring (`03.3.3`):** Use an AI assistant via structured Socratic questioning (`"Explain why X fails given Y hypothesis"`) rather than passive full-file code replacement, and verify every AI explanation experimentally inside your local runtime.
+
+## Study Advice for Chapter 03 (`10 Hours`)
+
+- **Do every single Git & CLI exercise inside a live sandbox folder (`~/code/ai-native-engineer/ch03-sandbox`):** Intentionally trigger a merge conflict, break a Python import inside `.venv`, and bisect a bad commit across five commits! You only conquer fear of Git or stack traces by breaking and repairing a safe sandbox repeatedly.
+- **Customize your personal `PROGRESS.md` (`00.11.5`) during Chapter 03:** Commit your Part 01 learning log straight to a real private/public GitHub repository using your newly verified SSH or `gh` CLI authentication.
+
+## Official Primary References
+
+- [Visual Studio Code Documentation (`code.visualstudio.com/docs`)](https://code.visualstudio.com/docs)
+- [Pro Git Book & Official Git Reference (`git-scm.com/docs`)](https://git-scm.com/docs)
+- [Python 3 `venv` & Packaging Documentation (`docs.python.org/3/library/venv.html`)](https://docs.python.org/3/library/venv.html)
+- [Node.js Releases & npm CLI Docs (`nodejs.org`, `docs.npmjs.com`)](https://docs.npmjs.com/)
+- [GitHub Docs — Pull Requests & Authentication (`docs.github.com`)](https://docs.github.com/en/get-started)
+
+**Begin Subchapter 03.1:** [03.1 The Modern Developer Workspace](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-1-the-modern-developer-workspace)
+
+</BookNodePage>

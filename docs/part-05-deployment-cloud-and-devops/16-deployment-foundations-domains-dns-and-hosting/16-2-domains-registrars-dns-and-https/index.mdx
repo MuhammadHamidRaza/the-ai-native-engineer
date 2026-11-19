@@ -1,0 +1,22 @@
+---
+id: "index"
+title: "16.2 Domains, Registrars, DNS & HTTPS"
+sidebar_label: "16.2 Domains, Registrars, DNS & HTTPS"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s2">
+
+**Subchapter 16.2** is the identity layer of deployment — the part that decides whether `shopcore.dev` means your server, someone else's, or nowhere. It covers the three things you must understand to put anything on a real domain: **ownership** (registrars), **naming** (DNS), and **trust** (TLS/HTTPS).
+
+## Lessons in Subchapter 16.2
+
+1. **[16.2.1 Domain Ownership, Registrars and Transfers](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-1-domain-ownership-registrars-and-transfers):** Registrar vs DNS host, buying safely (2FA, WHOIS privacy, registrar lock), transfers (unlock → EPP code → 60-day lock), renewal traps and auto-renew.
+2. **[16.2.2 DNS Records, Nameservers and Propagation](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-2-dns-records-nameservers-and-propagation):** *(complete lesson)* A/AAAA/CNAME/MX/TXT/CAA records, apex vs subdomain, TTL and verification with `dig`/`nslookup`.
+3. **[16.2.3 SSL/TLS, Automatic HTTPS and CDNs](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-3-ssl-tls-automatic-https-and-cdns):** What the TLS handshake does, ACME/Let's Encrypt certificate issuance and renewal, HTTP→HTTPS redirects, mixed content failures, and where CDNs actually fit.
+
+Work this subchapter in order: ownership (16.2.1) → naming (16.2.2) → trust (16.2.3). TLS fails confusingly until DNS is right, so DNS first, always.
+
+</BookNodePage>

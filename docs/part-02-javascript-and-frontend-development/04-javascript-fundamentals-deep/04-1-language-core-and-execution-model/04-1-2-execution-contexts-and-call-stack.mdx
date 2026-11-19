@@ -1,0 +1,144 @@
+---
+id: "04-1-2-execution-contexts-and-call-stack"
+title: "04.1.2 Execution Contexts and Call Stack"
+sidebar_label: "04.1.2 Execution Contexts and Call Stack"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model/04-1-2-execution-contexts-and-call-stack"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s1-t2">
+
+Every time you see `RangeError: Maximum call stack size exceeded` or read a multi-line error traceback, you are looking directly at JavaScript's **Call Stack** and **Execution Contexts**. Without a concrete picture of how the engine creates frames, tracks local variables, and unwinds on `return` or `throw`, tracing multi-function code feels like guesswork.
+
+## 1. Plain-English Intuition: The Tray Stack
+
+Imagine washing dinner plates and stacking clean plates upward one on top of another:
+- You can only place a new plate on the **top** of the stack (`push`).
+- You can only remove the plate currently on the **top** of the stack (`pop`).
+
+In JavaScript, each running function is a temporary workspace called an **Execution Context** (or **stack frame**). Because standard JavaScript executes on **one single call stack** at a time, the engine can only run whatever frame currently sits on top.
+
+## 2. Inside an Execution Context: Two Phases
+
+When JavaScript starts running your file, it creates a **Global Execution Context**. Whenever a function is *invoked* (`calculateTax(subtotal)`), the engine allocates a fresh **Function Execution Context** and pushes it onto the call stack. Every context passes through two phases:
+
+1. **Creation Phase:**
+   - Scans declarations inside that scope.
+   - Allocates function declarations in memory (`function greet() ...`).
+   - Registers `let` and `const` names as *uninitialized* (putting them in the Temporal Dead Zone until execution reaches their line).
+   - Binds `this` and builds a reference to the **outer lexical environment**.
+2. **Execution Phase:**
+   - Steps line by line top-to-bottom, assigning values, computing expressions, and pushing new contexts whenever another function is called.
+   - When `return` executes (or the function finishes), its stack frame is **popped** and discarded (unless a closure still references variables inside it).
+
+```text
+Call Stack while running applyDiscount() inside formatInvoice():
+
++------------------------------------------+
+| applyDiscount(total=100, rate=0.1)       |  <-- TOP (currently executing)
++------------------------------------------+
+| formatInvoice(order={ id: 42 })          |  <-- Paused waiting for applyDiscount
++------------------------------------------+
+| Global / Module Context                  |  <-- Paused waiting for formatInvoice
++------------------------------------------+
+```
+
+## 3. Beginner Walkthrough: Tracing Frame Push & Pop
+
+Run `node stack_trace.js` to watch frames push and pop live:
+
+```javascript
+// stack_trace.js
+function applyDiscount(priceCents, percentOff) {
+  const discount = Math.round((priceCents * percentOff) / 100);
+  return priceCents - discount;
+}
+
+function buildLineTotal(unitPriceCents, qty) {
+  const raw = unitPriceCents * qty;
+  const finalCents = applyDiscount(raw, 10);
+  return finalCents;
+}
+
+const invoiceTotal = buildLineTotal(2500, 2);
+console.log("Invoice total (cents):", invoiceTotal);
+```
+
+**Expected Output:**
+
+```text
+Invoice total (cents): 4500
+```
+
+**Execution Trace:**
+1. Global frame starts, skips function bodies (only stores `applyDiscount` and `buildLineTotal`), then calls `buildLineTotal(2500, 2)`.
+2. `buildLineTotal` frame pushes onto stack: `raw = 5000`, then calls `applyDiscount(5000, 10)`.
+3. `applyDiscount` frame pushes onto stack: `discount = 500`, returns `4500`, and pops off stack.
+4. `buildLineTotal` resumes, assigns `finalCents = 4500`, returns `4500`, and pops off stack.
+5. Global resumes, logs `4500`, and script finishes.
+
+## 4. Stack Traces and Stack Overflow
+
+When an uncaught `Error` is thrown, JavaScript snapshots the current call stack from **top (where the error occurred) down to bottom (who called it)**.
+
+### Inspecting a Real Error Stack
+
+```javascript
+function parseUserAge(input) {
+  const age = Number(input);
+  if (!Number.isInteger(age) || age < 0) {
+    throw new RangeError(`Invalid age: "${input}"`);
+  }
+  return age;
+}
+
+function registerAccount(payload) {
+  const age = parseUserAge(payload.age);
+  return { name: payload.name, age };
+}
+
+registerAccount({ name: "Ada", age: "-5" });
+```
+
+Output shows `parseUserAge` at line 4 as the top frame, called by `registerAccount` at line 10, called by the module top level at line 14.
+
+### Recursion and `Maximum call stack size exceeded`
+
+Every recursive call pushes a **new** frame onto RAM. If a recursive function forgets its **base case**—or recurses hundreds of thousands of levels deep—it exhausts the engine's stack limit (typically ~10,000 frames in V8):
+
+```javascript
+// Safe bounded recursion vs iterative loop for large inputs
+function countdown(n) {
+  if (n <= 0) return "done"; // Base case MUST stop recursion
+  return countdown(n - 1);
+}
+
+// For arbitrary depth (e.g., 1,000,000 items), use a loop to keep O(1) stack depth
+function sumTo(n) {
+  let total = 0;
+  for (let i = 1; i <= n; i += 1) {
+    total += i;
+  }
+  return total;
+}
+```
+
+## 5. Debugging the Call Stack in VS Code & Chrome DevTools
+
+1. Click left of any line number in VS Code to place a red **breakpoint** dot.
+2. Run **JavaScript Debug Terminal** (`Ctrl+Shift+P` -> *Debug: JavaScript Debug Terminal*) and run `node stack_trace.js`.
+3. Look at the **Call Stack** panel in the sidebar: click any frame below the top frame to inspect its exact local variables at the moment it paused!
+
+## 6. Practice Exercises
+
+1. Write three nested functions (`loadConfig` -> `validatePort` -> `normalizeHost`) where `validatePort` throws on port `99999`. Run it and read the printed stack trace top-to-bottom.
+2. Write a small recursive function `factorial(n)` that handles `n < 0` by throwing an error and stops cleanly at `n <= 1`, then verify it with `assert.equal(factorial(5), 120)`.
+
+## Mastery Checklist
+
+- [ ] Can draw the call stack state at the deepest line of two nested function calls.
+- [ ] Understands why reading a stack trace starts from the first stack frame inside *your* codebase.
+- [ ] Knows why deep unbounded recursion crashes with `RangeError: Maximum call stack size exceeded`.
+
+</BookNodePage>

@@ -1,0 +1,122 @@
+---
+id: "15-4-2-security-review-documentation-and-final-verification"
+title: "15.4.2 Security Review, Documentation and Final Verification"
+sidebar_label: "15.4.2 Security, Docs & Ship"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping/15-4-2-security-review-documentation-and-final-verification"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s4-t2">
+
+Milestone 9: the pre-flight inspection. A ship checklist you cannot skip — security review against the failures you've been defending all chapter, a README a stranger can follow, and a final verification run you can demo.
+
+## 1. Security Review — ShopCore Threat Pass
+
+Walk this table with your code open:
+
+| Threat | Where it's handled | Verify |
+| :-- | :-- | :-- |
+| SQL injection | All queries parameterized (13.2.4/15.2.3) | `grep -R "\${" apps/api/src` → **zero hits in SQL strings** |
+| Password theft from DB | scrypt + per-row salt, timing-safe compare (15.2.2) | DB has `salt:hex` strings, not passwords |
+| Session hijack | Raw token only in HttpOnly cookie; DB stores sha256 (15.2.2) | `SELECT token_hash FROM sessions` shows hashes; cookie shows base64url |
+| IDOR — user B reads user A's orders/cart | Every query scoped by `req.user.user_id` (15.2.3) | Change jar to another user's session; `/orders` must not list theirs |
+| Privilege escalation | `requireRole('admin')` on admin routes (15.2.3) | Ada (customer) POST `/products` → 403 |
+| XSS via product title | React escapes by default; API returns JSON | Inject `<img onerror>` as a title via SQL; UI renders it as text |
+| CSRF | SameSite=Lax cookies + Origin check on mutating routes | Cross-site `fetch(.../checkout, {method:'POST'})` sends no cookie |
+| Secret leakage | `.env` gitignored; `.env.example` placeholders | `git ls-files \| grep -i '.env$'` → nothing except `.env.example` |
+| Mass assignment | Zod schemas whitelist fields (15.2.3 PATCH) | `PATCH /products/1 {"id": 999, "role": ...}` → id untouched, unknown fields rejected |
+| Error leakage | `INTERNAL_ERROR` generic to clients; stack traces in logs only | Stop Postgres, hit an endpoint → clean 500 + log line, no stack in response |
+| Rate limiting | Login and API rate limits (13.4.3) | 11 failed logins → 429 with `Retry-After` |
+
+Fix every row or document why not (with the risk accepted explicitly). This table is the difference between "tutorial app" and "deployable service".
+
+## 2. Dependency and Repo Hygiene
+
+```bash
+npm audit                          # zero critical/high, or documented exceptions
+npm ls --omit=dev                  # review what ships to production
+git ls-files | grep -E '(\.env$|secret|\.pem|\.key)'    # must be empty
+```
+
+## 3. README.md — Write It Like a Teammate Will Read It
+
+Template — fill every bracket for real:
+
+```markdown
+# ShopCore — [one-line tagline]
+
+A full-stack e-commerce app: React + Express + PostgreSQL.
+
+## Stack
+React 19 · Vite · Express 5 · PostgreSQL 18 · pg · Zod · scrypt sessions
+
+## Prerequisites
+Node 26 LTS · PostgreSQL 18 (running) · Git
+
+## Run it
+git clone <repo> && cd shopcore
+cp apps/api/.env.example apps/api/.env   # fill DATABASE_URL
+createdb -U postgres shopcore
+psql -v ON_ERROR_STOP=1 -U postgres -d shopcore -f apps/api/src/db/migrations/001_init.sql
+psql -v ON_ERROR_STOP=1 -U postgres -d shopcore -f apps/api/src/db/migrations/002_seed.sql
+cd apps/api && npm ci && npm run dev    # API on :4000
+cd ../web && npm ci && npm run dev      # SPA on :5173
+
+## Seed accounts
+customer: ada@example.com / correct horse battery staple   (public demo credential — local only)
+admin:    linus@example.com / linus-demo-password-1         (public demo credential — local only)
+
+## Verify
+curl localhost:4000/health
+npm test                              # apps/api
+```
+
+A stranger with 15 minutes and PostgreSQL installed must be able to run everything from this README alone. Test it on a fresh clone in a temp folder — literally.
+
+## 4. Final Verification — The Demo Checklist
+
+From a cold start, in order:
+
+1. `dropdb --if-exists shopcore && createdb shopcore` - clean slate.
+2. Apply `001_init.sql`, `002_seed.sql`, `003_sessions.sql`, `004_cart.sql`, `005_checkout_keys.sql` - all exit 0.
+3. `npm run dev` (API) - `curl` `http://localhost:4000/health` and see `{"status":"ok"}`.
+4. `npm run dev` (web) - Vite on 5173.
+5. `npm test` - all green.
+6. Browser journey: catalog → register → add to cart → checkout → orders page shows the order.
+7. Admin: log in as Linus → add a product in the admin UI → it appears in catalog.
+8. Log out → `/api/v1/orders` → 401.
+9. Stop Postgres → refresh catalog → friendly error UI (not a white screen).
+10. `git log --oneline` — the history tells the milestones story.
+
+Screenshot the catalog and the orders page for your portfolio.
+
+## 5. Ship Checklist (Definition of Done)
+
+- [ ] Migrations apply from empty DB without manual steps
+- [ ] `.env.example` complete; `.env` never committed
+- [ ] `npm test` green from clean install (`npm ci`)
+- [ ] Security pass — every row of section 1 resolved
+- [ ] README reproducible on a fresh machine/clone
+- [ ] Seed data doesn't contain real credentials
+- [ ] `.gitignore` covers node_modules, .env, dist, *.log
+- [ ] No dead code: unused routes removed, console noise gone
+- [ ] You can explain every file in the tree
+- [ ] Portfolio: screenshot + 200-word narrative (what it is, what you learned, what's next)
+
+## 6. What to Build Next (Optional Stretch)
+
+- Real payment provider in test mode (Stripe test cards) — replace `manual`.
+- Email confirmation on register (Resend/Postmark + 13.4.1 jobs).
+- Deploy: Part 05 teaches Docker + a VPS; deploy ShopCore exactly there.
+- pgvector product recommendations (12.3.3).
+
+**Assessment checklist**
+
+- [ ] Every threat row has a verified fix or an accepted risk note.
+- [ ] README reproduces the app on a fresh clone.
+- [ ] The 10-step demo passed end to end, once, from cold start.
+- [ ] Definition of Done is fully checked.
+- [ ] The app is portfolio-presentable.
+
+</BookNodePage>

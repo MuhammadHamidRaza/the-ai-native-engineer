@@ -1,0 +1,132 @@
+---
+id: "42-1-2-architecture-data-model-and-ai-agent-spec"
+title: "42.1.2 Architecture, Data Model and AI Agent Spec"
+sidebar_label: "42.1.2 Architecture, Data Model and AI Agent Spec"
+slug: "/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-1-discovery-specification-and-system-blueprint/42-1-2-architecture-data-model-and-ai-agent-spec"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-42-s1-t2">
+
+A capstone that starts with "let me wire up an LLM" is a demo. A capstone that starts **before** the LLM is architecture. This lesson is the translation layer between your PRD and the build: data model, service boundaries, and — only if justified — the AI agent spec.
+
+## 1. The Architecture Decision Tree
+
+```text
+Does the problem need AI at all?
+├── No → deterministic software. Stop. Build that. (90% of problems here)
+└── Yes → What kind?
+    ├── Extracting from unstructured input (emails, PDFs, tickets) → LLM extraction + schema
+    ├── Conversational support (questions + answers) → RAG with citations and refusal
+    ├── Autonomous task completion with tools → Agent loop with guardrails + human approvals
+    └── Classification / routing / triage → Small model or LLM-as-judge + eval set
+```
+
+Most real problems are **extraction + retrieval**, not autonomy. Reach for an agent only when the workflow genuinely branches on model judgment — and even then, prefer "LLM proposes, human disposes" for anything that touches money, data deletion, or customer-facing output.
+
+## 2. Data Model First — Always
+
+Write the schema before any route exists. For the Brightside Yoga example:
+
+```sql
+-- bookings come from the booking app (source of truth for attendance)
+CREATE TABLE bookings (
+  id              BIGSERIAL PRIMARY KEY,
+  studio_id       BIGINT NOT NULL REFERENCES studios(id),
+  member_id       BIGINT NOT NULL REFERENCES members(id),
+  class_session_id BIGINT NOT NULL REFERENCES class_sessions(id),
+  booked_at       TIMESTAMPTZ NOT NULL,
+  attended        BOOLEAN,                    -- NULL until session closes
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- payments come from Stripe (source of truth for money)
+CREATE TABLE payments (
+  id              BIGSERIAL PRIMARY KEY,
+  studio_id       BIGINT NOT NULL REFERENCES studios(id),
+  member_id       BIGINT NOT NULL REFERENCES members(id),
+  stripe_charge_id TEXT UNIQUE NOT NULL,
+  amount_cents    INTEGER NOT NULL CHECK (amount_cents > 0),
+  paid_at         TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- our product: the reconciliation verdict, computed nightly
+CREATE TABLE reconciliations (
+  id              BIGSERIAL PRIMARY KEY,
+  studio_id       BIGINT NOT NULL REFERENCES studios(id),
+  run_date        DATE NOT NULL,
+  booking_count   INTEGER NOT NULL,
+  payment_count   INTEGER NOT NULL,
+  mismatches      JSONB NOT NULL DEFAULT '[]',   -- [{member_id, booking_id, reason}]
+  auto_resolved   INTEGER NOT NULL DEFAULT 0,
+  needs_action    INTEGER NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (studio_id, run_date)
+);
+```
+
+Every table needs: primary key, at least one index on the foreign keys used in joins, `created_at`, and NOT NULL where the domain demands it. If you can't state why each constraint exists, your schema is decoration.
+
+## 3. API Surface (Minimal, Not Ambitious)
+
+```text
+GET  /api/reconciliations?studio_id=&from=&to=     # list runs
+GET  /api/reconciliations/:id                       # one run + mismatches detail
+POST /api/reconciliations/run                       # trigger on-demand (auth'd cron secret)
+GET  /api/members/:id/anomalies                     # per-member warning badges
+POST /webhooks/stripe                               # payment events (verify signature)
+POST /webhooks/booking                              # booking events (idempotent)
+```
+
+Five routes. Two webhooks. No more. Every extra route is maintenance you'll resent in week 2.
+
+## 4. The AI Agent Spec (Only If Justified)
+
+If you genuinely need an agent, specify before coding:
+
+```markdown
+AGENT: Reconciliation triage
+TRIGGER: nightly reconciliation produces >0 mismatches
+INPUT: mismatches JSON (member_id, booking, payment reason)
+TOOLS: (1) lookup_member(member_id) — read-only; (2) draft_email — creates DRAFT, never sends; (3) flag_review — enqueues human review
+FORBIDDEN: charge_card, refund, delete_*, send_email (actually send), change_booking
+OUTPUT: triage JSON {action: 'auto_notify'|'human_review', draft?: string, reason: string}
+CONFIDENCE GATE: action=auto_notify requires ≥0.9 confidence AND reason matches a known pattern; else human_review
+HUMANS IN THE LOOP: every drafted email requires manager approval before send
+EVALS: 30 historical mismatch cases; auto-notify precision must be ≥95%; else escalate everything
+```
+
+If your problem doesn't fit this shape, drop the agent. Deterministic code with a human dashboard wins every time it fits.
+
+## 5. Architecture Decision Record (ADR) — One Paragraph Each
+
+```text
+ADR-001: Monorepo (apps/web, apps/api, packages/shared)
+ADR-002: Postgres as single store; no Redis until measured contention
+ADR-003: Stripe webhooks signed-payload verification; booking feed via SFTP nightly CSV (their system lacks webhooks)
+ADR-004: No agent in v1 — nightly deterministic join + dashboard covers 95% of value
+ADR-005: Auth via existing booking app SSO (they already run Auth0), not new passwords
+```
+
+Five ADRs. Each fits in one paragraph. That's the entire architecture document. If it's longer, you are designing for an audience that doesn't exist — yourself in six months.
+
+## 6. Common Failure Modes
+
+- **Agent-itis**: "An AI agent will solve this." Usually: a SQL join and a CRON.
+- **Data-model procrastination**: UI before schema = rework. Schema before UI, always.
+- **Accidental SaaS**: building multi-tenancy for one customer = 3× the work, 0× the learning.
+- **No evals**: AI features without a golden set are confidence, not correctness.
+
+## 7. Exercise
+
+Using your PRD from 42.1.1, produce: (a) full DDL for your 3–5 core tables, (b) the complete API route table, (c) one ADR for your riskiest decision, and (d) — only if justified — an agent spec. Everything fits on four pages total.
+
+**Acceptance criteria.**
+- [ ] DDL runs without error on Postgres 16 and includes at least one index and one constraint with a nontrivial CHECK.
+- [ ] API table lists method, path, auth requirement, and request/response shape.
+- [ ] ADR names the decision, options considered, and why this one won.
+- [ ] Agent (if any) names tools, forbidden actions, confidence gate, and eval plan — or an explicit "no agent in v1" justification.
+
+</BookNodePage>

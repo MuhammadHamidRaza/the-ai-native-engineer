@@ -1,0 +1,269 @@
+---
+id: "06-3-3-calling-a-real-api-fetch-cors-and-devtools-lab"
+title: "06.3.3 Lab: Calling a Real API — fetch, CORS and DevTools"
+sidebar_label: "06.3.3 Lab: Calling a Real API — fetch, CORS and DevTools"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-3-the-browser-dom-and-web-apis/06-3-3-calling-a-real-api-fetch-cors-and-devtools-lab"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s3-t3">
+
+`06.3.2` got you a board that renders notes from `localStorage` and a cheat-sheet DevTools paragraph. This lab gets you the missing half of real frontend engineering: **one page, one backend, one browser, and every request you make visible.** You will build a tiny dependency-free Node backend, watch it fail CORS in front of your eyes, fix it the honest way, and finish with loading, empty, success, and error states — the four states every data-driven UI needs.
+
+**Prerequisites:** `03.1.4` (working Node.js LTS + npm), `06.3.1` (DOM), `06.3.2` (DevTools basics).
+
+## 1. Why CORS Exists — The Mental Model
+
+Browsers enforce the **same-origin policy**: JavaScript on `http://localhost:3000` cannot read responses from `http://localhost:8787` unless the *server* explicitly allows it via headers. CORS (Cross-Origin Resource Sharing) is not a bug, not an error in your code, and not something to disable — it is the browser protecting users from one website silently calling another on their behalf.
+
+Key facts that resolve 90% of CORS confusion:
+
+- **The server opts in, not the client.** No client header can make CORS pass. The browser reads the server's `Access-Control-Allow-Origin` and decides.
+- **`curl` and Postman never hit CORS.** CORS is a *browser* enforcement layer — server-to-server calls need no CORS headers.
+- **"Just use `no-cors`" is not a fix.** `mode: 'no-cors'` hides the response from JavaScript entirely — you cannot read it, only fire and forget.
+- **`Access-Control-Allow-Origin: *` cannot be used with credentials.** If you later send cookies/`Authorization`, the server must name the exact origin and add `Access-Control-Allow-Credentials: true`.
+
+## 2. Build the Backend (5 minutes, zero dependencies)
+
+Create `~/code/ai-native-engineer/fetch-lab/server.mjs`:
+
+```js
+// server.mjs — zero-dependency notes API on http://localhost:8787
+import http from 'node:http';
+
+const PORT = 8787;
+const NOTES = [
+  { id: 'n-1', text: 'Buy textbooks for Database Design' },
+  { id: 'n-2', text: 'Review Chapter 04 async exercise' },
+];
+
+// CORS: allowed origin(s). Change ALLOWED_ORIGIN to test the failure mode.
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? 'http://localhost:3000';
+
+const send = (res, status, body, extraHeaders = {}) => {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+    'Access-Control-Allow-Headers': 'Content-Type, X-Client-Version',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    ...extraHeaders,
+  });
+  res.end(JSON.stringify(body));
+};
+
+const readBody = (req) =>
+  new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 1_000_000) reject(new Error('Payload too large'));
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+
+const server = http.createServer(async (req, res) => {
+  // Preflight: browsers ask permission BEFORE the real request
+  // when it uses non-simple headers (Content-Type: application/json,
+  // X-Client-Version) or non-simple methods.
+  if (req.method === 'OPTIONS') {
+    return send(res, 204, {});
+  }
+
+  if (req.url === '/api/notes' && req.method === 'GET') {
+    return send(res, 200, { notes: NOTES });
+  }
+
+  if (req.url === '/api/notes' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      const text = String(body.text ?? '').trim();
+      if (!text) return send(res, 400, { error: 'text is required' });
+      const note = { id: `n-${Date.now()}`, text };
+      NOTES.unshift(note);
+      return send(res, 201, { note });
+    } catch {
+      return send(res, 400, { error: 'Malformed JSON body' });
+    }
+  }
+
+  return send(res, 404, { error: 'Not found' });
+});
+
+server.listen(PORT, () =>
+  console.log(`API listening on http://localhost:${PORT} (CORS allow: ${ALLOWED_ORIGIN})`)
+);
+```
+
+Start it:
+
+```bash
+cd ~/code/ai-native-engineer/fetch-lab
+node server.mjs
+# API listening on http://localhost:8787 (CORS allow: http://localhost:3000)
+```
+
+Sanity-check with curl (this always works — remember, CORS is browser-only):
+
+```bash
+curl -i http://localhost:8787/api/notes
+# HTTP/1.1 200 OK
+# Access-Control-Allow-Origin: http://localhost:3000
+```
+
+## 3. Build the Frontend (loading → empty → success → error)
+
+Serve the page with any static server on **port 3000** — for example `npx serve -l 3000 .` or `python -m http.server 3000` — never by double-clicking the file (`file://` makes "origin" `null` and CORS harder to reason about).
+
+Create `~/code/ai-native-engineer/fetch-lab/index.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fetch & CORS Lab</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    form { display: flex; gap: .5rem; margin: 1rem 0; }
+    input { flex: 1; padding: .5rem; }
+    button { padding: .5rem 1rem; }
+    [data-state="loading"] #spinner { display: inline-block; }
+    #spinner { display: none; width: 1em; height: 1em; border: 2px solid #999; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Notes (live from API)</h1>
+  <p id="status"><span id="spinner"></span> <span id="status-text"></span></p>
+  <form id="add-form">
+    <input id="note-input" name="note" required placeholder="New note..." />
+    <button type="submit">Add</button>
+  </form>
+  <p id="error" class="error" role="alert"></p>
+  <ul id="notes"></ul>
+
+  <script type="module">
+    const API = 'http://localhost:8787';
+    const list = document.querySelector('#notes');
+    const statusText = document.querySelector('#status-text');
+    const errorBox = document.querySelector('#error');
+    const form = document.querySelector('#add-form');
+    const input = document.querySelector('#note-input');
+
+    function setState(state) { document.body.dataset.state = state; }
+
+    async function loadNotes() {
+      setState('loading');
+      statusText.textContent = 'Loading…';
+      errorBox.textContent = '';
+      try {
+        const res = await fetch(`${API}/api/notes`);
+        if (!res.ok) throw new Error(`HTTP ${res.status} from /api/notes`);
+        const data = await res.json();
+        list.replaceChildren(...data.notes.map(n => {
+          const li = document.createElement('li');
+          li.textContent = n.text;
+          return li;
+        }));
+        statusText.textContent = data.notes.length ? '' : 'No notes yet — add the first one.';
+        setState('success');
+      } catch (err) {
+        console.error(err);
+        errorBox.textContent = `Could not load notes: ${err.message}. Is the API running on :8787 with CORS allow http://localhost:3000?`;
+        statusText.textContent = '';
+        setState('error');
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      errorBox.textContent = '';
+      try {
+        const res = await fetch(`${API}/api/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Client-Version': '1.0.0' },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status} from POST /api/notes`);
+        input.value = '';
+        await loadNotes();
+      } catch (err) {
+        errorBox.textContent = `Save failed: ${err.message}`;
+      }
+    });
+
+    loadNotes();
+  </script>
+</body>
+</html>
+```
+
+Open **http://localhost:3000** in your browser.
+
+## 4. Watch CORS Fail, Then Fix It
+
+**Step 1 — reproduce the failure.** Stop the server (`Ctrl+C`), restart it with a wrong allowed origin:
+
+```bash
+ALLOWED_ORIGIN=http://localhost:9999 node server.mjs
+```
+
+Reload `http://localhost:3000`. The page shows `Could not load notes: Failed to fetch`. Open DevTools → **Network**: the request appears but is marked red; the Console shows something like *"Access to fetch at 'http://localhost:8787/api/notes' from origin 'http://localhost:3000' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource."*
+
+This is the failure every frontend developer will meet at least once. The server is running fine — the browser simply refuses to hand your JS the response.
+
+**Step 2 — fix it.** Restart with the correct origin:
+
+```bash
+node server.mjs
+```
+
+Reload. Notes load. In DevTools → **Network**, click the `notes` row and inspect:
+- **General:** request URL, method, status `200`.
+- **Response Headers:** `access-control-allow-origin: http://localhost:3000`.
+- **Preview/Response:** the JSON body.
+
+**Step 3 — meet the preflight.** Our POST sends `Content-Type: application/json` and `X-Client-Version` — neither is a "CORS-safelisted" header. The browser therefore sends an **OPTIONS preflight** *before* the POST. In the Network tab you will see **two** rows: `OPTIONS /api/notes` (status `204`) then `POST /api/notes` (`201`). Click the OPTIONS row: the response carries `access-control-allow-methods: GET, POST, OPTIONS` and `access-control-allow-headers: Content-Type, X-Client-Version` — exactly what the browser needed to know before releasing the POST.
+
+> A preflight fires when: the method is not `GET`/`HEAD`/`POST`, **or** any header is non-safelisted, **or** `Content-Type` is not `application/x-www-form-urlencoded | multipart/form-data | text/plain`. `Content-Type: application/json` always triggers it.
+
+**Step 4 — inspect like a professional.** In Network: filter `Fetch/XHR`, check the `Timing` waterfall (waiting time vs. transfer), right-click a request → **Copy as cURL** and replay it in a terminal — it will succeed, because curl needs no CORS headers. That single experiment cements the mental model.
+
+## 5. The Four UI States
+
+The starter page implements all four; verify each:
+
+| State | How to Trigger | What You Should See |
+| :--- | :--- | :--- |
+| Loading | Reload with server slowed (add `await new Promise(r => setTimeout(r, 1500))` temporarily) | Spinner visible, list area empty |
+| Empty | Delete both seed notes (restart server with `NOTES = []`) or use a fresh list | "No notes yet — add the first one." |
+| Success | Normal operation | Notes render; form adds via POST then reloads |
+| Error | Wrong `ALLOWED_ORIGIN` or server down | Red `error` paragraph with the reason and remediation |
+
+## 6. Common Mistakes
+
+1. **"CORS error means my API is broken."** — The API is usually fine; curl proves it. Fix the server's `Access-Control-Allow-Origin`.
+2. **`Access-Control-Allow-Origin: *` with credentials** — invalid combination; browsers reject it. Name the exact origin instead.
+3. **Forgetting `Content-Type` in `Access-Control-Allow-Headers`** — the preflight fails and the POST never fires.
+4. **Parsing `response.json()` before checking `response.ok`** — a `500` with an HTML error page throws "unexpected token" and hides the real status; check `ok` first (as this page does).
+5. **Reading CORS as a client bug** — adding/removing client headers never fixes a server that refuses the origin.
+
+## 7. Acceptance Criteria
+
+- [ ] You reproduced the CORS failure (red `Failed to fetch` + DevTools Console message).
+- [ ] You restarted with the correct origin and watched notes load.
+- [ ] You located the `OPTIONS` preflight in the Network tab and read its `Access-Control-Allow-*` headers.
+- [ ] You verified all four UI states.
+- [ ] You copied a request as cURL and confirmed it succeeds outside the browser.
+
+## Stretch Exercise
+
+Add a **Delete** button per note. It must call `DELETE /api/notes/:id` (implement the route in `server.mjs`, and remember to add `DELETE` to `Access-Control-Allow-Methods` — the preflight checks that list too). Handle the `204`/`404` responses and the error state. Then explain, in one paragraph, why the preflight fires for `DELETE`.
+
+</BookNodePage>

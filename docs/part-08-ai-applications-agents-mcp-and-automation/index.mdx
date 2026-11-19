@@ -1,0 +1,54 @@
+---
+id: "index"
+title: "Part 08: AI Applications, Agents, MCP & Automation"
+sidebar_label: "Part 08 — AI Applications, Agents, MCP & Automation"
+slug: "/part-08-ai-applications-agents-mcp-and-automation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-08">
+
+Part 07 taught you how to work *with* AI — assistants, spec-driven coding, audited diffs. **Part 08 is the other half: AI *inside* the software you ship.** Here you stop directing a coding assistant and start building products whose own features are powered by models — answered questions, taken actions, automated workflows — for real ShopCore customers.
+
+## The 9-Chapter Journey
+
+Each chapter adds one capability layer to the same running product: **ShopCore HelpBot**, which answers customer questions from ShopCore policy documents (returns, shipping, security, privacy), cites its sources, refuses when it does not know, escalates when it is unsure, and logs everything.
+
+| Ch | Title | Capability it adds |
+| :-- | :-- | :-- |
+| [28](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag) | AI-Powered Applications & RAG | Answers grounded in your own documents, with citations |
+| [29](/book/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai) | Agent Architecture & Agentic AI | Workflows vs autonomous loops; when an agent is justified |
+| [30](/book/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python) | OpenAI Agents SDK with Python | A real agent: instructions, tools, tracing in code |
+| [31](/book/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails) | Agent Tools, State, Memory & Guardrails | Persistent tools, state, memory, and input/output guardrails |
+| [32](/book/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp) | Model Context Protocol (MCP) | One open protocol to plug tools and data into any agent |
+| [33](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation) | n8n Workflow Automation | Visual orchestration: triggers, nodes, reliable automations |
+| [34](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers) | AI Workers | Role-specific workers that own real business processes end-to-end |
+| [35](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration) | Multi-Agent Orchestration | Coordination topologies, verification and consensus |
+| [36](/book/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems) | Production AI Systems | Evaluations, telemetry, governance, continuous improvement |
+
+The arc is deliberate: retrieval before reasoning, one agent before many, a protocol before a platform, one worker before a fleet, and production discipline before you call it done.
+
+## Who This Is For — and the Honest Prerequisites
+
+This part assumes **Part 04** (JavaScript/Node/Postgres/Express — ShopCore itself), **Part 05** (deployment and operations mental models), **Part 06** (system design, testing, observability), and **Part 07** (LLM vocabulary: tokens, context, structured outputs, prompt injection). Every chapter assumes you can read TypeScript comfortably; Chapter 30 goes deep on Python. If you have not built ShopCore yet, go back — AI features bolt onto a real system, not onto a tutorial snippet.
+
+## What You Will NOT Learn Here
+
+No fine-tuning, no training from scratch, no ML research, no GPU clusters. You will use hosted models and embeddings APIs as building blocks. Model quality is treated as an input to manage, not a dial to invent.
+
+## Verified November 2026
+
+Model names and API shapes in this part were checked against official OpenAI, Cohere, pgvector and BAAI documentation in **November 2026** (e.g. `gpt-6.1-sol` and `gpt-6-astra` via the Responses API, `text-embedding-3-small` at 1536 dimensions). APIs drift — before you ship anything, re-check the linked official docs for the exact model IDs and prices current that month.
+
+## What You Will Be Able to Do After Part 08
+
+- Build a citation-grounded RAG assistant that refuses honestly instead of hallucinating.
+- Design agent architectures and explain when a workflow beats an autonomous loop.
+- Ship MCP servers that safely expose tools to any compliant AI client.
+- Automate business processes with n8n and role-specific AI workers.
+- Operate AI systems: evaluations, telemetry, governance and continuous improvement.
+
+Hours honesty: budget **50–70 focused hours** for this part, like every part in this book — less if ShopCore is fresh in your mind, more if agents are new to you. Rushing Chapter 28 to "get to the agents" produces confident garbage later.
+
+</BookNodePage>

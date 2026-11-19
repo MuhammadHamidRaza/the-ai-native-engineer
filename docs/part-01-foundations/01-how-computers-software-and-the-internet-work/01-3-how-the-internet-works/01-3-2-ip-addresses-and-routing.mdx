@@ -1,0 +1,153 @@
+---
+id: "01-3-2-ip-addresses-and-routing"
+title: "01.3.2 IP Addresses and Routing"
+sidebar_label: "01.3.2 IP Addresses and Routing"
+slug: "/part-01-foundations/01-how-computers-software-and-the-internet-work/01-3-how-the-internet-works/01-3-2-ip-addresses-and-routing"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-01-s3-t2">
+
+Launch a local Next.js dev server or FastAPI API inside Docker, open `http://localhost:3000` on your host browser, and watch `Connection reset` or `Unable to connect` slap you in the face—even though `docker compose logs` insists cleanly: **`Server listening on http://127.0.0.1:3000`**. Change one flag inside that server startup command from `127.0.0.1` to `0.0.0.0`, refresh your browser, and suddenly everything renders instantaneously!
+
+Why did four zero digits fix an invisible networking wall? Because **IP addresses, loopback interfaces, private NAT subnets, ports, and routing tables** govern *which machines can reach which processes* across both your laptop and the global Internet. Mastering `01.3.2` gives you total clarity over container ports, cloud VPCs, firewalls, and API routing across Parts 02–10.
+
+## 1. Plain-English Intuition: Building Street Addresses + Apartment Numbers
+
+Every network destination requires **two nested coordinates**:
+1. **The IP Address (`Internet Protocol Address`) = The Street Building Number:** Uniquely identifies a specific network interface on a machine (`e.g. 192.168.1.42` inside your home Wi-Fi or `192.0.2.18` on the public web) so routers know *which computer* to forward packets toward.
+2. **The Port Number (`0–65535`) = The Exact Apartment / Suite Number Inside That Building:** Because one server often runs **PostgreSQL (`5432`)**, **HTTPS web traffic (`443`)**, **SSH remote login (`22`)**, and a **FastAPI app (`8000`)** simultaneously on the exact same machine and IP address, the OS kernel uses the **TCP/UDP Port** inside transport headers (`01.3.1`) to deliver each incoming packet straight to the right waiting process!
+
+Without port numbers, a single server IP could only run one networked application at a time.
+
+## 2. IPv4 vs. IPv6 & Subnet Masks (`CIDR`)
+
+Two versions of the Internet Protocol operate side by side across modern networks:
+
+- **IPv4 (`32-bit` addresses, e.g., `142.250.190.46`):** Written as four decimal octets (`0–255` each, 4 bytes total). Provides only `2^32 ≈ 4.3 billion` total possible addresses—completely exhausted across global smartphones, laptops, and cloud containers!
+- **IPv6 (`128-bit` addresses, e.g., `2606:4700:4700::1111`):** Written in eight colon-separated 16-bit hexadecimal groups (`::` compresses consecutive zero blocks). Provides `2^128` addresses (`~3.4 × 10^38`—effectively inexhaustible), eliminating global address scarcity.
+
+### Understanding `CIDR` Subnets (`/24`, `/16`, `/32`)
+Routers split IP ranges into **Network Prefix** vs. **Host Suffix** using **CIDR notation** (e.g., `192.168.1.0/24`):
+- `/24` means the **first 24 bits (`192.168.1`)** identify the local subnet neighborhood, leaving the remaining **8 bits (`0–255`, minus network/broadcast = `254` usable devices)** for individual hosts inside that LAN!
+- `/32` identifies **one exact single IPv4 host** (`203.0.113.5/32` — classic firewall allow-list syntax in AWS/GCP!).
+- `0.0.0.0/0` matches **every IPv4 address on Earth** (default gateway route or wide-open public firewall rule).
+
+## 3. Public IPs vs. Private IPs (`RFC 1918`) vs. Loopback (`127.0.0.1`) vs. `0.0.0.0`
+
+Every full-stack & DevOps engineer must recognize these special IP ranges immediately at sight:
+
+| Address / Range | Scope & Meaning | Everyday Developer Scenario |
+| :--- | :--- | :--- |
+| **`127.0.0.1` (`::1` in IPv6, `localhost`)** | **Loopback Interface (`lo`)** — never leaves your machine's OS kernel RAM! | Binding a DB or dev server strictly to `127.0.0.1` blocks external LAN devices *and* host access across Docker container network boundaries! |
+| **`0.0.0.0` (`::` in IPv6)** | **Wildcard "Bind All Interfaces"** (server listen context only—not a remote destination!) | Tells Node/FastAPI/Next.js inside Docker (`0.0.0.0:3000`) to accept traffic arriving on **every** virtual/LAN/loopback NIC attached to that container |
+| **`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`** | **Private `RFC 1918` Subnets** — non-routable on the public Internet; reused cleanly inside homes, offices, Docker bridges & AWS VPCs | Your laptop Wi-Fi (`192.168.1.x`), Docker bridge containers (`172.17.0.x`), and private RDS Postgres (`10.0.x.x`) communicate safely inside private networks |
+| **Public Routable IPs (e.g. `1.1.1.1`, `140.82.112.4`)** | Globally unique addresses routed across Internet backbone ISPs via **BGP** | Assigned to public cloud load balancers, home ISP routers, and DNS endpoints reachable worldwide |
+
+### How NAT (`Network Address Translation`) Connects Private Laptops to the Web
+Because your home router and cloud VPC assign private `192.168.x.x` or `10.x.x.x` addresses that cannot travel on public backbone routers, your router performs **NAT**: as outbound packets leave toward `github.com:443`, the router rewrites the private source IP + ephemeral port into **its single public IP + mapped tracking port**, remembers the mapping inside a temporary NAT translation table, and translates returning server responses cleanly back to your exact laptop!
+
+## 4. Essential Well-Known & Developer Port Numbers (`0–65535`)
+
+The OS divides the `65,536` available TCP/UDP ports cleanly:
+- **`0 – 1023` (Privileged / Well-Known Ports):** Require root/elevated OS capability on traditional Linux setups (`22 = SSH`, `53 = DNS`, `80 = HTTP`, `443 = HTTPS`).
+- **`1024 – 49151` (Registered Application & Dev Ports):** Open to normal unprivileged user processes (`3000 = Next.js/Express`, `5173 = Vite`, `5432 = PostgreSQL`, `6379 = Redis`, `8000/8080 = FastAPI/dev APIs`).
+- **`49152 – 65535` (Ephemeral Client Ports):** Assigned dynamically by your OS kernel for *outbound* browser tabs and `curl` calls so thousands of simultaneous outgoing tabs keep unique return ports!
+
+## 5. How Routing Works Hop-by-Hop Across the Global Internet
+
+When your browser sends a packet to `192.0.2.18`, your laptop checks its **local routing table** in microseconds:
+1. *"Is destination `192.0.2.18` inside my local `/24` Wi-Fi subnet?"* **No** (`192.168.1.x ≠ 93.184.216.x`).
+2. Your laptop sends the Ethernet frame directly to its **Default Gateway (`your Wi-Fi router, e.g. 192.168.1.1`)**.
+3. Your router swaps source IP via NAT, checks its ISP routing table, and forwards the IP packet up to your ISP's edge router.
+4. Across `8–18` autonomous backbone routers (**Autonomous Systems exchanging reachability via `BGP` — Border Gateway Protocol**), each router inspects *only* the destination IP prefix, looks up the fastest next-hop interface, decrements the packet's **`TTL` (*Time-To-Live* hop counter preventing infinite routing loops!)**, and forwards it onward until reaching the destination datacenter!
+
+```text
+Your Laptop (`192.168.1.42:54112`)
+   |  (Ethernet frame dst = Gateway Router MAC; IP dst = 192.0.2.18:443)
+   v
+Home / Office NAT Router (`192.168.1.1` <-> Public IP `198.51.100.7`)
+   |  (Hops across ISP & BGP Autonomous Systems; IP TTL decrements per hop)
+   v
+Cloud Load Balancer (`192.0.2.18:443`) -> Private VPC (`10.0.4.18:8000`)
+```
+
+## 6. Runnable Lab: Inspect Interfaces, Routing Table, Ports & Loopback vs. `0.0.0.0`
+
+Execute these safe read-only commands inside your terminal (`Ubuntu/WSL 2` or `macOS`) to observe your live local IP addresses, default gateway route, and listening ports:
+
+```bash
+# 1. Inspect network interfaces (loopback 127.0.0.1 vs private LAN / WSL IP)
+# Ubuntu / WSL 2:
+ip addr show | grep -E "^[0-9]+:|inet "
+# macOS alternative:
+# ifconfig | grep -E "^[a-z0-9]+:|inet "
+# Windows PowerShell / CMD alternative:
+# ipconfig /all
+
+# 2. Print your machine's routing table (spot 'default via ...' gateway!)
+# Ubuntu / WSL 2:
+ip route
+# macOS alternative:
+# netstat -rn | head -n 12
+# Windows PowerShell / CMD alternative:
+# route print -4
+
+# 3. Inspect which TCP ports are currently bound & listening locally
+# Ubuntu / WSL 2:
+ss -tlnp
+# macOS alternative:
+# lsof -iTCP -sTCP:LISTEN -n -P
+# Windows PowerShell alternative:
+# Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess
+```
+
+Look carefully at the **`Local Address:Port`** column in `ss -tlnp` (or `lsof`): you will immediately spot some services bound strictly to **`127.0.0.1:<port>`** (unreachable from external devices/containers) versus **`0.0.0.0:<port>`** or **`*:<port>`** (listening on every interface)!
+
+To observe actual multi-hop router forwarding across the public Internet (`step 4` of Section 5), run a short non-destructive hop trace (capped at `10` hops so it finishes quickly):
+
+```bash
+# Ubuntu / WSL 2 (install if missing: `sudo apt install -y traceroute iputils-tracepath`):
+tracepath -m 10 1.1.1.1 2>/dev/null || traceroute -m 10 1.1.1.1
+# Windows PowerShell / CMD alternative:
+# tracert -h 10 1.1.1.1
+```
+
+Watch the millisecond RTT rise step-by-step from hop `1` (`~1–3 ms` — your local home/office router) to hop `3–5` (`~8–25 ms` — regional ISP peering exchanges) out toward `1.1.1.1`!
+
+## 7. Failure Modes & Common Pitfalls
+
+- **Binding container apps to `127.0.0.1` instead of `0.0.0.0` (`Ch 18` classic):** Inside a Docker container, `127.0.0.1` is *only* the container's own private loopback interface! Host port forwarding (`-p 3000:3000`) arrives on the container's virtual `eth0` interface (`172.17.0.x`), so binding strictly to `127.0.0.1` drops every host request cleanly. Always pass `--host 0.0.0.0` (FastAPI/Uvicorn/Vite) inside containers!
+- **The `localhost` IPv4 (`127.0.0.1`) vs. IPv6 (`::1`) Trap (`Node.js` & `Python`):** Modern Node.js (`v17+`) respects OS DNS order instead of forcing IPv4 first. If your local backend listens strictly on `127.0.0.1:8000` (IPv4 only) while your frontend calls `http://localhost:8000`, your OS may resolve `localhost` to **`::1` (IPv6 loopback)** first—triggering `ECONNREFUSED ::1:8000` even though the server is clearly running! When wiring local services in `.env`, prefer explicit `127.0.0.1` (`http://127.0.0.1:8000`) or dual-stack binding cleanly.
+- **Exposing PostgreSQL (`5432`) or Redis (`6379`) on `0.0.0.0` with public firewall open:** Leaving databases listening on public interfaces invites automated credential-stuffing bots within minutes. Keep databases strictly on private VPC subnets (`10.x.x.x`) or local `127.0.0.1` behind strong passwords and TLS.
+- **Port conflict (`EADDRINUSE`) across dev servers:** Running two Next.js or Python servers simultaneously on `:3000` fails because only **one active socket listener** can own a specific `(IP, Port, Protocol)` tuple unless explicitly configured (`SO_REUSEPORT`). Inspect with `ss`/`lsof` before blaming code!
+
+## 8. Hands-On Practice Exercises
+
+1. **Interpret Live Socket Bindings:** Run `ss -tlnp` (Linux/WSL 2) or `lsof -iTCP -sTCP:LISTEN -n -P` (macOS) and identify two active listening sockets on your machine: record each socket's bound **IP (`127.0.0.1` vs. `0.0.0.0` / `*`)** and **Port**, and state whether another laptop on your Wi-Fi could reach that port directly (assuming firewall allows it).
+2. **CIDR & Private Network Classification:** Given these four IPv4 addresses—`127.0.0.1`, `10.24.8.15`, `192.168.50.10`, and `8.8.8.8`—classify each as **Loopback**, **Private RFC 1918**, or **Public Routable**, and state how many usable host addresses live inside a `10.24.8.0/24` subnet (`254`, reserving `.0` network & `.255` broadcast).
+3. **Debug a Dual-Stack Loopback Mismatch:** Explain in three concise sentences why `curl http://127.0.0.1:8000/health` can succeed (`200 OK`) inside the same terminal where `fetch("http://localhost:8000/health")` throws `ECONNREFUSED ::1:8000`, and show two ways to fix it cleanly.
+
+## 9. Firewalls & Cloud Security Groups (`Allowing Only Required IP + Port Pairs`)
+
+Every cloud platform (`AWS Security Groups`, `GCP VPC Firewalls`, `Ubuntu ufw`) uses **IP + Port + Protocol** rules directly from this topic to lock down servers:
+- Expose **strictly HTTP/HTTPS (`80`/`443`)** publicly on edge load balancers; block raw database ports (`5432`, `6379`, `27017`) from `0.0.0.0/0` completely.
+- Restrict administrative SSH (`22`) strictly to known **`/32` operator IPs** or private bastion/VPN tunnels rather than opening `0.0.0.0/0` worldwide.
+- Allow internal microservice communication (`FastAPI :8000` or `Postgres :5432`) strictly **by source private subnet CIDR (`10.0.1.0/24`)** or security-group membership inside the private VPC.
+
+## Key Takeaways
+
+- An **IP Address** identifies a machine's network interface across hops (`IPv4 32-bit` / `IPv6 128-bit`), while a **Port (`0–65535`)** delivers packets cleanly to the exact waiting process on that machine.
+- **`127.0.0.1` (`localhost`)** keeps traffic strictly inside the local host's kernel loopback; **`0.0.0.0`** instructs a listening server to accept connections on *all* local network interfaces (essential inside Docker containers).
+- **Private `RFC 1918` subnets** + **NAT** + **CIDR routing prefixes** let private laptops, containers, and cloud VPCs share the global public Internet safely.
+
+## Official Primary References
+
+- [IETF RFC 1918 — Address Allocation for Private Internets](https://datatracker.ietf.org/doc/html/rfc1918)
+- [IANA Service Name and Transport Protocol Port Number Registry](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml)
+- [Docker Container Networking Concepts (`docs.docker.com/engine/network/`)](https://docs.docker.com/engine/network/)
+
+**Next Topic:** [01.3.3 DNS Resolution](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-3-how-the-internet-works/01-3-3-dns-resolution)
+
+</BookNodePage>

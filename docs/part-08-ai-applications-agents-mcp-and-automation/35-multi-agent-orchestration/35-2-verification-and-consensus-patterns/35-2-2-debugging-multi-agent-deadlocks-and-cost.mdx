@@ -1,0 +1,115 @@
+---
+id: "35-2-2-debugging-multi-agent-deadlocks-and-cost"
+title: "35.2.2 Debugging Multi-Agent Deadlocks and Cost"
+sidebar_label: "35.2.2 Debugging Multi-Agent Deadlocks and Cost"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns/35-2-2-debugging-multi-agent-deadlocks-and-cost"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35-s2-t2">
+
+Multi-agent systems fail in ways single agents don't: they wait for each other forever, agree with each other wrongly, and cost 12× what you estimated. This lesson gives you the deadlock toolkit, the signature failure modes with signatures you can grep for, and a worked cost model you can reuse before approving any design.
+
+## 1. Cost Model — Do the Arithmetic Before You Build
+
+Worked example (ShopCore Postmaster, refund dispute, Nov 2026 list prices, illustrative — re-check your provider):
+
+Assumptions: supervisor pass ≈ 1.5k in / 0.3k out; specialist pass ≈ 1.2k in / 0.25k out; average 2 supervisor iterations + 3 specialists × 2 passes; judge/critic adds 1.5 passes at specialist rates.
+
+```text
+supervisor:  2 × (1.5k in + 0.3k out)                 = 3.0k in, 0.6k out
+specialists: 6 × (1.2k in + 0.25k out)                = 7.2k in, 1.5k out
+critic:      1.5 × (1.2k in + 0.25k out)              = 1.8k in, 0.375k out
+TOTAL ≈ 12.0k input tokens, 2.5k output tokens per dispute
+```
+
+At $3 / M input and $15 / M output (illustrative mid-range 2026 pricing): 12.0k×$3/M + 2.5k×$15/M ≈ **$0.074 per dispute** — versus ~$0.008 for a well-engineered single agent. × 800 disputes/mo ≈ **$59 vs $6.40**. The pattern above is fine financially; the same topology with a chatty supervisor re-reading full transcripts (30k in per call) is $0.30/dispute and blows budgets silently.
+
+| Knob | Effect on cost |
+| :-- | :-- |
+| Iterations (3 → 5) | Linear in worst case; rarely converges anyway |
+| Context re-sent per hop | Supervisor that pastes worker transcripts multiplies input linearly |
+| Model tier per role | Judges/critics can run smaller tier — they check, not create |
+| Fan-out width | Map-reduce 6 agents = 6× base; worth it only vs retry/human cost |
+| Retry-on-failure | Retries multiply everything; idempotency + caps mandatory |
+
+Same design at three model tiers (input $/M and output $/M, illustrative Nov 2026):
+
+| Tier | in/out | Per dispute | 800/mo | Comment |
+| :-- | :-- | :-- | :-- | :-- |
+| Flagship (frontier) | $10 / $50 | $0.245 | $196 | Overkill for triage; reserve for synthesis if any |
+| Mid-tier workhorse | $3 / $15 | $0.074 | $59 | Default for Postmaster pipeline |
+| Budget/small | $0.50 / $2 | $0.011 | $9 | Router + judge roles; verify agreement vs labeled set |
+
+Arithmetic you can redo with your own repriced numbers: `cost = Σ(calls × (in×pin + out×pout)) × (1 + retry_rate)`. Track actuals from `worker_runs` (tokens logged) — estimates lie.
+
+Budget formula per workflow: `cost/run = Σ_agents (calls × (in×pin + out×pout)) × retry_factor`.
+
+## 2. Deadlock and Livelock Detection
+
+| Pattern | Signature | Detection | Fix |
+| :-- | :-- | :-- | :-- |
+| **Wait cycle** | A needs B's output; B needs A's | Cycle counter / wait-for graph on correlationId; contract timeout (e.g. 120s) | Timeout → abort leg + escalate; design so dependencies form a DAG |
+| **Infinite clarify** | Agent asks user/another agent "which one?" forever | Hop counter per correlationId; max 4 clarifications | Hard cap → best-effort answer with assumptions logged |
+| **Budget spin** | Loops until cap every run | Mean iterations/run ≈ cap | Prompt/rubric fix; escalate at cap by design |
+| **Agreement loop** | Agents re-validate each other endlessly | Zero new facts across 2 iterations | Detect no-delta → terminate with current best |
+| **Shared-resource lock** | Two agents edit same blackboard key | CAS failure rate metric | Single-writer per key; per-order sharding |
+| **Retry storm** | All agents retry same failing tool | DLQ growth + identical errors | Circuit breaker → disable tool, page owner |
+
+Instrument: per-agent span tracing (correlation id → all agent calls), hop/iteration counters, wall-clock budget, token budget. Ch 32 (MCP) tracing and Ch 36 (production telemetry) generalize this.
+
+A real deadlock timeline from a ShopCore staging run (synthetic but typical):
+
+```text
+12:00.000  supervisor → refund-specialist : task {orderId: ORD-1141}
+12:00.400  refund-specialist → blackboard.read("policy.refund")
+12:00.400  blackboard: LOCKED by drafter (write txn from previous unfinished run)
+12:00.401  refund-specialist: retry in 500ms (attempt 1/5)
+...
+12:03.000  hop budget (120s) exceeded → abort → supervisor gets error:timeout
+12:03.001  supervisor: best-effort reply "reviewing, human will confirm" → escalate
+```
+
+Fix that prevents recurrence: blackboard locks get a **TTL** (30s default) — locks expire, waits become finite by construction. The deadlock didn't need a clever cycle detector; it needed every wait to be bounded. Cycle counters are the second line of defense, not the first.
+
+## 3. Replay Determinism
+
+To debug you must replay. Agents are non-deterministic by default; force enough determinism to bisect a failure: `temperature=0` judges, pinned model snapshot ids, recorded tool responses (VCR-style fixtures) for the blackboard read path, seed where the API supports it. Store `input_hash` + prompt_version (34.2.2) so any past run can be re-executed against the same corpus state. UI shows "Replay" next to executions — make your agent runner support it too.
+
+## 4. Signature Failure Modes, Quick Reference
+
+- **Critic rubber-stamp**: passes everything → critic measured below 0.7 agreement on labeled fails (35.2.1 §5).
+- **Agreement theater**: consensus converges by re-asking, not reasoning → count distinct reasons; identical reasons = correlated judgment.
+- **Orchestrator drift**: supervisor rewrites task mid-run → diff plan at each hop; alert on unrequested plan edits.
+- **Cost creep**: tokens/run p95 rising week-over-week → weekly `worker_runs` cost p50/p95 review.
+
+## 5. Observability Checklist for Multi-Agent
+
+- Every agent call emits a span: `agent_id`, `correlation_id`, `hop`, `tokens_in/out`, `latency_ms`, `tool_calls`, `decision`.
+- One dashboard per workflow: p50/p95 latency, tokens/run, retry rate, DLQ depth, gate pass rates, cap-hit rate.
+- Alerts: cap-hit rate > 10%, retry rate > 15%, DLQ > 5, any `error:timeout` in a money path.
+- Weekly: cost/run report from `worker_runs`; drift in prompt versions vs gate pass rates.
+- Replay button: re-execute any historical run against its recorded context — the only way to bisect prompt regressions confidently.
+
+## 6. When NOT to Go Multi-Agent — The Honest Close
+
+Most teams should run **one agent with excellent tools and guardrails** and be done. Reach for multi-agent only when: subtasks need different permissions (refund tool vs ledger read), different models (cheap router, strong synthesizer), parallel independent work (map-reduce), genuine adversarial checking (critics), or separate lifecycles you must audit independently. If none apply, multi-agent is theater with extra bills.
+
+## 7. Practice
+
+**Guided.** Take your 35.1.1 supervisor design; log token counts per agent via a wrapper; compare to the estimate above; report the delta.
+
+**Independent.** Implement the hop counter + cycle timeout in a scratch two-agent ping-pong; force the deadlock; confirm the timeout path fires and the DLQ gets the case.
+
+**Challenge.** Build the p50/p95 cost report for `worker_runs` this week: tokens and euros by worker, flag anything > 3× its baseline.
+
+**Checklist**
+
+- [ ] Cost model computed and tracked from real token logs
+- [ ] Hop counter, cycle timeout and budget caps exist on every loop
+- [ ] Traces keyed by correlationId cover every agent call
+- [ ] Deterministic replay exists for at least the judging paths
+- [ ] I can name the day I would rip the second agent out of the design
+
+</BookNodePage>

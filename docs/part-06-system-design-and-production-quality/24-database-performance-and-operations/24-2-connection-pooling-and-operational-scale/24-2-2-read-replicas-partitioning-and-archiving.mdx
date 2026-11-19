@@ -1,0 +1,166 @@
+---
+id: "24-2-2-read-replicas-partitioning-and-archiving"
+title: "24.2.2 Read Replicas, Partitioning and Archiving"
+sidebar_label: "24.2.2 Read Replicas, Partitioning and Archiving"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations/24-2-connection-pooling-and-operational-scale/24-2-2-read-replicas-partitioning-and-archiving"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24-s2-t2">
+
+You hit the read ceiling. The cache is wired, the indexes are tuned, and `pg_stat_statements` still shows 80% of database time serving catalog reads. This lesson is what comes next: streaming replicas (and knowing exactly what they don't fix), monthly range partitioning for `orders`, cold-row archiving, and Row-Level Security for tenant isolation.
+
+## 1. Streaming Replication — Primary to Replica in One Page
+
+The primary writes WAL (write-ahead log) records; a replica receives them over a replication slot/`wal_sender` connection and replays them. Two modes:
+
+| Mode | Data-loss window (RPO) | Cost | Use for |
+| :-- | :-- | :-- | :-- |
+| **Asynchronous** (default) | Potentially seconds (in-flight WAL on primary loss) | No latency added to commits | Read scaling, warm standby, offsite reporting |
+| **Synchronous** | **Zero** (commit waits for replica flush/ack) | +1 network round-trip per commit; a dead replica stalls writes | Money-critical tables where RPO=0 is contractual |
+
+Setup sketch (full HA topology lives in [20.2.4](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-4-backups-disaster-recovery-incident-triage-and-postmortems)):
+
+```ini
+# postgresql.conf (primary)
+wal_level = replica
+max_wal_senders = 10
+# synchronous_standby_names = 'replica1'   # only if you accept sync cost
+```
+```ini
+# postgresql.auto.conf on replica = follow primary; hot_standby = on for read queries
+```
+
+Replica lag measurement:
+
+```sql
+-- on the primary:
+SELECT application_name, client_addr, sent_lsn, replay_lsn,
+       pg_size_pretty(pg_wal_lsn_diff(sent_lsn, replay_lsn)) AS lag_bytes,
+       replay_lag
+FROM pg_stat_replication;
+```
+
+`lag_bytes` growing unboundedly = replica cannot keep up (disk, network, `max_standby_streaming_delay` conflicts with long queries on replica). Alert on `replay_lag > 30 s`.
+
+## 2. Read-Your-Writes — The Honest Workaround
+
+Replicas are eventually consistent. User updates their profile on the primary, refreshes, sees the old one from a replica — brutal for trust. Workarounds, cheapest first:
+
+1. **Session stickiness after write** — after any write, route that user's reads to the **primary for N seconds** (e.g. 5–30 s). Simple, effective.
+2. **Wait for replay** — after write, poll `pg_last_wal_replay_lsn()` on the replica until it passes the primary's `sent_lsn` you recorded at write time. Precise, adds complexity; do it in the data layer, not per request handler.
+3. **Read from primary for user-specific data**, replica for shared/catalog data. No tracking, zero consistency surface for the thing users notice most (their own data).
+
+Catalog reads tolerate 1–5 s staleness — route them to the replica freely. Checkout-adjacent reads should not.
+
+## 3. When to Add a Replica — The 3:1 Rule
+
+Add one when **reads:writes > 3:1** measured (not felt — `pg_stat_statements` tells you exactly this), and reads are large enough that the primary's CPU/IO is the constraint. Do **not** add one for:
+
+- Lock contention — replicas inherit the same data; they don't break row-lock queues.
+- Bad queries — a seq scan is a seq scan everywhere.
+- Write-heavy systems — the WAL stream itself becomes the bottleneck.
+
+Cost reality: a replica is a full-size node. Cheaper than sharding, far cheaper than an incident — but not free.
+
+## 4. Range Partitioning — `orders` by Month
+
+Declarative partitioning (PG 10+). Parent table holds no data; children hold one month each; pruning skips irrelevant months at plan time:
+
+```sql
+CREATE TABLE orders_partitioned (
+  id bigint GENERATED ALWAYS AS IDENTITY,
+  user_id bigint NOT NULL,
+  status text NOT NULL,
+  total_cents integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (id, created_at)    -- partition key must be part of PK/unique
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE orders_2026_10 PARTITION OF orders_partitioned
+  FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+CREATE TABLE orders_2026_11 PARTITION OF orders_partitioned
+  FOR VALUES FROM ('2026-11-01') TO ('2026-12-01');
+-- ... and a default partition for safety:
+CREATE TABLE orders_default PARTITION OF orders_partitioned DEFAULT;
+```
+
+Benefits you actually get: per-partition indexes and vacuum (bloat localized to the hot month), pruning on `created_at` bounds (verify in EXPLAIN — `Partitions: orders_2026_11`), and **instant retention**: `DROP TABLE orders_2024_11;` or `ALTER TABLE orders_partitioned DETACH PARTITION orders_2024_11;` instead of a multi-hour `DELETE`. For automated month creation, look at the **pg_partman** extension — confirm availability and version on your managed host before depending on it.
+
+The BRIN indexes from 24.1.1 pair naturally with monthly time partitions: one BRIN per partition on `created_at` for near-free range elimination.
+
+## 5. Archiving Cold Rows
+
+```sql
+-- Nightly job (or pg_cron): retire the oldest month
+BEGIN;
+-- 1. Detach (O(1) metadata) — orders_2024_11 becomes a standalone table
+ALTER TABLE orders_partitioned DETACH PARTITION orders_2024_11;
+-- 2. Move/copy it wherever cold data lives, or keep it in-place renamed
+ALTER TABLE orders_2024_11 RENAME TO orders_archive_2024_11;
+COMMIT;
+-- 3. Verify row counts match expectations, then drop or ship to cold storage
+```
+
+Prefer `DETACH` + `CREATE TABLE orders_archive_2024_11 (LIKE ...)` pattern: detach is O(1) metadata; the archive copy runs off-peak; drop when verified. Keep archive in a separate tablespace/storage tier if cold reads are rare but legally required (commerce records: keep per your jurisdiction's retention rules — that's a legal call, not a technical one).
+
+## 6. Tenant Isolation — RLS Worked Example
+
+**Option A — shared tables + Row-Level Security** (ShopCore's choice for mid-size tenants):
+
+```sql
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON orders
+  USING (tenant_id = current_setting('app.tenant_id', true)::bigint);
+
+-- per request/transaction:
+BEGIN;
+SET LOCAL app.tenant_id = '42';          -- survives only this txn
+SELECT * FROM orders;                     -- silently filtered to tenant 42
+COMMIT;
+```
+
+Gaps to know: **superusers always bypass RLS**, and the **table owner** also bypasses it unless you add `ALTER TABLE orders FORCE ROW LEVEL SECURITY` — so run the app as a non-owner role (and never as superuser) or your policies are decorative. Policy expressions run per row — index `tenant_id`. Test with a **cross-tenant JWT swapping test**: log in as tenant A, replay tenant B's IDs, expect zero rows (not 403 — RLS filters silently).
+
+**Option B — schema-per-tenant** for large enterprise tenants: `SET search_path = tenant_42, public`; isolation by construction, but N schemas × DDL migrations get operationally expensive and connection pool cache blows up. Option C — database-per-tenant: strongest, rarely worth it.
+
+Backups recap: partition boundaries make restores surgical (restore one month); RLS'd tables restore cleanly since policies travel with the table. Full DR runbook: [12.3.2](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-2-users-roles-backups-and-restores), [20.2.4](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-4-backups-disaster-recovery-incident-triage-and-postmortems).
+
+## 7. Introducing Partitioning on a Live Table — Migration Plan
+
+1. **Shadow copy:** `CREATE TABLE orders_new (LIKE orders ...) PARTITION BY RANGE (created_at);` create monthly partitions ± future 6 months.
+2. **Backfill** in small batches (`INSERT ... SELECT ... WHERE id BETWEEN x AND y`) with throttling; pause under load; validate row counts per month.
+3. **Cutover in one transaction:** rename `orders` → `orders_old`, rename `orders_new` → `orders`, recreate FKs/indexes/RLS (partitioned children need their own indexes — plan this). Brief write block, seconds.
+4. **Validate:** counts, a checksum on a sample, replica catch-up (if replica exists, rebuild it too — partitioning DDL replicates fine but children must exist).
+5. **Rollback plan:** keep `orders_old` untouched for 7 days before drop. Blue/green, never big-bang rewrite during business hours.
+
+## 8. Troubleshooting Table
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Replica 40 s behind | Long read txns on replica; disk I/O | `max_standby_streaming_delay`; shorter replica txns |
+| Users see stale profile | Read from replica too soon | §2 stickiness; route self-reads to primary |
+| Partition pruning not happening | Queries don't include `created_at` bounds | Rewrite queries/app layer; check EXPLAIN `Partitions:` |
+| INSERT into wrong partition | No default partition | Add default; backfill missed rows |
+| Sync replica down = writes stall | `synchronous_standby_names` set | Switch to async + monitor; or quorum (`ANY 1 (...)`) |
+| RLS returns 0 rows unexpectedly | `app.tenant_id` not set (empty setting → cast error → filtered) | Explicit app-side check + integration test per tenant |
+
+## 9. Practice
+
+**Guided.** Stand up a second local Postgres as a streaming replica of your ShopCore DB; point read-only catalog queries at it; write the `pg_stat_replication` monitoring query from §1 into your notebook.
+
+**Independent.** Partition a seeded 1M-row `orders` copy by month using §7's plan (drop is fine locally — you're rehearsing). Verify pruning with EXPLAIN on a `created_at`-bounded query. Verify `orders_default` catches an out-of-range insert.
+
+**Challenge.** Implement §6's RLS on a copy of `orders` with two tenants. Write the cross-tenant replay test that must return zero rows. Add `FORCE ROW LEVEL SECURITY` and verify the owner role is also filtered. Then detach a 2024 partition and re-attach it — time both.
+
+**Assessment checklist**
+
+- [ ] I can explain async vs sync replication and state ShopCore's RPO honestly.
+- [ ] I have measured replica lag with `pg_stat_replication` and set an alert.
+- [ ] I can articulate when replicas are useless (locks, bad queries, write saturation).
+- [ ] I can define monthly RANGE partitioning, pruning, and the detach-archive lifecycle.
+- [ ] I can implement and *test* tenant isolation with RLS, including the FORCE caveat.
+- [ ] I have a written migration plan for introducing partitioning with rollback.
+
+</BookNodePage>

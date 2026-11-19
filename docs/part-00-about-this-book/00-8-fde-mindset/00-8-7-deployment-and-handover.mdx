@@ -1,0 +1,101 @@
+---
+id: "00-8-7-deployment-and-handover"
+title: "00.8.7 Deployment and Handover"
+sidebar_label: "00.8.7 Deployment and Handover"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-7-deployment-and-handover"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-7">
+
+The final stage—**Handover** (`Listen → Map → Measure → Slice → Build → Verify → Handover`)—draws the sharpest boundary between clever prototype tinkerers and trusted Forward Deployed Engineers. Almost anyone can coax an application or AI pipeline into running cleanly while sitting beside it personally restarting stalled terminals and patching `.env` files ad hoc. True professional delivery means **deployment repeatability, production observability, crystal-clear documentation, team enablement, and clean ownership transfer so the system runs reliably months after you step onto the next problem.**
+
+If an engineering squad or operations lead has to message you every time a provider API key rotates, a background worker pauses on a bad PDF, or a new teammate clones the repository, you did not hand over a durable asset—you made yourself a permanent operational single point of failure.
+
+## 1. The Five Non-Negotiable Pillars of Production Handover
+
+Before closing any internal launch, consulting project, or capstone build (`Ch 42`), verify all five handover pillars cleanly:
+
+| Handover Pillar | Operational Risk Prevented | Concrete Deliverables Shipped |
+| :--- | :--- | :--- |
+| **1. Reproducible Deployment & Secrets Hygiene** | *"Only runs on the builder's laptop"* stalls, leaked credentials, broken staging/prod parity | Containerized/cloud setup (`Ch 18–20`), strict `.env.example` contract, automated migrations, zero hardcoded tokens, verified backup/restore drill |
+| **2. Actionable Observability & Alerting** | Silent overnight failures where stale queues go unnoticed until end-of-month close | `/health` + DB readiness probe, structured JSON error logs with `run_id`, dead-letter visibility, alerts on elevated `429`/`5xx` errors or token spend spikes (`Ch 22, 36`) |
+| **3. Concise System Architecture Notes** | Six-month maintenance paralysis where incoming engineers are scared to touch unfamiliar glue code | Crisp `README.md`, high-level sequence diagram, PostgreSQL entity relationships, and short Architecture Decision Records (**`ADRs`**) explaining *why* choices exist |
+| **4. Plain-Language Operator Runbook** | Operations staff panicking or guessing dangerously when messy real-world inputs trigger flags | Practical troubleshooting guide: how to clear review queues, re-drive failed files, rotate credentials, and recognize when to escalate to IT/dev |
+| **5. Live Enablement & Controlled Hypercare** | Passive PDF manuals nobody reads until something catches fire | Recorded 15-minute live walkthrough + receiving engineer booting and verifying locally + explicit 1–2 week hypercare exit date |
+
+## 2. Running the 48-Hour "Bus-Factor Test" Before Final Sign-Off
+
+Never wait until final handover day to discover that your README omitted a critical migration step or undocumented Redis port. Forty-eight hours before official transition, execute a strict **20-minute Bus-Factor Test**:
+
+1. Pair directly with the receiving engineer, IT owner, or ops lead—and **take your hands completely off the keyboard**.
+2. Watch silently while *they* clone the repository fresh, populate `.env` from `.env.example`, start the Docker/dev stack, run the automated test + smoke eval command, inspect structured error logs, and walk through replaying one simulated failed job.
+3. Resist the urge to interrupt verbally (*"Oh yeah, you also need to export X first"*). Instead, record **every single moment of hesitation** silently on a notepad.
+4. Immediately commit fixes to `README.md`, `.env.example`, or startup scripts eliminating every single hesitation you witnessed—and re-verify that step runs cleanly.
+
+Passing the Bus-Factor Test guarantees any capable teammate can own the repository calmly on day one.
+
+## 3. Concrete Sample Handover Checklist (`ops/HANDOVER.md`)
+
+Keep handover documentation lean, command-verified, and structured specifically for a stressed operator diagnosing an issue at 2:00 AM:
+
+- **Service Overview & Endpoints:** Production URLs, staging URLs, health probe paths (`/api/health`), and external vendor dependencies (`PostgreSQL`, `Gemini/OpenAI Gateway`, `S3`).
+- **Required Environment Keys:** Exact table mapping every variable in `.env.example` → where to rotate it → what fails visibly if missing/expired.
+- **Routine Failure Playbooks (Top 5):**
+  1. *Model gateway returning `429 Rate Limit`:* Confirm queue worker backoff metrics; switch fallback model env flag if outage persists > 15m.
+  2. *Background document queue stuck:* Query `SELECT status, count(*) FROM ingestion_jobs GROUP BY status;`; inspect last 20 dead-letter errors; re-enqueue fixed items cleanly.
+  3. *Database backup restoration test:* Exact verified `pg_restore` command against staging snapshot.
+- **Known Limitations & Phase-2 Backlog:** Candid list of explicitly deferred items (`00.8.4`) and measured baseline metrics (`00.8.3`).
+
+## 4. Feeding Field Learnings Back Into Core Platforms
+
+In product-company FDE roles (`00.3.1–00.3.2`), Handover includes one final high-leverage step: sending a tight 1-page **Core Product Feedback Memo** to internal platform engineering summarizing recurring custom adapters, missing webhook fields, or eval blind spots uncovered in the field—turning one customer's deployment lesson into permanent product improvement for everyone.
+
+## 5. Mini Practice Exercise
+
+Take a project you recently built (or imagine handing over an AI document-intake service you authored) and perform a **10-minute Runbook Audit**:
+
+1. List the **top three ways** that application could fail quietly or loudly at 8:00 AM Monday (expired API key, filled disk/connection pool, malformed vendor upload).
+2. Write **three exact diagnostic commands or UI checks** an operator who did *not* write the code can run in under two minutes to identify which of the three failures occurred.
+
+## Concrete Handover Quick-Reference Block (`ops/HANDOVER.md`)
+
+When leaving a system cleanly in teammate or client hands, embed exact copy-paste diagnostic commands rather than vague prose explanations:
+
+```bash
+# 1. Verify container web + worker + DB readiness in 5 seconds
+docker compose ps && curl -fsS https://app.example.com/readyz
+
+# 2. Check structured error spikes over last 15 minutes
+docker compose logs --since 15m worker | grep '"level":"error"'
+
+# 3. Inspect dead-lettered ingestion jobs waiting for operator review
+psql "$DATABASE_URL" -c "SELECT id, error_code, attempts, updated_at FROM ingestion_jobs WHERE status = 'dead_letter' ORDER BY updated_at DESC LIMIT 10;"
+```
+
+Define clear **Hypercare Exit Criteria** alongside those commands (`7 consecutive days with zero unhandled 5xx alerts, 1 verified backup restore drill completed cleanly, and receiving engineer executed dead-letter replay unassisted`). That clean closure turns field launches into durable engineering assets while freeing you completely for the next high-leverage initiative.
+
+## Final 4-Point Ownership Transfer Sign-Off
+
+Confirm these four milestones verbally and in writing on your handover wrap-up call before stepping off any project:
+- **Access & Billing Ownership:** Client or internal platform team controls Git repo admin, cloud hosting console, PostgreSQL backups, and AI provider billing alerts (`00.9.10`).
+- **Clean Restore Drill:** Verified once on staging that migrations + backup restore reconstruct schema cleanly without manual hotfixes.
+- **Runbook Dry Run:** Receiving engineer personally opened `/readyz`, filtered structured JSON logs, and re-enqueued a test dead-letter job (`ops/HANDOVER.md`).
+- **Bounded Hypercare Window:** Shared Slack/email support channel dates agreed clearly upfront so post-launch stability transitions cleanly into routine operations.
+
+Always confirm one final **rollback safety drill** alongside the receiving team before closing hypercare: verify how to revert cleanly to the previous immutable container tag (`Ch 18–20`) and confirm which database migrations are backward-compatible if an urgent rollback fires at peak traffic. Leaving clear rollback steps beside `ops/HANDOVER.md` guarantees that owning engineers treat production maintenance calmly rather than fearing routine deployments.
+
+## Key Takeaways
+
+- **Handover** transforms rapid custom or product builds into durable, observable, team-owned infrastructure without builder dependency bottlenecks.
+- Combine reproducible Docker/cloud environments, `/health` + dead-letter telemetry, concise ADRs, plain operator runbooks, and the **20-minute Bus-Factor Test**.
+- Practicing **Deliver More Than Code (`00.4.8`)** on every milestone prepares you cleanly for client consulting (`Ch 39`) and your Integrated Capstone (`Ch 42`).
+
+## References and Further Reading
+
+- [Write the Docs — Writing Effective Operational Runbooks](https://www.writethedocs.org/)
+- [Docker Documentation — Healthchecks & Production Compose Patterns](https://docs.docker.com/reference/dockerfile/#healthcheck)
+- [Next Step — 00.8.8 The Complete FDE Delivery Lifecycle](/book/part-00-about-this-book/00-8-fde-mindset/00-8-8-the-complete-fde-delivery-lifecycle)
+
+</BookNodePage>

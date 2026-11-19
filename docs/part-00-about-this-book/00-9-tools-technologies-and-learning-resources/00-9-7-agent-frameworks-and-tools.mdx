@@ -1,0 +1,131 @@
+---
+id: "00-9-7-agent-frameworks-and-tools"
+title: "00.9.7 Agent Frameworks and Tools"
+sidebar_label: "00.9.7 Agent Frameworks and Tools"
+slug: "/part-00-about-this-book/00-9-tools-technologies-and-learning-resources/00-9-7-agent-frameworks-and-tools"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-9-7">
+
+Nowhere in modern software engineering is library marketing louder—or framework turnover faster—than in **AI agent frameworks**. Every month announces a new wrapper promising *"autonomous multi-agent swarms in five lines of code."* Yet the moment teams move from recorded demos into daily business operations, opaque abstractions become the exact source of silent infinite loops, unreadable stack traces, surprise token invoices, and lost workflow state.
+
+**The AI-Native Engineer** enforces a clear architectural hierarchy across [Part 08](/book/part-08-ai-applications-agents-mcp-and-automation) (`Chapters 29–32, 35–36`): **master explicit code-first tool loops, typed schemas, and PostgreSQL state checkpoints *before* adopting higher-level orchestration frameworks.**
+
+## Code-First Agent Loops vs. Orchestration Frameworks
+
+When you understand how an agent loop executes underneath—a loop sending messages plus tool schemas to a model, executing selected functions deterministically in server code, appending tool results back into state, and stopping cleanly—any modern framework (whether **OpenAI Agents SDK**, **LangGraph**, **PydanticAI**, or workflow engines) becomes completely transparent rather than magical.
+
+| Architecture Pattern | Direct Code-First Implementation | When a Framework Earns Its Complexity |
+| :--- | :--- | :--- |
+| **Single-turn structured routing & tool dispatch** | One typed model call + validated `switch` / dictionary dispatch in TypeScript or Python (`~25 lines`) | Rarely needs an agent framework; raw SDK calls stay faster, cleaner, and far easier to debug |
+| **Bounded multi-step investigative loop** | Explicit `for step in range(max_steps)` loop logging tool inputs/outputs and returning structured self-correction errors | Direct code works well up to moderate complexity; lightweight SDKs (e.g., Agents SDK handoffs) help standardize tracing |
+| **Durable human-in-the-loop pause/resume** | PostgreSQL `agent_runs` + `pending_approvals` tables storing state transitions (`running → awaiting_human → completed`) | Durable execution engines / state graphs earn their keep when workflows span hours, parallel branches, and crash replay (`Ch 31, 35`) |
+
+```text
+User Task
+   |
+   v
++-------------------------------------------------------------------------+
+|  BOUNDED AGENT LOOP (step = 1 .. MAX_STEPS)                             |
+|                                                                         |
+|  1. Send System Policy + History + Typed Tool Schemas -> LLM            |
+|  2. Log Step Telemetry to PostgreSQL agent_traces                       |
+|  3. Model returns final text? --> Verify citations/schema --> FINISH    |
+|  4. Model requests tool call?                                           |
+|       |-- Validate arguments (Zod/Pydantic). Bad args? Feed error back. |
+|       |-- Is tool state-changing (refund/send/delete)?                  |
+|       |      YES -> Stage draft in pending_approvals & PAUSE RUN!       |
+|       |      NO  -> Inject server tenant_id -> Execute read-only tool.  |
+|       |-- Increment step counter; abort cleanly if step >= MAX_STEPS.   |
++-------------------------------------------------------------------------+
+```
+
+## Anatomy of a Production-Safe Tool Contract
+
+Inside an agentic system, a **tool** is simply a server function the language model may *propose* calling. Treating tools like hardened internal APIs prevents catastrophic side effects:
+
+1. **Clear scope and unambiguous parameters:** Document *when* to invoke the tool, *what* units parameters expect (`amount_cents: int`, never ambiguous `amount`), and explicit bounds (`limit` capped at `50`).
+2. **Validation + actionable self-correction errors:** If a model passes `limit: 500`, catch it cleanly in Pydantic/Zod and return a structured tool message (`"Error: limit must be <= 50; retry with a smaller page size"`) instead of throwing an unhandled server exception.
+3. **Server-injected tenant & actor scope:** **Never expose `workspace_id` or `user_id` as free-form parameters controlled by the model.** Inject authenticated identity strictly from the server request or durable job record so prompt injection cannot trick an agent into reading another customer's rows.
+4. **Strict Read vs. Write separation:** Read-only lookups (`get_order_status`, `search_runbooks`) execute automatically. High-impact external writes (`send_customer_email`, `issue_refund`, `merge_pr`) transition the run to `awaiting_approval` until a human clicks **Approve** in the operator UI.
+
+Notice how compact and transparent a bounded Python agent guard remains without hidden framework magic:
+
+```python
+MAX_STEPS = 6
+seen_calls: set[str] = set()
+
+for step in range(1, MAX_STEPS + 1):
+    decision = call_model_with_tools(messages, tool_schemas)
+    if decision.final_answer is not None:
+        return finalize_run(run_id, decision.final_answer)
+
+    signature = f"{decision.tool_name}:{decision.canonical_args_json}"
+    if signature in seen_calls:
+        # Circuit breaker stops identical stalled loop iterations
+        return escalate_to_human(run_id, reason="Duplicate tool call loop detected")
+    seen_calls.add(signature)
+
+    tool_result = dispatch_validated_tool(
+        name=decision.tool_name,
+        raw_args=decision.args,
+        server_workspace_id=authenticated_workspace_id,
+    )
+    messages.append({"role": "tool", "name": decision.tool_name, "content": tool_result})
+
+return escalate_to_human(run_id, reason=f"Exceeded step budget ({MAX_STEPS})")
+```
+
+## Persisting Durable Human-in-the-Loop Approval Checkpoints
+
+Long-running operational agents cannot sit paused in an open HTTP request waiting twenty minutes for a finance lead or support manager to click **Approve**. Persist pending write proposals directly in PostgreSQL (`Ch 31 & Ch 35`) so runs resume cleanly across server restarts:
+
+```sql
+CREATE TABLE agent_action_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id UUID NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+  tool_name TEXT NOT NULL,
+  proposed_args JSONB NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'executed')),
+  reviewed_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reviewed_at TIMESTAMPTZ
+);
+```
+
+When an operator clicks **Approve**, a deterministic server handler verifies permissions (`actor.role`), executes the exact audited `proposed_args` once (`status = 'executed'`), and resumes or closes the agent run safely.
+
+## Evaluation and Tracing Tools Are Mandatory Companions
+
+Deploying an agent without **step-level tracing and regression evaluations (`Chapters 31 & 36`)** is indistinguishable from shipping blind. Every agent run must emit structured traces capturing:
+- Exact prompt template version and model ID
+- Every retrieved chunk ID or tool call input/output latency
+- Accumulated `input_tokens`, `output_tokens`, and estimated run cost
+- Final outcome (`completed`, `awaiting_human`, `budget_exceeded`, `error`)
+
+Whenever an agent misbehaves in staging or field testing (`00.8`), you replay that exact failing scenario inside a **golden evaluation suite**—fixing the retrieval query, tool description, or validation guard and proving five related test cases did not regress.
+
+## Common Agent Engineering Mistakes
+
+- **Turning a deterministic two-step pipeline into a "multi-agent debate":** If Step A always extracts invoice fields and Step B always validates against vendor IDs in SQL, model-driven agent routing adds latency, cost, and unpredictability for zero benefit. Use plain deterministic code (`workflows`) whenever control flow is known upfront; reserve open loops strictly for dynamic investigation.
+- **Missing duplicate-call circuit breakers:** Without tracking repeated identical tool calls, a confused model can invoke `search_docs("policy")` six times in a row until hitting step limits.
+- **Unbounded context growth across turns:** Appending raw 30-KB database dumps directly into conversation history blows past context budgets by step 4. Truncate, paginate, or summarize bulky tool results cleanly at the tool boundary.
+
+## Practical Exercise: Classify Workflow vs. Autonomous Agent
+
+Read three task requirements and classify each as (1) pure deterministic script, (2) structured single-call LLM workflow, or (3) bounded multi-step agent with approval gates—justifying each boundary:
+1. Converting daily uploaded bank CSV rows into normalized PostgreSQL ledger entries.
+2. Reading incoming customer support emails, pulling order shipping history and recent tickets, and drafting a refund reply for support lead approval.
+3. Investigating a production alert across error logs, recent deployments, and runbook docs to assemble a root-cause briefing for the on-call engineer.
+
+Compare your task classifications cleanly before finishing: **(1) Bank CSV ingestion** belongs strictly in a **deterministic Python/TypeScript parser** (exact schema + integer cent math—zero LLM needed unless a bank changes column headers unpredictably, where a single schema-mapping pass suffices); **(2) Customer refund email triage** fits a **single structured workflow + human approval gate** reliably; and **(3) Open-ended production alert investigation** across logs, deployments, and runbooks genuinely justifies a **bounded read-only multi-step agent loop** capped by `MAX_STEPS` and traceable step logs (`Ch 29–31`).
+
+## Official Primary References
+
+- [Building Effective Agents — Engineering Architecture Patterns (`anthropic.com/research`)](https://www.anthropic.com/research/building-effective-agents)
+- [Gemini API Function Calling Documentation (`ai.google.dev`)](https://ai.google.dev/gemini-api/docs/function-calling)
+- [OpenAI Agents SDK Documentation (`openai.github.io/openai-agents-python/`)](https://openai.github.io/openai-agents-python/)
+
+</BookNodePage>

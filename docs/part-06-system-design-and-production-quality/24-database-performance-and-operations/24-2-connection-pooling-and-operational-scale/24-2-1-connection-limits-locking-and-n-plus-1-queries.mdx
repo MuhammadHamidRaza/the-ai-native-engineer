@@ -1,0 +1,176 @@
+---
+id: "24-2-1-connection-limits-locking-and-n-plus-1-queries"
+title: "24.2.1 Connection Limits, Locking and N+1 Queries"
+sidebar_label: "24.2.1 Connection Limits, Locking and N+1 Queries"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations/24-2-connection-pooling-and-operational-scale/24-2-1-connection-limits-locking-and-n-plus-1-queries"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24-s2-t1">
+
+Every Postgres server ships with a hard, unglamorous ceiling that killers whole incidents are built from: **`max_connections = 100`** (the default; confirmed in the sample `postgresql.conf`). This lesson is about everything that ceiling produces — connection math you can do on paper, pooler topology, lock modes and a real deadlock, isolation-level failure models, and the ORM query-amplification bug (N+1) that exhausts all of the above in one innocent log line.
+
+## 1. Connection Math — Do It Before You Need To
+
+Defaults (verified against current docs): Postgres `max_connections = 100` (plus 3 superuser-reserved slots). node-postgres `Pool` default `max = 10`. PgBouncer `default_pool_size = 20` (per user/database pair), `pool_mode = session`, `max_client_conn = 100`.
+
+```text
+ShopCore API pods: 10
+App pool per pod:  max = 10 (node-postgres default)
+Worst case demand: 10 pods x 10 pool = 100 connections == max_connections
+
+Then add: migrations, psql admin, autovacuum slots, one forgotten script,
+and Postgres answers new connections with "FATAL: sorry, too many clients already".
+```
+
+Fix the arithmetic, don't fight the symptom:
+
+```text
+Option A (app-side only):  pods x pool  <  max_connections - reserved (10)
+    10 pods x 8 = 80  (headroom for admin + autovacuum)
+Option B (pooled):         pods x PgBouncer -> PgBouncer -> 20-40 server conns
+    50 pods x pool 10 = 500 client conns -> PgBouncer -> 30 server conns. Better.
+```
+
+Memory reality check per connection: backend process + per-connection state is on the order of a few MB plus `work_mem` when active — 100 idle connections are cheap, 100 connections running big sorts are not. (`work_mem` is per sort/hash node, not per connection — notorious for surprising totals.)
+
+## 2. PgBouncer vs App-Side Pool — Topology Decision
+
+| | App-side pool (node-postgres) | PgBouncer |
+| :-- | :-- | :-- |
+| Where | Inside every API pod | Between pods and Postgres |
+| Limits | One wall per pod; no cross-pod accounting | Single global ceiling; `max_db_connections` hard cap |
+| Pooling granularity | Per-pod | Per-(user, database) pair |
+| Modes | — | `session` (default, safest — 1 server conn per client), `transaction` (server conn released at commit; required for > client count), `statement` (rarely what you want) |
+| Cost | Zero infra | One more process to run/watch |
+
+**Transaction pooling caveats you must know:** server connection is released at every `COMMIT`; session-level state does not survive (`SET`, advisory locks, `LISTEN/NOTIFY`, temp tables); **named prepared statements break** unless the client avoids them (node-postgres: `?pgbouncer=true` in the connection string / `pgbouncer: true` in config disables named statements). node-postgres default uses unnamed statements in simple flows, but ORMs (Prisma among them) use named prepared statements — check yours.
+
+```ini
+# /etc/pgbouncer/pgbouncer.ini — ShopCore baseline
+[databases]
+shopcore = host=127.0.0.1 port=5432 dbname=shopcore
+
+[pgbouncer]
+pool_mode = transaction
+default_pool_size = 20
+max_client_conn = 1000
+max_db_connections = 60        # hard cap on server-side conns; < max_connections
+reserve_pool_size = 5
+reserve_pool_timeout = 3
+ignore_startup_parameters = extra_float_digits
+```
+
+`reserve_pool_size` answers "what if 21st client arrives during a burst": extra slots borrowed from behind `max_db_connections`, only when clients are actually waiting.
+
+## 3. Lock Modes That Actually Bite
+
+| Lock | Taken by | Blocks |
+| :-- | :-- | :-- |
+| `ACCESS SHARE` | `SELECT` | Almost nothing (only `ACCESS EXCLUSIVE`) |
+| `ROW SHARE` | `SELECT FOR UPDATE/FOR SHARE` | `EXCLUSIVE`, `ACCESS EXCLUSIVE` |
+| `ROW EXCLUSIVE` | `INSERT`, `UPDATE`, `DELETE` | `SHARE`, `SHARE ROW EXCLUSIVE`, `EXCLUSIVE`, `ACCESS EXCLUSIVE` |
+| `SHARE ROW EXCLUSIVE` | `CREATE TRIGGER`, `ALTER TABLE ... ADD FOREIGN KEY` (validating) | Everything involving writes; not plain reads |
+| `SHARE` | plain `CREATE INDEX` | Writes — this is why concurrent builds use `CREATE INDEX CONCURRENTLY` |
+| `ACCESS EXCLUSIVE` | `DROP`, `TRUNCATE`, `VACUUM FULL`, most `ALTER TABLE` | Everything — the deploy-time killer |
+
+Row-level: `UPDATE`/`DELETE` take implicit row locks; `SELECT ... FOR UPDATE` takes explicit ones; FK referencing takes `FOR KEY SHARE` on the referenced row.
+
+## 4. The ShopCore Inventory Deadlock — Full Walkthrough
+
+Two customers check out products A and B concurrently. Both handlers decrement stock inside one transaction:
+
+```text
+Txn 1: UPDATE inventory SET stock = stock - 1 WHERE product_id = 'A'
+       UPDATE inventory SET stock = stock - 1 WHERE product_id = 'B'
+Txn 2: UPDATE inventory SET stock = stock - 1 WHERE product_id = 'B'
+       UPDATE inventory SET stock = stock - 1 WHERE product_id = 'A'
+
+Txn 1 holds A, wants B (held by Txn 2). Txn 2 holds B, wants A (held by Txn 1).
+Postgres deadlock detector fires; one txn aborts with SQLSTATE 40P01.
+```
+
+Fixes, in order of permanence:
+
+1. **Consistent ordering** — always touch inventory rows in ascending `product_id` order. Deadlock structurally impossible for this shape.
+2. **Short transactions** — no external calls (Stripe!) between the two UPDATEs. Lock duration = the bug.
+3. **Retry on `40P01`** — retry the whole transaction (idempotent via idempotency key), exponential backoff, max 3 attempts. Treat as normal contention, not a crash.
+
+## 5. Isolation Levels — What Can and Cannot Happen
+
+| Level | Dirty | Non-repeatable | Phantom | Write skew |
+| :-- | :-- | :-- | :-- | :-- |
+| `READ COMMITTED` (PG default) | no | yes | yes | yes |
+| `REPEATABLE READ` (PG = snapshot isolation) | no | no | **no** (PG is stricter than the SQL standard here) | yes |
+| `SERIALIZABLE` (PG SSI) | no | no | no | **detected & aborted** (`40001`) |
+
+ShopCore checkout runs at `READ COMMITTED` + idempotency + ordered row locks — a deliberate, documented choice. `SERIALIZABLE` is not "more correct checkout," it is "certain dangerous transactions abort" — if you opt in, every transaction needs the `40001` retry ladder from §4. Recap of MVCC and snapshots: [11.2.1](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases/11-2-1-transactions-and-acid-guarantees).
+
+## 6. N+1 — The Innocent Loop That Melts the Pool
+
+```js
+// The N+1 shape (Prisma/Sequelize/Knex-raw all produce this when looped):
+const orders = await db.order.findMany({ where: { userId } });   // 1 query
+for (const o of orders) {
+  o.items = await db.orderItem.findMany({ where: { orderId: o.id } }); // N queries
+}
+// 1 + N round-trips; 25 orders = 26 queries; under k6 this exhausts pool #1 instantly
+```
+
+Fix 1 — eager load (ORM-level): `findMany({ include: { items: true } })` / `{ include: [Item] }` — one JOIN. Fix 2 — one explicit query: `SELECT ... FROM orders JOIN order_items ...` (the plan from 24.1.2 §1). Diagnosis from outside the code: `pg_stat_statements` shows the same query with enormous `calls`; app logs show bursts of identical SELECTs per request.
+
+## 7. Seeing Blocking and Waiting — Your Triage Toolkit
+
+```sql
+-- Who is waiting on whom right now?
+SELECT a.pid, a.usename, a.state, a.wait_event_type, a.wait_event,
+       left(a.query, 80) AS query, age(a.query_start) AS age
+FROM pg_stat_activity a
+WHERE a.state = 'active' AND a.wait_event IS NOT NULL
+ORDER BY a.query_start;
+
+-- Blocking chain (who holds the lock the others wait for)
+SELECT blocked.pid AS waiting_pid, left(blocked.query, 60) AS waiting_on,
+       blocking.pid AS blocking_pid, left(blocking.query, 60) AS blocking_query
+FROM pg_stat_activity blocked
+JOIN pg_locks bl ON bl.pid = blocked.pid AND NOT bl.granted
+JOIN pg_locks bk ON bk.locktype = bl.locktype
+  AND bk.database IS NOT DISTINCT FROM bl.database AND bk.relation IS NOT DISTINCT FROM bl.relation
+  AND bk.page IS NOT DISTINCT FROM bl.page AND bk.tuple IS NOT DISTINCT FROM bl.tuple
+  AND bk.pid <> bl.pid AND bk.granted
+JOIN pg_stat_activity blocking ON blocking.pid = bk.pid;
+```
+
+`idle in transaction` entries are the silent prod killer — an app crashed mid-transaction holding locks. Kill deliberately: `pg_terminate_backend(pid)` (never `pg_cancel_backend` on confusion — read state first). Autovacuum's role in lock/bloat health: it clears dead tuples (`n_dead_tup`, see 24.1.1 §7) so index scans stay honest — let it run, don't fight it with aggressive retention of "manual VACUUM FULL."
+
+## 8. Troubleshooting Table
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `sorry, too many clients already` | Pool fan-out math wrong | §1 recount; PgBouncer §2; raise `max_connections` only after |
+| Random `40P01` under load | Unordered multi-row locking | Ordered updates §4.1 + retry §4.3 |
+| Checkout hangs, CPU idle | `idle in transaction` from a crashed worker | Find + terminate; fix worker lifecycle |
+| Reads slow after bulk update | Dead tuples not vacuumed | Autovacuum tuning; manual `VACUUM ANALYZE` |
+| Prepared statement errors via PgBouncer | Named statements in transaction mode | `?pgbouncer=true` / session mode / unnamed queries |
+| Phantom reads in reports | READ COMMITTED + long report | `REPEATABLE READ` for the report txn only |
+| ORM bursts of 40 identical queries | N+1 | §6 eager load |
+
+## 9. Practice
+
+**Guided.** From two psql sessions, reproduce §4's deadlock deliberately (A→B in session 1, B→A in session 2). Observe `40P01`. Implement ordered-update fix; re-run; deadlock must not fire.
+
+**Independent.** Stand up PgBouncer (transaction mode) in front of local Postgres; point ShopCore's pool at it with `max = 30`; run the k6 read mix at 100 VUs; record `max_client_conn` headroom and server-side connection count in `pg_stat_activity`.
+
+**Challenge.** Seed the N+1 version of the orders-history endpoint, run k6, capture `pg_stat_statements` rows. Apply the include/JOIN fix; capture again. Show the before/after in your notebook with the top SQLSTATE count (`40P01` = 0, thankfully).
+
+**Assessment checklist**
+
+- [ ] I can do the max_connections arithmetic for this shop on a whiteboard, cold.
+- [ ] I can explain PgBouncer transaction vs session mode and name the two features that break.
+- [ ] I have reproduced and fixed a real deadlock, including `40P01` retry handling.
+- [ ] I know what isolation level ShopCore runs and why.
+- [ ] I can spot N+1 from `pg_stat_statements` alone and fix it two ways.
+- [ ] I have used `pg_stat_activity` + `pg_locks` to find a blocking chain.
+
+</BookNodePage>

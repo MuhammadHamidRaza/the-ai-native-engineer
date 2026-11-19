@@ -1,0 +1,60 @@
+---
+id: "10-2-1-working-with-json-csv-and-pdfs"
+title: "10.2.1 Working with JSON, CSV and PDFs"
+sidebar_label: "10.2.1 Working with JSON, CSV and PDFs"
+slug: "/part-03-python-development/10-python-for-apis-files-and-automation/10-2-files-data-processing-and-scripts/10-2-1-working-with-json-csv-and-pdfs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-10-s2-t1">
+
+Stop concatenating file paths with `"folder\\" + file` (which breaks on Linux/macOS) or `"folder/" + file`. Python's built-in **`pathlib.Path`** handles Windows and POSIX paths identically, and explicit `encoding="utf-8"` prevents Windows `cp1252` character crashes on international text.
+
+## 1. Transforming CSV to Validated JSON Safely
+
+```python
+import csv
+import json
+from pathlib import Path
+
+def csv_to_json(csv_path: Path, json_path: Path) -> int:
+    records: list[dict[str, str | int]] = []
+    # newline="" is required by Python's csv module to avoid blank rows on Windows
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = (row.get("name") or "").strip()
+            amount = int(row["amount_cents"])
+            if name:
+                records.append({"name": name, "amount_cents": amount})
+
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    return len(records)
+```
+
+*(Notice `utf-8-sig`: Excel often saves UTF-8 CSVs with a hidden Byte Order Mark at byte 0; `utf-8-sig` strips it cleanly so `"name"` never turns into `"\ufeffname"`!)*
+
+## 2. Extracting Text from PDFs with `pypdf`
+
+Install `pypdf` (`pip install pypdf` or `uv add pypdf`) to read text page-by-page without loading huge documents blindly:
+
+```python
+from pathlib import Path
+from pypdf import PdfReader
+
+def extract_pdf_text(pdf_path: Path) -> str:
+    reader = PdfReader(str(pdf_path))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    return "\n\n".join(pages).strip()
+```
+
+*(Keep in mind: scanned image-only PDFs contain zero embedded text layer—for scanned receipts you'll pair extraction with OCR or multimodal vision models in `Part 07`.)*
+
+## Mastery Checklist
+
+- [ ] Uses `pathlib.Path` instead of manual string path joining and always passes `encoding="utf-8"`.
+- [ ] Opens CSVs with `newline=""` and `utf-8-sig` to handle Excel exports cleanly.
+
+</BookNodePage>

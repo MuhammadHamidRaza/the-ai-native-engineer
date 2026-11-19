@@ -1,0 +1,131 @@
+---
+id: "13-1-1-what-nodejs-is-lts-and-how-to-install-it"
+title: "13.1.1 What Node.js Is, LTS vs Current, and Installing It"
+sidebar_label: "13.1.1 Installing Node.js"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-1-nodejs-and-npm-from-zero/13-1-1-what-nodejs-is-lts-and-how-to-install-it"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s1-t1">
+
+Every backend skill in this chapter — Express servers, databases, auth, testing — runs on **Node.js**. Before writing one line of app code, install it properly and prove it works. This lesson takes you from "what's Node?" to a verified `node` and `npm` on your machine.
+
+## 1. What Node.js Is (and Why It Exists)
+
+JavaScript was invented for browsers. **Node.js** is the same JavaScript engine (Google's **V8**) packaged to run **anywhere** — servers, CLIs, build tools — outside the browser. It ships with **npm** (Node Package Manager), the registry of 2+ million open-source packages.
+
+Where it fits in a real app:
+
+```text
+Browser (React)  ---fetch--->  Node.js server  ---SQL--->  PostgreSQL
+                                   |
+                                   +---> MongoDB
+```
+
+One language across frontend and backend: share validation logic, types, and utilities. That's why Node + React is the default full-stack pairing — and why your Chapter 13 backend speaks JavaScript/TypeScript.
+
+**Node is a runtime, not a framework.** Express (13.2) is a framework running *on* Node. Node alone gives you `http`, `fs`, `path`, and nothing about routing or middleware — hence Express.
+
+**Event loop in one breath:** Node handles thousands of concurrent connections with one thread — I/O is non-blocking; when a query returns, a callback picks it up. You get concurrency without managing threads (mostly).
+
+## 2. LTS vs Current — Which to Install
+
+Node releases move fast: one **major** every six months, lines named **Current** (newest, short-lived) and **LTS** (Long Term Support — even-numbered lines, 30 months of fixes, what companies deploy).
+
+As of **November 2026**, **Node.js 26 LTS ("Krypton"→"Lithium" lineage; 26.13.1)** is the current Active LTS; Node 24 is maintenance LTS; 22 is maintenance. **Install the latest LTS — never Current for anything heading to production.**
+
+The download page (left column, always the newest): **https://nodejs.org/en/download**
+
+## 3. Install on Windows 10/11 — Step by Step
+
+1. Go to https://nodejs.org/en/download — click **Windows Installer (.msi) 64-bit** (use the LTS button/preset).
+2. Run the downloaded `.msi`. Windows may ask permission → **Yes**.
+3. Wizard → **Next** → accept license → **Next**.
+4. **Destination folder:** leave default (`C:\Program Files\nodejs\`) → **Next**.
+5. **Custom Setup:** ensure **Node.js runtime**, **npm package manager**, and **Add to PATH** are all enabled (defaults are on). → **Next**.
+6. **Tools for Native Modules:** optional (needed only for compiling native addons like `sharp`); check it if you will use such packages → **Next**.
+7. **Install** → **Finish**. A console window may flash — normal.
+
+## 4. Install on macOS
+
+- **Option A — official pkg:** https://nodejs.org/en/download → **macOS Installer (.pkg)** → run it, defaults all the way.
+- **Option B — Homebrew:** `brew install node@26` then `brew link --force --overwrite node@26` if `node` isn't found.
+
+## 5. Install on Linux
+
+Use **nvm** (Node Version Manager) — the professional choice for managing Node versions:
+
+```bash
+# install nvm (see https://github.com/nvm-sh/nvm for the latest install command)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+
+# open a new terminal, then:
+nvm install --lts
+nvm use --lts
+```
+
+(Distro packages like `apt install nodejs` are convenient but often ancient — avoid for this book.)
+
+## 6. Verify — Exactly What to Run
+
+Open a **new** terminal (PowerShell on Windows, Terminal on macOS/Linux) — fresh windows read the updated PATH.
+
+```bash
+node --version   # expect something like: v26.13.1  (may be newer — fine)
+npm --version    # expect something like: 11.x.x
+```
+
+If either prints `not recognized` / `command not found`, see Troubleshooting.
+
+Prove the runtime executes JavaScript:
+
+```bash
+node -e "console.log('Node works:', process.version)"
+```
+
+Expected output:
+
+```text
+Node works: v26.13.1
+```
+
+## 7. Anatomy of What Just Landed
+
+| You installed | Lives at | Job |
+| :-- | :-- | :-- |
+| `node.exe` | `C:\Program Files\nodejs\` | The V8 runtime — runs your `.js`/`.mjs`/`.ts` (via loaders) |
+| `npm.cmd` | same | Downloads/installs/updates packages; runs scripts |
+| `npx.cmd` | same | Runs a package's binary without installing it globally (`npx nodemon`) |
+
+Global packages go to a per-user folder; **project** dependencies go to `./node_modules` — the thing `.gitignore` exists to exclude.
+
+## 8. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `node`/`npm` not recognized on Windows | Open a **new** PowerShell; check "Add to PATH" was enabled — reinstall if unsure; or manually add `C:\Program Files\nodejs\` to PATH (see 12.1.1 troubleshooting for the exact steps) |
+| macOS: `command not found` after pkg install | Close Terminal, reopen; if still broken, `export PATH="/usr/local/bin:$PATH"` or use the Homebrew path |
+| Linux: `node` works but `node --version` shows old version | You have a distro `node` shadowing nvm's — `which node` reveals it; use `nvm use --lts` |
+| `npm ERR! network` | Proxy/VPN/DNS — check `npm config get registry` is `https://registry.npmjs.org/` |
+| Permission errors on global installs (macOS/Linux) | **Never sudo npm.** Use nvm — per-user by design |
+| `EACCES` on Windows for global packages | npm config set prefix to a user-writable dir (rare with official MSI) |
+| Checksums/signatures failing | Re-download from nodejs.org only; corrupt downloads happen |
+
+## 9. Practice
+
+**Guided exercise.** Install Node LTS, then run all three verification commands from section 6 and screenshot the output.
+
+**Independent exercise.** Create a file `hello.mjs` containing `console.log("I installed Node myself")`, then run it: `node hello.mjs`. Confirm the output prints the exact string.
+
+**Challenge.** Print `process.versions.v8` and `process.platform` with `node -e`. Research which V8 version ships in Node 26 LTS.
+
+**Assessment checklist**
+
+- [ ] I can explain what Node.js is, and what V8 and npm are.
+- [ ] I installed the **LTS** line from nodejs.org only.
+- [ ] `node --version`, `npm --version` and the `node -e` check all pass.
+- [ ] I know the difference between global tools and project `node_modules`.
+- [ ] I can fix PATH problems without reinstalling blindly.
+
+</BookNodePage>

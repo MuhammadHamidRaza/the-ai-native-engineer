@@ -1,0 +1,28 @@
+---
+id: "index"
+title: "22.3 Observability & Incident Response"
+sidebar_label: "22.3 Observability & Incident Response"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-3-observability-and-incident-response"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s3">
+
+**Subchapter 22.3** is how ShopCore tells you the truth when it hurts. Logs answer "what happened on this one request" (22-3-1); metrics and traces answer "is the system healthy and what is slow" (22-3-2) — and incident response turns both into fast, blameless recovery.
+
+## Lessons in Subchapter 22.3
+
+1. **[22.3.1 Structured Logging and Correlation IDs](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-3-observability-and-incident-response/22-3-1-structured-logging-and-correlation-ids):** JSON logs with pino; `pino-http`; request-id generation and propagation across browser → load balancer → API → worker; correlationId through webhooks and jobs; log levels and sampling at scale; what must never be logged (passwords, PII, tokens, PANs) with concrete redaction config; alerting on symptoms, not log lines.
+2. **[22.3.2 Metrics, Tracing, SLIs, SLOs and Incident Response](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-3-observability-and-incident-response/22-3-2-metrics-tracing-slis-slos-and-incident-response):** RED (rate/errors/duration) and USE (utilization/saturation/errors); p50/p95/p99 histograms with PromQL; the ShopCore checkout SLI and 99.9% error budget (43.2 min/month); OpenTelemetry spans for DB calls and Stripe egress; symptom-vs-cause alerting with Grafana examples and PagerDuty routing; incident command (IC), comms, timeline, and the blameless postmortem template applied to a partial ShopCore outage.
+
+Read in order: you cannot compute an SLO from logs that were never structured, and you cannot page on a symptom you never defined.
+
+**Exit checklist**
+
+- [ ] Every ShopCore request carries one `x-request-id` from edge to worker, visible in any log line.
+- [ ] Zero secrets or PII appear in logs — proven by a redaction test, not by review.
+- [ ] Checkout SLI computes from real metrics; someone can state the error budget from memory.
+- [ ] A teammate can run your postmortem template for a rehearsed partial outage, without you.
+
+</BookNodePage>

@@ -1,0 +1,78 @@
+---
+id: "index"
+title: "Part 06: System Design & Production Quality"
+sidebar_label: "Part 06 — System Design & Production Quality"
+slug: "/part-06-system-design-and-production-quality"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-06">
+
+Parts 01–05 got ShopCore built, tested, deployed, and monitored. **Part 06 is where it becomes a system you can defend** — under traffic, under failure, under the audit of a stranger who shows up at 3 a.m. and has to keep it running. Production quality is not a checklist you apply at the end; it is a set of engineering muscles: thinking in systems, attacking and testing your own work, observing reality instead of guessing, and making the database fast enough that it never has to be the excuse.
+
+## The Four Chapters in This Part
+
+| Ch | Title | Focus hours | The question it answers |
+| :-- | :-- | :-- | :-- |
+| 21 | Software Architecture & System Design | 18 | What shape should this system have — and why this shape, not another? |
+| 22 | Security, Testing & Observability | 12 | How do I know the system works, and how will I know when it breaks? |
+| 23 | Performance & Scalability | 8 | How fast is it, what breaks first, and what do I add next? |
+| 24 | Database Performance & Operations | 12 | Why is the database slow, and how do I operate it at scale? |
+
+**Hours honesty:** 50 focused hours total for Part 06. Chapters 21–22 build the judgment and the proof; 23–24 are where you learn to find and fix the physical bottlenecks that cap everything you built before.
+
+## A Sample Layout — How the Part Fits Together
+
+```text
+  PART 04/05                 PART 06                                 OUTPUT
+  -----------                -------                                 ------
+  ShopCore built      -->    21. Decide the shape      -->  ADRs, bounded contexts,
+  ShopCore shipped    -->    22. Attack, test, observe -->  OWASP punch-list, test pyramid,
+                                                     SLO + error budget, postmortem
+  Traffic shows up    -->    23. Find & fix bottlenecks
+                              -->  Lighthouse/k6 numbers, bundle budget,
+                                   Redis cache + rate limiter, LB + autoscale plan
+  The DB complains    -->    24. Make Postgres fly
+                              -->  Indexed, EXPLAIN-verified queries;
+                                   PgBouncer + replicas + partitions
+```
+
+Each chapter follows the same arc: **mental model → measurement → fix → verify**. No chapter in this part is "read and nod." Every one ends in something you ran, measured, and wrote down.
+
+## What You Will Be Able to Do by the End of Part 06
+
+Concretely, on the real ShopCore codebase, you will be able to:
+
+- Draw the ShopCore bounded-context map from memory, defend the monolith-vs-services decision in an ADR, and explain the consistency model your checkout actually offers.
+- Apply the OWASP Top 10:2025 to ShopCore's real routes, rotate a leaked Stripe key in under 30 minutes, and make CI fail on a broken contract test.
+- Compute checkout's error budget from real metrics, page on symptoms (not causes), and write a blameless postmortem your team can act on.
+- Read a Lighthouse report and CrUX data for the ShopCore storefront, enforce a JavaScript bundle budget in CI, and prove the fix with before/after numbers.
+- Profile a Node.js checkout process with `node --prof`, load-test it with k6 at 100 VUs, and state its p50/p95/p99 with thresholds that fail the build.
+- Put a cache-aside layer in front of the catalog with single-flight stampede protection and invalidation-on-write, plus a Redis-backed rate limiter on `POST /v1/orders`.
+- Read an `EXPLAIN (ANALYZE, BUFFERS)` plan, build the composite/covering/partial/GIN index the query needs, and prove it with `pg_stat_user_indexes` and timing.
+- Set up PgBouncer in transaction-pooling mode, and explain why `max_connections = 100` and an app pool of 10 per pod can silently exhaust every connection Postgres has.
+- Roll a read replica, read its lag, and partition `orders` by month — with a written migration plan that does not lose a row.
+
+## How to Work Through This Part
+
+1. Do Chapter 21 before 22–24. Architecture decisions made after measurement are informed guesses; decisions made before you even know the shape are superstition.
+2. Do Chapter 22's load-adjacent work (22.3 observability) before Chapter 23 — performance work without metrics is driving at night with the headlights off.
+3. Do Chapter 23 before Chapter 24. Half of "database performance" is really "we scaled the app tier into a wall the database couldn't hold."
+4. Keep a running `shopcore-perf-notebook.md` (outside this repo, or in your own scratch space): every number you measure, the command that produced it, and what changed after the fix. That notebook is your evidence at the exit gate.
+
+**Prerequisites:** Part 04 (ShopCore built and deployable; see [15.4 Verification & Shipping](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping)) and Part 05 (deployed ShopCore; see [20.2 Production Reliability](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability)). If you have never seen an EXPLAIN plan or a Grafana panel, budget the top of every range.
+
+## Part 06 Exit Gate
+
+You may consider Part 06 complete when, on the real ShopCore deployment, you can:
+
+- Produce a **performance report** with Lighthouse + k6 + `EXPLAIN ANALYZE` before/after numbers you measured yourself, and point to the exact line that was slow.
+- Survive the **3 a.m. drill**: given a checkout-latency page, walk from symptom (SLO burn) → RED metrics → trace → DB plan → fix, in under 30 minutes, out loud.
+- Show a **connection budget** (`pg_stat_activity`, pool sizes, PgBouncer config) that cannot exceed `max_connections`, and explain exactly what breaks when it can.
+- Present the **capacity arithmetic** for ShopCore: what peak traffic it holds today, what fails first, and the cheapest next step (cache, index, replica, or a bigger instance).
+- Hand a teammate the **runbook** for "orders table is slow" and watch them execute it without you.
+
+If any of those five require you to go look something up mid-drill, the gate is not passed yet — loop back to the chapter that covers it.
+
+</BookNodePage>

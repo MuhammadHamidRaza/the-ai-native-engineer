@@ -1,0 +1,30 @@
+---
+id: "index"
+title: "Chapter 13: Backend Engineering with Node.js"
+sidebar_label: "Chapter 13: Backend Engineering with Node.js"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13">
+
+**Chapter 13 (`34 Focused Hours`)** teaches you to build the ShopCore backend — from installing Node.js on your machine to a production-hardened API with authentication, authorization, background jobs and real database wiring.
+
+## Chapter 13 Structure
+
+- **13.1 Node.js & npm from Zero:** Install Node 26 LTS, master npm and `package.json`, scaffold `shopcore-api`.
+- **13.2 Building APIs with Express:** Your first server, REST fundamentals, middleware/Zod validation/error boundaries, PostgreSQL and MongoDB connections, and a complete working CRUD API.
+- **13.3 Authentication & Authorization:** scrypt/argon2 password hashing, HttpOnly cookie sessions, JWTs, RBAC and IDOR defense, and OAuth 2.0 with GitHub.
+- **13.4 Production Integrations & Hardening:** Background jobs with `SKIP LOCKED`, idempotency keys, HMAC webhooks, rate limiting, and the security checklist.
+
+## The Build Sequence
+
+1. 13.1 — get `node --version` working and scaffold `shopcore-api`.
+2. 13.2 — ship the products CRUD API against real Postgres (`curl`-verified).
+3. 13.3 — bolt on registration, login, RBAC and GitHub sign-in.
+4. 13.4 — harden: jobs, webhooks, rate limits, Helmet, CORS, audit.
+
+Every lesson assumes the previous one. By the end you have a deployable backend service, not a folder of snippets.
+
+</BookNodePage>

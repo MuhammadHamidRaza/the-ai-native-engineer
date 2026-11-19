@@ -1,0 +1,148 @@
+---
+id: "27-3-3-ai-assisted-engineering-production-discipline"
+title: "27.3.3 AI-Assisted Engineering: Production Discipline"
+sidebar_label: "27.3.3 AI-Assisted Engineering: Production Discipline"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-3-verification-review-and-ownership/27-3-3-ai-assisted-engineering-production-discipline"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s3-t3">
+
+Every earlier lesson in this chapter was technique. This one is about the part that does not compile: ethics, contracts, privacy, measurement and sustainability. AI assistance changes how code gets written; it changes nothing about who answers for it. Production discipline is what keeps "the agent did it" from becoming the explanation in your next incident review.
+
+## 1. Ownership Never Transfers
+
+The AI wrote the line. You merged it. It is yours.
+
+Ownership means: you can explain the diff (27.3.1), you ran the gate (27.3.2), you approved the dependency change, you watched the deploy, you carry the pager. None of those can be delegated to a tool, an agent, a vendor, or "the model was working fine yesterday". In every jurisdiction and every professional code of ethics that matters to employers, authorship and accountability are human. Legally the picture varies (copyrightability of AI output is unsettled in several jurisdictions — flag for counsel, do not assume), but the engineering rule is not unsettled at all: **the human who merges the diff owns its consequences.**
+
+A useful internal test: if the agent-written migration corrupts data at 3 a.m., would you say "the model decided that" in the incident call? You already know the answer; build your review process so it never happens.
+
+## 2. Disclosure Norms: Telling Your Reviewer and Client
+
+Disclosure is context-dependent, and norms are converging:
+
+- **Inside your team / PR reviews:** disclose when the agent produced the substantive change — one line ("implement with Claude Code + Codex; human-verified gate 9f3a1c2") is enough. Undisclosed agent diffs poison review: the reviewer calibrates trust wrongly (too lenient on "it compiles", too harsh on style).
+- **To clients and customers:** if the contract or SOW mentions methods, or the deliverable includes AI-generated content that staffing/IP terms cover, disclose per contract. When silent, the emerging default in reputable agencies is to state it in the delivery notes.
+- **To open source:** if contributing AI-generated code to an upstream project, say so if their contribution policy asks (many now do); match their norms, not yours.
+- **To your employer:** know the internal AI-use policy *before* using consumer tools on client code; ignorance is not a defense to a data-handling finding.
+
+Disclosure is not an apology; it is metadata for the reviewer. "73% agent-written, gate green, 2 defects found in audit" is decision-useful. "Used AI" is not.
+
+**Worked scenario.** You are two weeks into a client build when the client emails: "Are you using any AI tools on our codebase?" The right answer is specific, not defensive:
+
+```text
+Yes — Claude Code and Codex CLI as implementation assistants, on an enterprise
+tier with no-training / zero-retention terms; all output human-reviewed against
+the agreed gates (lint, tests, mutation spot-checks). No client data is sent to
+consumer chatbots; no secrets enter any prompt. Delivery notes for each PR state
+which steps were agent-assisted. Happy to share our AI-use addendum.
+```
+
+Notice what this does: it names tools, tiers, data handling, and verification — the four facts every auditor, DPO and lawyer wants. "We use AI sometimes" fails every one of those audiences. If the honest answer is "we pasted your code into a consumer chatbot to debug it", the email becomes an incident notification, not an answer — which is exactly why Section 4 exists.
+
+## 3. Contracts, IP Clauses and Client Data
+
+Before the first prompt on client work:
+
+1. **IP assignment.** Most master services agreements assign work product to the client. Whether AI-generated output is assignable (and whether providers' licenses agree) is jurisdiction- and contract-dependent. If the contract demands "original human authorship", agent output may not qualify — read the IP clause, or ask counsel; do not improvise.
+2. **Confidentiality / DPA.** Sending client code to a consumer chatbot likely breaches NDAs and DPAs (data processing agreements) — the code itself *is* the client's confidential data. Use business/enterprise tiers with zero-retention and no-training terms (all major providers offer them), an internal gateway, or keep client code out of external tools entirely.
+3. **Copyright status of output.** Where the law does not recognize pure-AI output as protectable subject matter, your client may receive unenforceable rights. Usually harmless for glue code; material for licensed deliverables (templates, content, designs).
+4. **Liability.** If the agent invents a package (`renderTemplate`) and you ship it, the incident is yours — warranties of non-infringement and merchantability sit with you, not the provider (providers cap liability at fees paid).
+5. **Third-party components.** Agent-added dependencies propagate their licenses. A GPL transitive dep in your proprietary build is a legal event, not an engineering detail.
+6. **Questions to ask before the first client prompt** (five minutes, every time): May code leave our network, and to which tools? Is this project's code classified confidential under the DPA? Does the MSA require human authorship of deliverables? Which AI tools are approved, and at what tier (business/enterprise with no-training terms, or none)? Who is notified — and when — if code must be typed into a tool? Unanswered questions get answered by your delivery lead in writing, never by the agent's convenience.
+
+A sample clause pattern you will meet (wording varies; this is the shape, not the law): *"Contractor shall not transmit Confidential Information to any third party except as required to perform the Services."* A consumer chatbot session is a transmission to a third party; "the AI needed it to do the work" does not fit any standard reading of that clause. Enterprise tiers with contractual no-training and zero-retention terms are explicitly designed so this clause holds; consumer tiers are not. If your client forbids external processing, then external AI ends at the firewall — internal or local models only, same as any other data-residency constraint.
+
+## 4. Credential Hygiene: Secrets in Prompts Are Forever
+
+Prompts are logged by providers, cached in traces, replicated in screenshots, pasted into issues by helpful colleagues, and remembered by every downstream system your tool touches. A pasted `sk_live_...` key is compromised the moment it leaves your keyboard:
+
+- Never paste secrets, tokens, connection strings, customer PII, or unpublished business plans into any AI tool — chat, CLI, or IDE sidebar.
+- Reference names (`POSTMARK_TOKEN is in .env`), not values; configure the tool to read env vars.
+- Deny-list `.env*` reads where the tool supports it (Claude Code permission rules, OpenCode permissions).
+- If a secret was pasted: rotate immediately (not "later"), audit access logs, tell the owner per policy. Rotation is the only cure; deletion of the chat is not.
+
+## 5. Model Upgrades Are Re-Qualification Events
+
+Upgrading the model is upgrading your dependency — silently. Alias `opus` re-points on every release; last month's verified behavior is not this month's. Discipline:
+
+- **Pin** model IDs for production-critical pipelines (`claude-opus-5-5`, not `opus`), and upgrade deliberately.
+- **Re-qualify** on upgrade: run your eval set (27.2.3) and your gate suite before and after; compare pass rates, not vibes. Five percent regression on a billing path is an incident, not an inconvenience.
+- **Re-check failure modes:** each generation shifts what agents get wrong (verbose vs terse, bold vs cautious, different deprecated-API hallucination styles). Your 27.3.1 audit sheet needs a one-line review per upgrade.
+- **Changelogs are mandatory reading** — provider changelogs announce deprecations (GPT-5.3-Codex-Spark retired Sept 2026; GPT-5.5 retired from Codex ChatGPT sign-in Oct 2026). A pinned model that 404s in production is the most embarrassing outage class there is.
+
+**Worked vignette — the 22:40 incident.** Friday deploy of Phase 3 ships the abandoned-cart job. 22:40, 3,400 "we miss you" emails go to customers who **just purchased**. Rollback at 22:58. Root cause: `c.updated_at > $1` — the exact defect class planted in 27.3.1's seeded diff. The merge happened because gate output was pasted, but the *review* was skipped "just this once". In the incident review, "it passed review" is false, "the model wrote it" is irrelevant, and "the test was green" is true and useless. The honest summary: we merged an unreviewed agent diff because the gate felt like a substitute for review, and it is not. This class of incident is reconstructed from real teams — the failure is organizational, not technical. Had any pair of eyes applied the 27.3.1 audit (layer 4, the confident false comment about checkout recovery), the 22:40 deploy stops there.
+
+## 6. The One-Line Disclosure (Steal This)
+
+```text
+Implemented by agent (Claude Code, pinned claude-opus-5-5) under human review;
+gate: npm test -- --grep abandoned-cart (9 passing) + lint clean;
+human-verified diff, 2 defects found and fixed pre-merge.
+```
+
+Three facts a reviewer needs: which tool and model, which gate with its result, that a human read the diff. Everything else is optional.
+
+**Model-upgrade re-qualification checklist:**
+
+- [ ] Pin the production model ID; list the alias separately in the README.
+- [ ] Changelogged deprecations reviewed for every pinned model (monthly).
+- [ ] Eval set (27.2.3) run pre/post upgrade; delta documented in the PR.
+- [ ] Gate suite green on the new model before any client code runs on it.
+- [ ] Failure-mode sheet updated (one line per known regression pattern).
+
+## 7. Measurement: Time-to-Merged-Value, Not Lines
+
+Every bad metric in this space has "output volume" at its core. Reject: lines written, PRs opened, tokens consumed, "agent utilization". Measure:
+
+| Metric | What it tells you |
+| :-- | :-- |
+| Time-to-merged-value (task accepted at spec -> merged PR) | The only throughput number that matters |
+| Rework rate (agent diffs requiring > 30% rewrite) | Spec/decomposition quality |
+| Defect escape rate (agent-caused incidents per release) | Verification discipline |
+| Review minutes per agent-diff | Reviewer sustainability — if it rises, smaller tasks |
+| Gate pass rate, first attempt | Task sizing and context quality |
+| Cost per merged task | Economic truth of your harness |
+
+Track them per month; share the dashboards; retire any metric people start gaming — gaming is the universal sign the metric no longer measures value.
+
+## 8. Sustainable Pace: Reviewing Agent Output Is Still Work
+
+Supervised agentic engineering replaces *writing* load with *review* load — and review load is the kind that burns people silently: it is cognitively dense, context-switching, and ego-threatening ("the AI could not have been wrong, could it?"). Guardrails for reviewers:
+
+- **Cap concurrent agent streams** at 1-2 per human; three half-reviewed diffs are worse than one completed one.
+- **Timebox review passes** (25 min); diffs you cannot finish are diffs that get skimmed — split the task instead.
+- **Pair on suspicious patterns** weekly; calibration against colleagues beats solo second-guessing.
+- **Keep the craft warm:** write some code yourself every week. Reviewers who stop writing become stamp collectors.
+- **Say no:** declining an agent task that failed three gates (Rule of 3) is professionalism, not obstruction.
+
+## 9. Practice
+
+**Guided exercise.** Audit your last AI-assisted PR: would its merge commit or PR body disclose the agent's role? Write the one-line disclosure. Now find your team's AI-use policy; if none exists, draft a three-line one and propose it.
+
+**Independent exercise.** Pin the model in one pipeline, build a 10-case eval, run it pre/post a model alias change (or simulation). Report pass-rate delta.
+
+**Challenge.** For your current client or employer, write the AI-disclosure and data-handling section of a one-page engineering addendum: tools allowed, data classes allowed in tools, disclosure language, rotation trigger for leaked secrets.
+
+**Assessment checklist**
+
+- [ ] I can explain why ownership never transfers, citing contracts that actually apply to me.
+- [ ] I know my team's AI-use policy and my client's data class rules cold.
+- [ ] No secret has ever entered one of my prompts; I would catch a colleague doing it.
+- [ ] My critical pipeline pins a model and re-qualifies on every upgrade.
+- [ ] I measure time-to-merged-value and rework rate — never raw output.
+- [ ] I cap concurrent streams and take written breaks; my review quality has not quietly degraded.
+
+## 10. The Short Version
+
+If you remember nothing else from this chapter:
+
+- The human who merges the diff owns its consequences; no tool shares that weight.
+- You told your reviewer the agent wrote it — one line, specific facts, every time.
+- No secret ever enters a prompt; rotate the moment one slips.
+- The model got upgraded; the eval set ran before real work did.
+- You measured time-to-merged-value, and you still write real code yourself.
+
+</BookNodePage>

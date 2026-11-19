@@ -1,0 +1,205 @@
+---
+id: "19-3-1-terraform-providers-state-modules-and-cloud-provisioning"
+title: "19.3.1 Terraform: Providers, State, Modules and Cloud Provisioning"
+sidebar_label: "19.3.1 Terraform: Providers, State & Modules"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-3-infrastructure-as-code-terraform-and-ansible/19-3-1-terraform-providers-state-modules-and-cloud-provisioning"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s3-t1">
+
+Console-clicked infrastructure cannot be reviewed, replayed or destroyed cleanly. Terraform turns it into text: you read the diff, approve it, and the same file reproduces the environment anywhere. We build a real AWS VPC + EC2 + security group — then destroy it, because this chapter's safety habit is deletion.
+
+**Billing-safety first:** this lab creates a billable t3.micro and, by default, a **public subnet + Internet Gateway (fine) — no NAT gateway** (hourly cost trap — notice it is absent). Your $5 budget alert from 19.1.1 applies; **the final section's `terraform destroy` is mandatory.**
+
+## 1. Install Terraform
+
+| Platform | Command |
+| :-- | :-- |
+| Windows | `winget install HashiCorp.Terraform` (or `choco install terraform`, or unzip from [releases.hashicorp.com](https://releases.hashicorp.com/terraform/)) |
+| macOS | `brew install hashicorp/tap/terraform` |
+| Linux (dnf) | Add HashiCorp repo per [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install), then `sudo dnf install terraform` |
+| Linux (apt) | Same repo flow, `sudo apt install terraform` |
+
+Verify (**where to run:** any terminal):
+
+```bash
+terraform version
+# Terraform v1.17.2 (current as of Nov 2026 — check releases before pinning)
+```
+
+## 2. Your First Configuration — Real AWS Infrastructure
+
+Create `main.tf` (folder `lab-terraform/`, nothing else needed to start). Uses the AWS provider `~> 6.0` (6.73.0 was current in Nov 2026):
+
+```hcl
+terraform {
+  required_version = ">= 1.6"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
+  }
+}
+
+provider "aws" {
+  region = var.region          # credentials come from env: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, or a shared profile — NEVER hardcode
+}
+
+resource "aws_vpc" "lab"            { cidr_block = var.vpc_cidr; tags = { Name = "shopcore-lab-vpc" } }
+resource "aws_internet_gateway" "lab" { vpc_id = aws_vpc.lab.id }
+resource "aws_subnet" "public" {
+  vpc_id = aws_vpc.lab.id; cidr_block = var.subnet_cidr; map_public_ip_on_launch = true
+  tags = { Name = "shopcore-lab-public" }
+}
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.lab.id
+  route { cidr_block = "0.0.0.0/0"; gateway_id = aws_internet_gateway.lab.id }
+}
+resource "aws_route_table_association" "public" { subnet_id = aws_subnet.public.id; route_table_id = aws_route_table.public.id }
+
+resource "aws_security_group" "lab" {
+  name = "shopcore-lab-sg"; vpc_id = aws_vpc.lab.id
+  tags = { Name = "shopcore-lab-sg" }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ssh" {
+  security_group_id = aws_security_group.lab.id
+  description       = "SSH from your IP only"
+  from_port         = 22
+  to_port           = 22
+  ip_protocol       = "tcp"
+  cidr_ipv4         = var.my_ip_cidr
+}
+
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  security_group_id = aws_security_group.lab.id
+  description       = "HTTP"
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_egress_rule" "all" {
+  security_group_id = aws_security_group.lab.id
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+data "aws_ami" "al2023" {
+  most_recent = true; owners = ["amazon"]
+  filter { name = "name"; values = ["al2023-ami-*-x86_64"] }
+}
+
+resource "aws_instance" "lab" {
+  ami = data.aws_ami.al2023.id; instance_type = "t3.micro"; subnet_id = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.lab.id]
+  tags = { Name = "shopcore-tf-lab" }
+}
+
+output "instance_public_ip" { value = aws_instance.lab.public_ip }
+```
+
+The `aws_vpc_security_group_*_rule` resources are the current best practice (inline `ingress`/`egress` blocks on `aws_security_group` are deprecated and fight with multiple CIDRs).
+
+`variables.tf`:
+
+```hcl
+variable "region"       { default = "us-east-1" }
+variable "vpc_cidr"     { default = "10.20.0.0/16" }
+variable "subnet_cidr"  { default = "10.20.1.0/24" }
+variable "my_ip_cidr" {
+  description = "Your public IP with /32, e.g. via: curl ifconfig.me"
+  type = string
+}
+```
+
+Create `terraform.tfvars` with **only** `my_ip_cidr = "203.0.113.7/32"` (your real IP). **Add `terraform.tfstate`, `.terraform/` and `*.tfvars` to `.gitignore` now.**
+
+## 3. The Core Loop — init / plan / apply / destroy
+
+```bash
+terraform init      # downloads the AWS provider into .terraform/
+terraform fmt       # canonical formatting
+terraform validate  # syntax + internal consistency
+terraform plan      # DRY RUN: shows exactly what will be created/changed/destroyed
+terraform apply     # type the word 'yes' — resources are created for real
+terraform show      # current state, human-readable
+```
+
+Read the plan like a contract: green `+` create, amber `~` change in-place, red `-/+` replace. **Never `apply` a plan you haven't read** — especially one showing replacement of a database.
+
+For repeatability in CI, produce the plan as a file and apply exactly that:
+
+```bash
+terraform plan -out=tfplan       # saves the exact reviewed change set
+terraform apply tfplan           # applies that file — no re-planning, no surprises
+```
+
+State surgery when you need it (rare, always with a backup `cp terraform.tfstate terraform.tfstate.bak`):
+
+```bash
+terraform state list             # every resource Terraform knows about
+terraform state show aws_instance.lab
+terraform state rm aws_instance.lab   # forget a resource WITHOUT destroying it (left it for manual handling, or someone deleted it in console)
+```
+
+Then, the non-negotiable end of this lab:
+
+```bash
+terraform destroy   # type 'yes' — deletes VPC, AMI-instance, SG, everything Terraform made
+```
+
+Verify in the EC2 console that nothing remains; confirm **Billing → Credits/Charges** the next day is still ~$0.
+
+## 4. State — The Sensitive Source of Truth
+
+`terraform.tfstate` is Terraform's map between your `.tf` files and real cloud resources. Two facts rule everything:
+
+1. **It can contain secrets in plaintext** (passwords, keys generated by resources). Never commit it; never paste it into chat.
+2. **It must be one writer's truth.** Teams use remote backends (S3 + DynamoDB locking, or HCP Terraform) with encryption + locking — local state on your laptop is for learning only, exactly like this lab.
+
+If state and reality diverge (someone clicked in the console), `terraform plan` shows drift instead of failing — that's a feature: make reality match code again.
+
+## 5. Modules — Reusing Instead of Duplicating
+
+A module is just a folder of `.tf` files with inputs/outputs. Anything you'd copy-paste twice becomes a module; the registry ([registry.terraform.io](https://registry.terraform.io)) hosts thousands pre-built (VPC, EKS, RDS…). Sketch of usage:
+
+```hcl
+module "vpc" {
+  source = "./modules/vpc"     # or registry path
+  cidr   = var.vpc_cidr
+}
+```
+
+Rule: build the flat config once (this lab), then extract modules when you understand what varies.
+
+## 6. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `No valid credential sources found` | Env vars/profile missing | `aws sts get-caller-identity` (AWS CLI v2) to debug; check env or `provider "aws" { profile = "…" }` |
+| `Error: creating Security Group: ... already exists` | Manual resource with same name from 19.1.2 | Delete leftover SG in console, or `terraform import` it |
+| Plan shows surprising replacement | Force-new attribute changed (e.g., subnet) | Read the plan diff — replacement recreates; stop and reassess |
+| `InvalidAMIID.NotFound` | AMI not in your region | The data source auto-resolves per region; check `region` matches your lab Region |
+| `Error acquiring the state lock` | Interrupted run | Usually auto-clears; `terraform force-unlock <id>` only when sure |
+| Forgot to destroy, bill ticked | You closed the terminal | EC2 console → terminate instance manually; then reconcile state with `terraform state rm` |
+
+## 7. Practice
+
+**Guided.** Run the full loop: `init → fmt → validate → plan → apply`, browse to the instance IP, then `destroy` and confirm the console is empty.
+
+**Independent.** Add a second ingress rule (HTTPS 443) via `terraform plan` — read the diff carefully before applying; then remove it the same way. Feel the loop.
+
+**Challenge.** Move the VPC into `modules/vpc/` (inputs: cidr, subnet_cidr, my_ip_cidr; outputs: vpc_id), reference it from root, and re-apply — the plan must show **no changes** when the module is written correctly.
+
+**Assessment checklist**
+
+- [ ] I can install Terraform and name the four core commands plus `fmt`/`validate`.
+- [ ] I read a plan before every apply and know + / ~ / -/+.
+- [ ] I can explain why `terraform.tfstate` is sensitive and where teams keep it.
+- [ ] I never committed `.tfvars` or state; `.gitignore` covers them.
+- [ ] I destroyed every resource and verified the next-day bill.
+- [ ] I know what a module is and when to extract one.
+
+</BookNodePage>

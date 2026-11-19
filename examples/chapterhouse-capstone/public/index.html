@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Brightside Reconciliation — Demo Dashboard</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; margin: 0; background: #0b1020; color: #e8ecf8; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 2.5rem 1.25rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+  p.sub { color: #9aa7c7; margin: 0 0 1.5rem; }
+  .card { background: #141b33; border: 1px solid #26304f; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  label { display: block; font-size: .85rem; color: #9aa7c7; margin: .75rem 0 .25rem; }
+  input { width: 100%; box-sizing: border-box; padding: .55rem .7rem; border-radius: 8px; border: 1px solid #26304f; background: #0b1020; color: #e8ecf8; }
+  button { margin-top: 1rem; padding: .55rem 1.1rem; border: 0; border-radius: 8px; background: #4f7cff; color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .5rem; }
+  th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #26304f; }
+  th { color: #9aa7c7; }
+  .ok { color: #3ddc97; } .bad { color: #ff8a8a; } .warn { color: #ffc247; }
+  #status { color: #9aa7c7; margin: .5rem 0 0; }
+  code { background: #0b1020; padding: .1rem .4rem; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Brightside Reconciliation — Demo Dashboard</h1>
+  <p class="sub">Reference demo for Chapter 42 of <em>The AI-Native Engineer</em>. Reconciliation data is ops-only — it is gated behind the machine-to-machine secret from <code>.env</code>.</p>
+
+  <div class="card">
+    <label for="secret">Machine-to-machine secret (from <code>CRON_SECRET</code> in <code>.env</code>)</label>
+    <input id="secret" type="password" placeholder="change-me-to-a-long-random-string" autocomplete="off" />
+    <label for="studio">Studio ID</label>
+    <input id="studio" type="number" min="1" value="1" />
+    <button id="load">Load latest reconciliation</button>
+    <p id="status"></p>
+  </div>
+
+  <div id="summary" class="card" hidden></div>
+  <div id="mismatches" class="card" hidden></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function hEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+$('load').addEventListener('click', load);
+
+async function load() {
+  const secret = $('secret').value.trim();
+  const studio = Number($('studio').value || 1);
+  const status = $('status');
+  status.textContent = 'Loading…';
+  $('load').disabled = true;
+  try {
+    const res = await fetch('/api/reconciliations?studio_id=' + encodeURIComponent(studio), {
+      headers: { 'x-cron-secret': secret },
+    });
+    if (res.status === 401) { status.textContent = 'Invalid secret (401).'; return; }
+    if (!res.ok) { status.textContent = 'Error: ' + res.status; return; }
+    const data = await res.json();
+    const runs = data.reconciliations ?? [];
+    if (runs.length === 0) { status.textContent = 'No runs yet — POST /api/reconciliations/run first (see README).'; return; }
+    renderRun(runs[0]);
+    status.textContent = '';
+  } catch (err) {
+    status.textContent = 'Network error: ' + err.message;
+  } finally {
+    $('load').disabled = false;
+  }
+}
+
+function renderRun(run) {
+  const m = Array.isArray(run.mismatches) ? run.mismatches : [];
+  const cls = m.length === 0 ? 'ok' : 'bad';
+  $('summary').hidden = false;
+  $('summary').innerHTML =
+    '<h2>Run <code>' + hEsc(run.run_date) + '</code> — <span class="' + cls + '">' +
+    (m.length === 0 ? 'clean' : m.length + ' mismatch(es)') + '</span></h2>' +
+    '<p>bookings: <strong>' + hEsc(run.booking_count) + '</strong> · payments: <strong>' + hEsc(run.payment_count) + '</strong> · needs action: <strong>' + hEsc(run.needs_action) + '</strong></p>';
+  $('mismatches').hidden = false;
+  $('mismatches').innerHTML =
+    '<h3>Mismatches</h3>' +
+    (m.length === 0
+      ? '<p class="ok">Nothing to reconcile. ✦</p>'
+      : '<table><thead><tr><th>Reason</th><th>Member</th><th>Session</th><th>Detail</th></tr></thead><tbody>' +
+        m.map(x => '<tr><td><code>' + hEsc(x.reason) + '</code></td><td>' + hEsc(x.member_id ?? '—') + '</td><td>' + hEsc(x.class_session_id ?? '—') + '</td><td>' + hEsc(x.detail ?? '') + '</td></tr>').join('') +
+        '</tbody></table>');
+}
+</script>
+</body>
+</html>

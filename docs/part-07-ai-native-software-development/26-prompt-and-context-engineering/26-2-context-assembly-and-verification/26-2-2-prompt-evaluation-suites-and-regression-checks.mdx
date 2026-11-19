@@ -1,0 +1,149 @@
+---
+id: "26-2-2-prompt-evaluation-suites-and-regression-checks"
+title: "26.2.2 Prompt Evaluation Suites and Regression Checks"
+sidebar_label: "26.2.2 Prompt Evaluation Suites and Regression Checks"
+slug: "/part-07-ai-native-software-development/26-prompt-and-context-engineering/26-2-context-assembly-and-verification/26-2-2-prompt-evaluation-suites-and-regression-checks"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-26-s2-t2">
+
+You would never merge a code change without tests; a prompt is code that runs on a probabilistic machine. Yet most teams "test" prompts by reading three outputs and feeling good. This lesson builds the boring, decisive artifact: a tiny eval harness you run on **every prompt edit**, plus the discipline (changelog, held-out set, judge skepticism) that keeps it honest.
+
+## 1. The Loop — Criteria, Golden Set, Scoring, Gate
+
+1. **Define criteria** before you touch the prompt: e.g. for the ShopCore refund classifier — label accuracy, zero format failures, escalate recall ≥ 0.9, ≤ 350 output tokens median.
+2. **Collect a golden set**: 20–50 real (input, expected) pairs from production logs, anonymized. Include edge cases and adversarial-ish inputs (26.2.3). Split: 30 dev / 10 held-out.
+3. **Score** with a rubric or an LLM judge (Section 3) — not with your gut.
+4. **Gate**: no prompt merges without the suite passing on dev **and** held-out not degrading. This is CI for English.
+
+## 2. The Harness — A Skeleton You Can Type Today
+
+`prompts.json` holds `[{ "id": "t-001", "input": "...", "expect": "approve" }, ...]` (10+ items to start). `eval.mjs` — Windows PowerShell / bash, Node ≥ 18:
+
+```js
+// eval.mjs — run twice: PROPS_VERSION=v2 node eval.mjs > out-v2.txt
+import { readFileSync, writeFileSync } from "node:fs";
+const CASES = JSON.parse(readFileSync("prompts.json", "utf8"));
+const PROMPT = readFileSync(process.env.PROMPT_FILE ?? "prompt-v2.txt", "utf8");
+
+async function ask(input) {
+  const res = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+               "Content-Type": "application/json" },
+    body: JSON.stringify({ model: process.env.MODEL ?? "gpt-6-sol",
+      input: [{ role: "system", content: PROMPT },
+              { role: "user", content: input }] }),
+  });
+  const body = await res.json();
+  // Responses API REST shape: an `output` array of content items, each with `text`.
+  // The `output_text` field only exists on SDK-wrapped responses; parse the raw shape.
+  const text = (body.output ?? [])
+    .flatMap(item => item.content ?? [])
+    .filter(c => c.type === 'output_text')
+    .map(c => c.text ?? '')
+    .join('');
+  return text.trim();
+}
+
+const results = [];
+for (const c of CASES) {
+  const got = await ask(c.input);
+  results.push({ id: c.id, expect: c.expect, got, pass: got === c.expect });
+}
+const pass = results.filter(r => r.pass).length;
+console.log(`pass ${pass}/${results.length}`);
+writeFileSync(process.env.OUT ?? "out.json", JSON.stringify(results, null, 2));
+```
+
+Then diff two runs (old prompt vs new) on Windows/bash:
+
+```bash
+# bash / WSL2
+diff <(node -e "console.log(JSON.parse(require('fs').readFileSync('out-v1.json')).map(r=>r.id+':'+r.got).join('\n'))") \
+     <(node -e "console.log(JSON.parse(require('fs').readFileSync('out-v2.json')).map(r=>r.id+':'+r.got).join('\n'))")
+# PowerShell equivalent
+compare (node -e "...(out-v1)...") (node -e "...(out-v2)...")
+```
+
+Any changed output line gets **eyeballed by a human** — sometimes the change is the fix, sometimes the regression. Flag rate > 10% on an unchanged model means stop and investigate; it is never "just nondeterminism" beyond temperature settings.
+
+## 3. Metrics — What to Actually Measure
+
+| Metric | What it is | Strength | Weakness |
+| :-- | :-- | :-- | :-- |
+| **Exact match** | output string === expected | Cheap, objective, CI-friendly | Only for short/discrete outputs (labels, IDs) |
+| **Rubric score** | 1–5 against written criteria ("cites thread?", "≤ 80 words?") | Captures quality for prose | Needs calibrated rubric; slower |
+| **Human label** | Person grades N samples each release | Ground truth | Does not scale; use for audits, not every run |
+| **LLM-as-judge** | A model grades outputs against the rubric | Scales; cheap; consistent-ish | Biased (Section 4); audit against humans monthly |
+
+Use exact match where possible, rubric+judge where necessary, humans as the calibration anchor. Calibrate the judge monthly: hand-grade 20 outputs, compare against judge scores, and track the agreement rate — below ~80%, tighten the rubric or retrain your prompt-with-rubric; above that, trust but spot-check. Never let the judge gate merges without a human audit trail once a month.
+
+## 4. Pitfalls — Where Evals Lie to You
+
+| Pitfall | What happens | Defense |
+| :-- | :-- | :-- |
+| **Judge bias** | Judge favors longer answers, its own family, confident phrasing | Pairwise A/B with position swap; rubric not "which is better" |
+| **Leakage** | Golden items (or near-copies) live inside the few-shot examples | Dedup dev vs prompt; never eval on shots you show |
+| **Overfit to eval set** | Prompt tuned until dev passes; held-out quietly rots | Keep 10 held-out cases you never look at until pre-merge |
+| **Prose drift** | Judge approves fluent-but-wrong answers | Require cited evidence field; verify citations deterministically |
+| **Fixture staleness** | "Expected" answers age with policy changes | Review the golden set quarterly like test fixtures |
+
+## 5. Iterating Safely — The Prompt Changelog
+
+Treat prompts as versioned artifacts. `PROMPTS.md` in the repo:
+
+```text
+## refund-classifier
+current: v4  (2026-11-09, hamid)
+  why: v3 regressed escalate recall 0.91 -> 0.78 (bad few-shot label)
+  eval: dev 46/50, held-out 9/10 | judge rubric 4.2/5
+  previous: v3 (2026-10-28) | v2 (2026-10-11, baseline)
+```
+
+Rules: one logical change per version; commit the diff with the eval output attached; name the model snapshot you measured against; revert is always one `git revert` away.
+
+## 6. The 15-Minute Walkthrough — A Failing Example, Fixed
+
+Baseline: refund-classifier v3 passed 44/50. Friday: someone "improved" the examples — swapping in a newer ticket with a mislabeled `escalate` (should be `deny`). Monday's run: 41/50, and **all three losses are `escalate`**; flag rate 18% vs baseline 6%. The diff output shows the three flipped IDs (t-007, t-031, t-044).
+
+Diagnosis: not the model, not temperature — a label in the 5-shot block. The diff output for the regression run looks like:
+
+```text
+t-007: approve -> escalate   (expected: deny)     <- flip
+t-031: deny    -> escalate   (expected: deny)     <- flip
+t-044: approve -> escalate   (expected: approve)  <- flip
+passes: 41/50   flags: 9 (18%)   baseline flags: 3 (6%)
+```
+
+All three flips are `escalate` — the model now saturates on the class whose shot you mislabeled. Fix: restore the correct label, re-run both suites → 46/50 dev (above baseline, because v4 also dropped a redundant instruction), 9/10 held-out. Changelog entry written; v4 merged. Total elapsed: 15 minutes — the cost of *not* having this suite is the mislabeled refund you never notice until finance complains.
+
+## 6.5 Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Suite passes, prod still complains | Golden set ≠ production mix | Re-sample fixtures from recent logs quarterly |
+| Judge scores drift upward release to release | Judge prefers new model family | Pin judge model; blind A/B with position swap |
+| Flaky failures at temperature 0 | Provider silently moved the model | Pin a dated snapshot; log model string per run |
+| Held-out case count shrinks over time | "It fails, let's delete it" | Never delete held-out cases; archive with a reason |
+| Eval takes too long to be worth it | No parallelism, every case serial | Batch calls; run on pre-merge only; keep set ≤ 50 |
+
+## 7. Practice
+
+**Guided exercise.** Create `prompts.json` with 10 labeled tickets and run the Section 2 harness twice against the same prompt. Diff. Confirm zero flaky flags at temperature 0; then set temperature 1 and explain the diff.
+
+**Independent exercise.** Write a 4-point rubric for "summary quality" and hand-score 5 outputs; then have an LLM judge the same 5; compare. Where do they disagree, and who is right?
+
+**Challenge.** Add an adversarial item to the suite (an injection attempt from 26.2.3) that your current prompt fails. Make it pass without weakening the contract.
+
+**Assessment checklist**
+
+- [ ] I have a golden set with dev and held-out splits.
+- [ ] I run an eval on every prompt edit — it is part of my merge checklist.
+- [ ] I know my judge's biases and audit it against humans.
+- [ ] My prompt changelog exists and names an eval delta per version.
+- [ ] I can walk through one regression I caught and fixed.
+
+</BookNodePage>

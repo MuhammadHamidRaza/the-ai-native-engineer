@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "15.2 Backend Build"
+sidebar_label: "15.2 Backend Build"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-2-backend-build"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s2">
+
+**Subchapter 15.2** builds the server half of ShopCore: the Express skeleton wired to your freshly migrated database, the complete auth module (register/login/session/roles), and the business API — catalog, cart, and the atomic checkout transaction.
+
+## Lessons in Subchapter 15.2
+
+1. **[15.2.1 Backend Setup and Database Connection](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-2-backend-build/15-2-1-backend-setup-and-database-connection):** Scaffold, `.env`, `pg` Pool, `/health` with a Postgres ping, first-boot failure modes.
+2. **[15.2.2 Authentication: Register, Login, Sessions and Roles](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-2-backend-build/15-2-2-authentication-register-login-sessions-and-roles):** scrypt hashing, `sessions` table with hashed tokens, `HttpOnly` cookies, `requireAuth`/`requireRole`, curl-verified.
+3. **[15.2.3 Shop API: Products, Cart and Orders](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-2-backend-build/15-2-3-shop-api-products-cart-and-orders):** Public catalog reads, server-side cart, and checkout as one atomic Postgres transaction with a stock guard.
+
+</BookNodePage>

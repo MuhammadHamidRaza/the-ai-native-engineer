@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "24.2 Connection Pooling & Operational Scale"
+sidebar_label: "24.2 Connection Pooling & Operational Scale"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations/24-2-connection-pooling-and-operational-scale"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24-s2">
+
+24.1 made the queries fast. **24.2 makes the database survivable** — under connections it cannot refuse, under locks that pile up, under RLS policies that hold the line, and at a size where one primary is not enough. Operational scale is the discipline of saying no gracefully.
+
+## What Is In This Section
+
+- **24.2.1 Connection Limits, Locking and N+1 Queries** — why `max_connections = 100` (default) is not a suggestion; the two pooler topologies — PgBouncer (session vs transaction pooling, `default_pool_size`) vs app-side pools (node-postgres `Pool`) — and the math that keeps you from exhausting Postgres accidentally; lock modes that matter (`ROW SHARE`, `SHARE [ROW EXCLUSIVE]`, `FOR UPDATE`), a full deadlock write-up with ShopCore's inventory race and the `40P01` retry; READ COMMITTED vs SERIALIZABLE failure semantics; phantom reads; the ORM N+1 walkthrough (find orders → loop `find` items) and the two canonical fixes; and the triage toolkit — `pg_stat_activity`, `pg_locks`, waiting chains, autovacuum pointer.
+
+- **24.2.2 Read Replicas, Partitioning and Archiving** — streaming replication in one page (WAL shipping, async vs sync, RPO = 0 vs seconds); the read-your-writes workaround and replica-lag measurement (`pg_stat_replication`); the honest threshold for adding replicas (read:write > 3:1, heavy reports, never for lock relief); declarative RANGE partitioning of `orders` by month with partition pruning and per-partition vacuum locality; cold-row archiving + retention with a detach-and-drop pattern; tenant isolation three ways (shared-tables + RLS worked example vs schema-per-tenant); and a concrete, rehearsed migration plan for introducing partitioning on a live table.
+
+## How the Two Lessons Fit
+
+```text
+  24.2.1 (survive the inrush)            24.2.2 (survive the success)
+  -----------------------------         ----------------------------------
+  100-connection ceiling math    ->     reads served from replicas
+  PgBouncer transaction pooling  ->     24.1 indexes still rule the primary
+  deadlock-safe inventory updates->     monthly partitions prune + vacuum locally
+  no N+1 storms out of ORMs      ->     RLS enforces tenant walls, not app hope
+              \                            /
+               +--> backups recap: 12.3.2 -+
+```
+
+Connection limits are a *capacity* problem; partitioning is a *growth* problem; archiving is a *lifecycle* problem. Different solutions, same discipline: measure, decide, rehearse.
+
+## Exit for This Section
+
+You are done with 24.2 when you can: size every pool in ShopCore against `max_connections` on paper and defend it; reproduce the inventory deadlock and fix it in code; attach a lag-checked read replica serving catalog reads; and present a partition-and-archive plan for `orders` that your on-call could execute without paging you.
+
+</BookNodePage>

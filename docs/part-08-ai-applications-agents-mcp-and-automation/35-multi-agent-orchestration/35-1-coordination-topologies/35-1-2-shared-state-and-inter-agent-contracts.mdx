@@ -1,0 +1,160 @@
+---
+id: "35-1-2-shared-state-and-inter-agent-contracts"
+title: "35.1.2 Shared State and Inter-Agent Contracts"
+sidebar_label: "35.1.2 Shared State and Inter-Agent Contracts"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies/35-1-2-shared-state-and-inter-agent-contracts"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35-s1-t2">
+
+Cooperating agents share two things: **state** (what they collectively know) and **contracts** (how they ask each other for it). Get either wrong and the system fails in ways that look like "the model is dumb" but are actually systems bugs.
+
+## 1. The Blackboard Pattern
+
+One shared workspace all agents read/write through a mediator — classic AI blackboard, modernized as "shared state object":
+
+```text
+ agent --write-->  ┌──────────────────────────┐  <--read-- agent
+                   │  Blackboard (Postgres/   │
+ agent --write-->  │  Redis/object store)     │  <--read-- agent
+                   └──────────────────────────┘
+                     mediator enforces schema,
+                     versions, write ACLs
+```
+
+Rules that make blackboards safe:
+
+1. **Scratchpad vs committed store.** Drafts, partial reasoning and dead-ends live in a *scratchpad* (ephemeral, per-run, free-form). Facts another agent will act on live in the *committed store* (schema-validated, versioned). Never let an agent's scratchpad be read as committed fact.
+2. **Single writer per field.** Loan ledger rows are written by the refund specialist only; the supervisor reads. Shared-everything writes guarantee conflict.
+3. **Provenance on every committed fact**: which agent, which run, which sources — the audit schema from 34.2.2 applies verbatim.
+
+## 2. Optimistic Concurrency for Agent Scratch
+
+Agents don't lock rows cheerfully; use compare-and-swap:
+
+```sql
+UPDATE blackboard
+SET doc = $1, version = version + 1
+WHERE key = $2 AND version = $3;   -- caller supplies version it read
+-- 0 rows updated => someone else wrote first => re-read, merge, retry
+```
+
+- Version field (integer) or ETag. Readers include the version in their next write; conflicts trigger merge-or-abort, never silent overwrite.
+- For high-contention keys, shard by correlation id (per-order blackboards) so conflicts are rare by construction.
+- If you need full history, point the blackboard at an **event log** (append-only `events(run_id, seq, actor, kind, payload)`) and project current state — event sourcing. You gain replay and forensics (same trick as Ch 36 telemetry) at the cost of projection complexity. See Part 06 notes on event sourcing if this pattern is unfamiliar.
+
+### 2.1 Single-Writer Rule in Practice
+
+Assign each committed key exactly one writer agent, enforced in the blackboard mediator (reject writes from any other actor). For the ShopCore Postmaster: `ledger.*` → refund specialist only; `shipping.*` → shipping specialist; `plan.*` → supervisor only. Reads are open. This one rule prevents 80% of "agents overwrote each other" incidents without any concurrency math.
+
+## 3. Inter-Agent Contracts — Typed and Versioned
+
+Natural-language messages between agents are unreviewable. Define the envelope once:
+
+```ts
+// zod (TypeScript) — one definition, runtime-validated
+import { z } from 'zod';
+
+export const AgentMessageV1 = z.object({
+  id: z.string().uuid(),
+  version: z.literal(1),                    // contract version, not negotiated
+  kind: z.enum(['task', 'result', 'error', 'escalate']),
+  from: z.string(), to: z.string(),         // agent ids
+  correlationId: z.string(),                // orderId / run id — ties the audit trail
+  payload: z.unknown(),                     // validated by kind-specific schema
+  sentAt: z.string().datetime(),
+});
+
+export const RefundTaskV1 = z.object({
+  orderId: z.string().regex(/^ORD-\d{4,}$/),
+  claimedCents: z.number().int().positive().max(1_000_000),   // €10,000 in cents
+  policyChunkIds: z.array(z.string()).min(1),
+});
+```
+
+```python
+# pydantic (Python) — same contract, same version
+class AgentMessageV1(BaseModel):
+    id: UUID
+    version: Literal[1] = 1
+    kind: Literal["task", "result", "error", "escalate"]
+    from_: str = Field(alias="from")
+    to: str
+    correlation_id: str
+    payload: dict                       # validated by kind-specific model
+    sent_at: datetime
+```
+
+Contract discipline:
+
+- **Version every message type.** Breaking changes → new version string; old and new run side-by-side; delete old only after all consumers migrate.
+- **Validate at every boundary.** The receiver parses with the schema and *rejects* on failure — a malformed message is an `error` reply, not a shrug.
+- **Enums over prose.** `decision: "auto" | "review" | "escalate"`, never "it seems mostly fine".
+- **Payloads small.** Pass references (`orderId`, `policyChunkIds`), not full documents — the blackboard holds the bulk.
+
+## 4. Contract Tests in CI
+
+Schemas are worthless untested. Two cheap tests per contract, in your normal CI:
+
+```ts
+// 1) Round-trip: a V1 message from yesterday still parses today
+const legacy = JSON.parse(fixtures.refundTaskV1_2026_11_17);
+expect(() => RefundTaskV1.parse(legacy)).not.toThrow();
+
+// 2) Rejection: malformed messages fail closed
+expect(() => RefundTaskV1.parse({ orderId: 'X' })).toThrow();
+expect(() => AgentMessageV1.parse({ ...valid, kind: 'teleport' })).toThrow();
+```
+
+Keep golden fixtures of every historical contract version in the repo. When a producer bumps to V2, the V1 fixture test tells you exactly who must migrate — before runtime does.
+
+## 5. Event-Sourcing the Blackboard (When You Need It)
+
+If audits or legal demand full history, project state from an append-only log instead:
+
+```text
+events(run_id, seq, actor, kind, payload, at)
+  1  supervisor  plan_created     {steps:[retrieve, draft, critique]}
+  2  retriever   chunks_fetched   {ids:[...], scores:[...]}
+  3  drafter     draft_v1         {sha:9f2a..., tokens:811}
+  4  critic      verdict          {pass:false, fixes:["cite §6.2"]}
+  5  drafter     draft_v2         {sha:71be..., tokens:904}
+  6  critic      verdict          {pass:true, score:0.91}
+  7  publisher   page_created     {notion_id:"..."}
+```
+
+Current state = fold over events; replay = re-fold with a fixed model snapshot. Costs you a projector and discipline; buys you time travel, which is the only reliable multi-agent debugging tool. Most teams should not start here — start with the versioned rows in 34.2.2's `worker_runs` and graduate when audits demand it.
+
+## 6. MCP as Contract Plumbing
+
+If agents in different processes/languages interoperate, expose tools/data over MCP (Ch 32) rather than bespoke JSON-RPC — the protocol gives you typed tools and capability discovery for free. Contracts above then govern *agent-to-agent semantics*; MCP governs *agent-to-tool* plumbing.
+
+## 7. Failure Modes and Fixes
+
+| Failure | Signature | Fix |
+| :-- | :-- | :-- |
+| Silent schema drift | Agent ignores renamed field, defaults to zero | Strict schemas; reject unknown keys in dev |
+| Lost update | Two agents write same blackboard key | CAS + version; single-writer rule |
+| Circular wait | A waits B's output, B waits A's | Contract timeouts + cycle counter (35.2.2) |
+| Context bloat | Supervisor pastes worker transcripts | Summary-only return contract; max token return size |
+| Orphan messages | Reply to dead run | `correlationId` + TTL; consumers idempotent |
+
+## 8. Practice
+
+**Guided.** Define `RefundTaskV1`/`RefundResultV1` in zod; write the parser that rejects a bad payload; unit-test both.
+
+**Independent.** Implement the blackboard CAS update against a scratch Postgres table; force a concurrent-write conflict; confirm loser re-reads and merges.
+
+**Challenge.** Version the contract to V2 (add `currency`); run an agent pair mixed V1↔V2 through the adapter; retire V1 only when zero V1 readers remain in logs.
+
+**Checklist**
+
+- [ ] Scratchpad vs committed store separation is documented per agent
+- [ ] Every committed fact carries provenance + version
+- [ ] All agent-to-agent messages are schema-validated, versioned envelopes
+- [ ] Conflicts resolve by CAS retry or explicit abort — never silent overwrite
+- [ ] Failures are typed `error`/`escalate` replies, not stringly-typed surprises
+
+</BookNodePage>

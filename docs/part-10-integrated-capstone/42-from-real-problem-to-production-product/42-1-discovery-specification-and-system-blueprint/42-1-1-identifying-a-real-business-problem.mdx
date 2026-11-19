@@ -1,0 +1,88 @@
+---
+id: "42-1-1-identifying-a-real-business-problem"
+title: "42.1.1 Identifying a Real Business Problem"
+sidebar_label: "42.1.1 Identifying a Real Business Problem"
+slug: "/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-1-discovery-specification-and-system-blueprint/42-1-1-identifying-a-real-business-problem"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-42-s1-t1">
+
+Most capstones fail before the first line of code: they pick a topic ("a task app") instead of a problem ("invoices arrive wrong for 15% of clients"). This lesson is the difference between a school project and a professional delivery — starting from a **real, painful, measurable** business problem.
+
+## 1. What Makes a Problem Real
+
+A real problem has four signatures:
+
+1. **Someone is losing money, time, or trust because of it today** — not hypothetically.
+2. **The status quo is imperfect** — a workaround exists but bleeds hours or errors.
+3. **The pain owner can name a number** — 4 hrs/week, 12% error rate, $300/customer.
+4. **A fix is bounded** — solvable in 3–6 weeks by one engineer with known tools.
+
+| Not a problem | Real problem |
+| :-- | :-- |
+| "People forget their groceries" | "Our Shopify store sends 40% of orders with wrong quantities and nobody notices until the customer complains — 15% return rate, $18k refund cost/quarter." |
+| "I want to build an AI assistant" | "Our support agents spend 60% of their time answering 'where is my order' — 22 tickets/day, could be self-serve." |
+| "Todo app" | "Freelance designers lose 7 hrs/week reconciling invoices vs bank statements by spreadsheet." |
+
+## 2. Sourcing Real Problems
+
+Ranked by richness for a capstone:
+
+1. **Your own freelance/client work** (best) — a client told you about this last month.
+2. **Local business on your street** — ask the cafe owner / dentist / gym manager about their worst repetitive headache.
+3. **Your employer's internal tooling** — ask a PM what manual process they'd automate today.
+4. **Open-source organizations you admire** — GitHub issues tagged `help wanted`.
+
+**Do not pick**: fictional students' hypothetical problems, problems whose pain you cannot observe, or problems that require enterprise data access you cannot get.
+
+## 3. The Problem Validation Interview (30 min, real humans)
+
+Interview **at least three** people who live with the problem. Questions:
+
+1. Walk me through the last time this happened. *(concrete, not abstract)*
+2. How often? What does it cost you — minutes, dollars, stress?
+3. What have you tried? Why did it fail?
+4. If it worked perfectly, what would change on Monday morning?
+5. Who else touches this process? Who decides to buy the fix?
+
+**Reject problems that**: nobody can quantify, nobody can decide, or the workaround is already "fine".
+
+## 4. The Capstone PRD Skeleton (1 page)
+
+```text
+PROBLEM: [One sentence, with a number]
+CURRENT WORKAROUND: [What they do today — the spreadsheet, the email chain]
+WHO FEELS IT: [Role + context — "Shopify merchants with >200 orders/mo"]
+SUCCESS LOOKS LIKE: [Observable metric — "wrong-quantity shipments <2%"]
+OUT OF SCOPE: [What you will NOT build — keeps the capstone shippable]
+```
+
+## 5. Worked Example (From a Real Capstone)
+
+> **Problem**: Brightside Yoga (3 studios, ~400 members) spends 6 hrs/week manually reconciling class bookings vs payment logs because their booking app and their payment processor don't talk. Result: 12% of members are charged for classes they don't attend, 8 complaints/month, 2 memberships cancelled.
+>
+> **Success metric**: Reconciliation is automated nightly; manual intervention drops to &lt;1 hr/week; zero payment disputes from booking mismatches.
+
+That problem is real (measurable), owned (studio manager), bounded (nightly job + dashboard), and solvable with tools you already know (cron, Stripe API, email alerts).
+
+## 6. Common Failure Modes
+
+- **"AI for X"** — the technology is not the problem. Start with the pain, then ask whether AI helps.
+- **Scope creep by default** — if you can't name what's *out of scope*, you don't have a capstone, you have a roadmap.
+- **Unverifiable success** — "make it better" is not a metric. "Reduce manual reconciliation from 6hrs → 1hr/week" is.
+- **Picking what you want to learn instead of what they need** — the capstone proves you can serve a user, not that you can learn a framework.
+
+## 7. Exercise
+
+Write a one-page Capstone PRD for a problem you can personally verify (own pain, or a real business you can interview). Show it to one other engineer; if they can't restate the problem and the success metric back to you, rewrite it.
+
+**Acceptance criteria.**
+- [ ] The problem statement contains at least one number (minutes, dollars, rate).
+- [ ] You have interviewed ≥2 people who live with the problem.
+- [ ] Success is a measurable, observable metric — not "better" or "faster".
+- [ ] Scope fits 3–6 weeks of one engineer's time.
+- [ ] The PRD fits on one page.
+
+</BookNodePage>

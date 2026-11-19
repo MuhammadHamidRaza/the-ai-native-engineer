@@ -1,0 +1,61 @@
+---
+id: "07-1-1-jsx-props-and-composition"
+title: "07.1.1 JSX, Props and Composition"
+sidebar_label: "07.1.1 JSX, Props and Composition"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-1-component-architecture-and-rendering/07-1-1-jsx-props-and-composition"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s1-t1">
+
+A React component is simply a JavaScript/TypeScript function whose name starts with a **Capital Letter** (so JSX distinguishes `<TaskCard />` from native HTML `<div />`), accepting one `props` object and returning JSX.
+
+## 1. JSX Rules You Must Know Day One
+
+JSX looks like HTML, yet compiles into JavaScript function calls (`jsx("button", { className: "btn", children: "Save" })`), which explains four syntax rules:
+- Use **`className`** instead of `class`, and **`htmlFor`** instead of `for`.
+- Self-close empty tags (`<input />`, `<img />`).
+- Wrap multi-element siblings in a parent or Fragment (`<>...</>`).
+- Embed any JavaScript expression inside curly braces (`{user.name}`, `{items.length}`), and never try to render a raw `{}` object directly inside JSX (`Objects are not valid as a React child`).
+
+## 2. Typed Props & Composition via `children`
+
+Prefer **composition (`children`)** over piling ten boolean config flags onto one giant component:
+
+```tsx
+import type { ReactNode } from "react";
+
+interface CardProps {
+  title: string;
+  badge?: string;
+  children: ReactNode;
+}
+
+export function Card({ title, badge, children }: CardProps) {
+  return (
+    <section className="rounded-xl border p-4">
+      <header className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {badge ? <span className="text-xs font-mono">{badge}</span> : null}
+      </header>
+      <div>{children}</div>
+    </section>
+  );
+}
+```
+
+**Props Are Read-Only:** A component must **never** mutate its `props` (`props.title = "new"`). Data flows **down** via props; events flow **up** via callback props (`onDelete`, `onSelect`).
+
+## 3. Practice Exercises
+
+1. Build a `<StatusBadge status="open" | "blocked" | "done" />` component with strict TypeScript props and render all three variants in `src/App.tsx`.
+2. Wrap a task list inside the `<Card>` component above using `children`.
+
+## Mastery Checklist
+
+- [ ] Names components in PascalCase and uses `className` / `htmlFor` / Fragments.
+- [ ] Uses `children` composition cleanly instead of over-configured prop flags.
+- [ ] Treats `props` as strictly immutable.
+
+</BookNodePage>

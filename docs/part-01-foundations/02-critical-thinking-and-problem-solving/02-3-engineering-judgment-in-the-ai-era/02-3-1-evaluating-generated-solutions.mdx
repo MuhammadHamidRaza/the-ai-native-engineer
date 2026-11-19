@@ -1,0 +1,183 @@
+---
+id: "02-3-1-evaluating-generated-solutions"
+title: "02.3.1 Evaluating Generated Solutions"
+sidebar_label: "02.3.1 Evaluating Generated Solutions"
+slug: "/part-01-foundations/02-critical-thinking-and-problem-solving/02-3-engineering-judgment-in-the-ai-era/02-3-1-evaluating-generated-solutions"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-02-s3-t1">
+
+An AI coding assistant hands you 45 lines of gleaming TypeScript or Python in four seconds flat. Imports match cleanly, variable names read clearly, zero syntax errors appear in VS Code, and running one quick valid test input prints the expected green result. Right at that moment lies the single deadliest trap in modern software development: **mistaking "polished happy-path compilation" for production-worthy engineering.**
+
+In real codebases across **Parts 02–10**, AI-generated drafts routinely pass casual glances while sneaking silent tenant authorization bypasses, unparametrized SQL concatenation, non-atomic race conditions, missing external timeouts, `O(N^2)` memory traps, or over-engineered abstractions straight into `main`. **Evaluating Generated Solutions** equips you with a fast, repeatable **5-Lens Code Audit Protocol** so you review every AI-generated snippet—or teammate Pull Request—with razor-sharp senior skepticism in two minutes flat.
+
+## 1. Plain-English Intuition: Inspecting a Pre-Fab House Frame
+
+Imagine hiring a super-fast prefabricated framing crew that erects the wooden skeleton of a garage in two hours flat. From twenty feet away, the roof pitches match cleanly and every wall looks dead straight. Would you sign final handover without walking inside to check whether:
+1. Foundation anchor bolts actually lock into concrete (**Security & Invariants**)?
+2. Electrical wires inside Wall B violate fire code (**API / Spec Correctness**)?
+3. Roof beams sag under winter snow loads (**Scale & Edge Limits**)?
+4. They accidentally built two unnecessary load-bearing pillars blocking your car door (**Simplicity & Architecture Fit**)?
+
+Of course not! **Reading generated code is building inspection, never blind signature.**
+
+## 2. The Five-Lens Code Audit Protocol (`C.S.B.P.M.`)
+
+Never scan a generated function top-to-bottom wondering *"does this look nice?"* Make **five deliberate, sequential passes**, hunting strictly for one category per pass:
+
+| Audit Lens | Exact Questions You Ask on Every Generated Diff | Classic AI Defect Caught Immediately |
+| :--- | :--- | :--- |
+| **1. Correctness & Edge Bounds (`C`)** | Does it implement the exact spec (`02.2.3`), handle `0 / empty / null / negative / duplicate` inputs (`02.2.1`), and avoid off-by-one (`<` vs `<=`) or float rounding bugs? | AI uses float `* 1.08` on invoice cents, crashes on empty list `items[0]`, or ignores `!response.ok` on `fetch()` |
+| **2. Security & Trust Boundaries (`S`)** | Does it verify caller identity (`401`), scope queries by tenant/owner (`WHERE workspace_id = $1`, `403`), parameterize SQL, validate untrusted input schemas, and keep secrets server-only? | AI accepts `userId` blindly from request `body`, builds `f"SELECT ... '{name}'"`, or puts `GEMINI_API_KEY` in client code |
+| **3. Failure Boundaries & Resilience (`B`)** | Do external network/DB/LLM calls have explicit timeouts, safe retry guards, non-swallowed errors, and atomic DB transactions (`BEGIN...COMMIT`)? | AI runs `fetch(url)` with zero timeout, uses `except Exception: pass`, or splits balance debit/credit across two separate autocommit queries |
+| **4. Performance & Scale (`P`)** | Does it avoid `N+1` database loops, unbounded `SELECT *` without `LIMIT`, loading huge files wholly into RAM, or accidental `O(N^2)` nested array scans? | AI loops `for id in ids: db.query(...)`, buffers `await file.read()` on uploads, or skips pagination |
+| **5. Maintainability & Fit (`M`)** | Does it actually match this repo's installed versions and conventions—without hallucinated flags, bloated dependencies, or dead code? | AI imports an uninstalled package, mixes Pydantic v1 `.dict()` into Pydantic v2 `.model_dump()`, or writes 90 lines duplicating an existing helper |
+
+## 3. Live Diagnostic Audit: Tear Apart a Realistic AI-Generated Endpoint
+
+Pause for **90 seconds** right now before reading the findings below! Pretend your coding assistant just generated this Python FastAPI handler for *"Transferring project credits between two team budgets inside a SaaS app"*:
+
+```python
+# AI-GENERATED DRAFT — AUDIT THIS WITH ZERO MERCY BEFORE MERGING!
+@app.post("/api/budgets/transfer")
+async def transfer_credits(payload: dict, db=Depends(get_db)):
+    from_id = payload["from_budget_id"]
+    to_id = payload["to_budget_id"]
+    amount = payload["amount"]
+
+    src = db.execute(f"SELECT balance FROM budgets WHERE id = '{from_id}'").fetchone()
+    if src["balance"] >= amount:
+        db.execute(f"UPDATE budgets SET balance = balance - {amount} WHERE id = '{from_id}'")
+        db.execute(f"UPDATE budgets SET balance = balance + {amount} WHERE id = '{to_id}'")
+        db.commit()
+        return {"status": "ok"}
+    return {"status": "insufficient"}
+```
+
+Look how clean and harmless those 13 lines look at a hurried glance—and now watch our **5-Lens Audit (`C.S.B.P.M.`)** uncover **eight severe production defects** hidden inside just 13 lines!
+
+1. **Lens 2 (`Security — Missing Auth & Ownership`):** No `current_user` / `workspace_id` check whatsoever! Any anonymous internet caller can transfer credits out of *any customer's* `from_budget_id`!
+2. **Lens 2 (`Security — Critical SQL Injection`):** Raw f-string interpolation `WHERE id = '{from_id}'` lets attackers inject `' OR '1'='1` or arbitrary SQL commands directly into PostgreSQL! Always use parameterized placeholders (`$1`, `:id`)!
+3. **Lens 1 (`Correctness — Negative Amount Exploit!`):** Pass `amount = -5000`! Look at `src["balance"] >= -5000` (`True`!), followed by `balance - (-5000)` = **silently adding `+5000` free credits to the attacker's source budget!** Must enforce `amount > 0` integer!
+4. **Lens 1 (`Correctness — Unhandled Null & Missing Keys`):** If `from_id` doesn't exist, `src` is `None` → `src["balance"]` throws unhandled `500 TypeError`! If `payload` lacks `"amount"`, `KeyError` crashes with `500` instead of clean `422` Pydantic validation (`00.9.3`).
+5. **Lens 1 (`Correctness — Self-Transfer & Float Precision`):** Transferring `from_id == to_id` or passing float `10.555` corrupts accounting balances cleanly.
+6. **Lens 3 (`Failure Boundary — Race Condition / TOCTOU`):** Two simultaneous requests reading `src["balance"] = 100` before either `UPDATE` writes can *both* pass `100 >= 80` and double-spend the budget down to `-60`! Must lock rows (`FOR UPDATE`) or enforce atomic conditional update `WHERE id = $1 AND balance >= $2` + DB `CHECK (balance >= 0)`!
+7. **Lens 3 (`Failure Boundary — Partial Exception Rollback`):** If the second `UPDATE` throws (invalid `to_id`), missing explicit `try/rollback` context leaves connections dirty depending on DB driver pool state.
+8. **Lens 1 (`Correctness — HTTP Status Semantics`):** Returning HTTP `200 OK` with `{"status": "insufficient"}` misleads client callers checking `response.ok` (`01.3.4`)—business rule refusal should return explicit `409 Conflict` or `422 Unprocessable Content`.
+
+Think about that: **all eight defects sat inside 13 perfectly indented, syntax-error-free lines generated in 2 seconds!** That single walkthrough illustrates *why* human engineering judgment is non-negotiable in the AI era.
+
+Notice how clean the **post-audit production version** looks once all 5 Lenses pass (`Pydantic strict bounds + auth tenant check + parameterized atomic transaction + explicit 409/422 mapping`):
+
+```python
+# POST-AUDIT PRODUCTION DESIGN (Concept Preview for Parts 03–04):
+class TransferBody(BaseModel):
+    from_budget_id: UUID
+    to_budget_id: UUID
+    amount_cents: int = Field(gt=0, le=10_000_000)
+
+@app.post("/api/budgets/transfer")
+async def transfer_credits(body: TransferBody, actor=Depends(require_finance_actor), db=Depends(get_db)):
+    if body.from_budget_id == body.to_budget_id:
+        raise HTTPException(status_code=422, detail="Source and target budgets must differ")
+    with db.transaction():
+        # Parameterized + tenant-scoped + atomic balance guard (prevents TOCTOU race!)
+        debited = db.execute(
+            """UPDATE budgets SET balance_cents = balance_cents - %s
+               WHERE id = %s AND workspace_id = %s AND balance_cents >= %s RETURNING id""",
+            (body.amount_cents, body.from_budget_id, actor.workspace_id, body.amount_cents),
+        ).fetchone()
+        if not debited:
+            raise HTTPException(status_code=409, detail="Insufficient funds or unauthorized budget")
+        credited = db.execute(
+            "UPDATE budgets SET balance_cents = balance_cents + %s WHERE id = %s AND workspace_id = %s RETURNING id",
+            (body.amount_cents, body.to_budget_id, actor.workspace_id),
+        ).fetchone()
+        if not credited:
+            raise HTTPException(status_code=404, detail="Target budget not found in workspace")
+    return {"status": "ok"}
+```
+
+## 4. Evaluating Non-Code Proposals Too (Architectural & Prompt Bloat)
+
+Apply the exact same skepticism when an LLM proposes architectural tooling or multi-file rewrites:
+- **Ask "What breaks if we omit this layer?" (`02.1.2`):** When an AI suggests installing three extra caching libraries, an abstraction factory wrapper, or a vector database for 120 static records, reject unnecessary complexity aggressively.
+- **Check version reality against installed lockfiles:** Whenever AI suggests flags (`pydantic`, `next/image`, `zod`, `docker compose`), confirm against local docs (`00.9.9`) so deprecated `v1` patterns don't sneak into fresh `v2` repositories.
+
+## 5. Runnable Lab: Write an Adversarial Audit Test Exposing the Bugs Above
+
+Notice how quickly you verify defects rather than debating them visually: write small **adversarial assertions** against generated functions probing negatives, nulls, self-transfers, and non-atomicity! Run this quick Python demonstration testing a **hardened** transfer invariant vs. the broken AI pattern:
+
+```bash
+python3 - << 'EOF'
+# Hardened pure domain check demonstrating what an audited transfer function enforces:
+def execute_credit_transfer(balances: dict[str, int], from_id: str, to_id: str, amount: int) -> dict[str, int]:
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+        raise ValueError("amount must be a positive integer")
+    if from_id == to_id:
+        raise ValueError("cannot transfer to identical budget")
+    if from_id not in balances or to_id not in balances:
+        raise KeyError("unknown budget_id")
+    if balances[from_id] < amount:
+        raise RuntimeError("insufficient funds")
+
+    # Atomic state update (mirrors SQL BEGIN...COMMIT with CHECK constraint)
+    updated = dict(balances)
+    updated[from_id] -= amount
+    updated[to_id] += amount
+    return updated
+
+state = {"b1": 100, "b2": 20}
+assert execute_credit_transfer(state, "b1", "b2", 40) == {"b1": 60, "b2": 60}
+
+# Adversarial probes that shattered the naive AI draft:
+for bad_args in [("b1", "b2", -50), ("b1", "b2", 0), ("b1", "b1", 10), ("b1", "missing", 10), ("b1", "b2", True)]:
+    try:
+        execute_credit_transfer(state, *bad_args)
+        raise AssertionError(f"Adversarial probe slipped through: {bad_args}")
+    except (ValueError, KeyError, RuntimeError) as err:
+        print(f"Blocked {bad_args} cleanly -> {err}")
+EOF
+```
+
+*(Bonus sharp eye note in that test: notice `isinstance(True, int)` is `True` in Python because `bool` subclasses `int`! Explicitly checking `isinstance(amount, bool)` catches truthy `True === 1` sneak-ins cleanly!)*
+
+## 6. Failure Modes & Common Pitfalls
+
+- **Rubber-stamping long diffs (`"LGTM — 400 lines generated by AI"`):** If a generated PR exceeds what you can trace carefully (`~150–250 lines` per logical slice), break the task into smaller reviewed slices (`00.8.4`)—never merge giant uninspected blocks!
+- **Only running the happy-path unit test AI wrote alongside its own buggy code:** An AI assistant that forgot negative-amount validation will almost certainly forget to write a negative-amount test too! **Always invent your own adversarial unhappy-path tests (`02.2.1`) separately from generated tests.**
+- **Deleting working simple code for flashy AI refactors:** Never accept wholesale rewrites of unrelated files inside a narrow bugfix diff (`git diff` discipline).
+
+## 7. Hands-On Practice Exercises
+
+1. **Audit This AI-Generated TypeScript Snippet (`Find 4 Distinct Bugs`):**
+   ```ts
+   async function fetchUserDiscount(userId: string) {
+     const res = await fetch(`/api/users/${userId}`);
+     const data = await res.json();
+     if (data.tier == "gold" || "platinum") {
+       return 0.2;
+     }
+     return 0;
+   }
+   ```
+   Spot all four subtle issues before running TypeScript (`missing !res.ok check before .json()`, `missing timeout`, JavaScript operator trap `data.tier == "gold" || "platinum"` which **ALWAYS** evaluates truthy because non-empty string `"platinum"` is truthy in JS!, and unencoded `encodeURIComponent(userId)` path safety). Write the clean fixed 10-line function!
+2. **Design Your Personal 5-Point PR Review Header:** Copy the 5 audit lenses (`Correctness, Security, Boundaries, Scale, Maintainability`) into a tiny sticky note or `REVIEW_CHECKLIST.md` in your workspace and apply it deliberately to your very next code generation or manual exercise.
+
+## Key Takeaways
+
+- Fluent syntax and green happy-path runs prove **nothing** about production safety—review generated code strictly via the **5-Lens Audit (`Correctness, Security, Boundaries, Performance/Scale, Maintainability`)**.
+- AI drafts consistently overlook **authentication/tenant ownership, negative/null edges, SQL injection/XSS, concurrency races, external timeouts, and non-happy HTTP statuses**.
+- Never rely solely on AI-authored tests to validate AI-authored code; write **independent adversarial boundary tests** targeting the exact failure modes uncovered in your audit.
+
+## Official Primary References
+
+- [OWASP Top 10 Security Risks (`owasp.org/Top10`)](https://owasp.org/www-project-top-ten/)
+- [Google Code Review Guide — What to Look For](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+- [Section 00.7.3 — Reviewing AI-Generated Code](/book/part-00-about-this-book/00-7-working-with-ai/00-7-3-reviewing-ai-generated-code)
+
+**Next Topic:** [02.3.2 Spotting Hidden Assumptions](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-3-engineering-judgment-in-the-ai-era/02-3-2-spotting-hidden-assumptions)
+
+</BookNodePage>

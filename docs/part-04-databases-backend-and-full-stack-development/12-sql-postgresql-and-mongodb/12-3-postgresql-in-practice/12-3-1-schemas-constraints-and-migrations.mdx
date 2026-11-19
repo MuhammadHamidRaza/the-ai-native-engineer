@@ -1,0 +1,157 @@
+---
+id: "12-3-1-schemas-constraints-and-migrations"
+title: "12.3.1 Schemas, Constraints and Migrations"
+sidebar_label: "12.3.1 Schemas & Migrations"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-1-schemas-constraints-and-migrations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s3-t1">
+
+Your database schema changes every week — new column, new table, new constraint. If the process is "click around in pgAdmin and hope", production and your teammates drift into incompatible states. This lesson teaches **constraints that defend data at the database layer** and **forward-only migrations** — the discipline behind every reliable Postgres app (and the one Chapter 15's ShopCore app builds on).
+
+## 1. What Is a Schema? (Postgres Has Two Meanings)
+
+- **Logical schema of your design** — your ER diagram: tables, relationships, constraints.
+- **A Postgres `SCHEMA`** — a namespace inside a database grouping objects (`public`, `analytics`, `billing`). Default is `public`.
+
+Beginners only need the first meaning now; but know that you can create objects in your own namespace:
+
+```sql
+CREATE SCHEMA shop;
+CREATE TABLE shop.products ( ... );
+SELECT * FROM shop.products;
+```
+
+Why bother? Multiple apps can share a database without stepping on each other, and it keeps dev/test objects separate. ShopCore uses `public` — simple and universal.
+
+## 2. Constraints — the Database as Last Line of Defense
+
+Application-side validation is courtesy; constraints are law. Every business rule that must **never** break belongs in the schema:
+
+```sql
+-- ShopCore's constraint inventory (from 11.1.3) and WHY each exists
+PRIMARY KEY            -- one identity per row, indexed automatically
+UNIQUE                 -- emails, SKUs, slugs can't duplicate
+NOT NULL               -- required facts can never be missing
+CHECK (price_cents >= 0)        -- money can't go negative
+CHECK (stock_qty >= 0)          -- inventory can't go negative
+CHECK (status IN (...))         -- lifecycle restricted to known states
+REFERENCES ... ON DELETE RESTRICT  -- referenced catalog rows can't vanish
+```
+
+Test a constraint yourself:
+
+```sql
+INSERT INTO products (category_id, sku, title, price_cents, stock_qty)
+VALUES (1, 'BAD-01', 'Negative Price Item', -100, 1);
+-- ERROR:  new row for relation "products" violates check constraint
+```
+
+The row is rejected. No application bug, typo or rogue script can commit it. **This is the entire argument for constraints** — try to buy that safety anywhere else for free.
+
+Naming constraints helps debugging (`products_price_cents_check` style) or give your own:
+
+```sql
+ALTER TABLE products ADD CONSTRAINT products_sku_upper_chk CHECK (sku = upper(sku));
+```
+
+(Drop it with `ALTER TABLE products DROP CONSTRAINT products_sku_upper_chk;` — or leave it: SKUs SHOULD be uppercase.)
+
+## 3. Altering Tables Without Losing Data — `ALTER TABLE`
+
+```sql
+-- Add a column (existing rows get the DEFAULT automatically)
+ALTER TABLE products ADD COLUMN weight_grams INTEGER;
+
+-- Add with NOT NULL safely: supply a DEFAULT first
+ALTER TABLE products ADD COLUMN active BOOLEAN NOT NULL DEFAULT true;
+
+-- Change a column type (widening is safe; narrowing may fail on existing data)
+ALTER TABLE products ALTER COLUMN title TYPE TEXT;
+
+-- Rename a column or table
+ALTER TABLE products RENAME COLUMN active TO is_active;
+
+-- Add a constraint AFTER the fact
+ALTER TABLE orders ADD CONSTRAINT orders_user_created_uniq UNIQUE (user_id, created_at);
+```
+
+**Rule:** adding is safe, removing is not. Never `DROP COLUMN` outright in production — stop writing it, backfill, or soft-delete (`is_active=false`) for one release, then drop in a later migration.
+
+## 4. Forward-Only Migrations — the Only Safe Way to Change Schema
+
+A **migration** is a numbered SQL file applied in order, recorded in a tracking table:
+
+```text
+migrations/
+├── 001_create_shopcore_tables.sql    ← the DDL you already ran
+├── 002_seed_canonical_data.sql       ← optional, dev only
+├── 003_add_products_weight.sql
+└── 004_add_is_active_to_products.sql
+```
+
+Application rules:
+
+1. **Never edit an already-applied migration.** Teammates and staging ran it; the file's hash won't match, or worse, drift silently.
+2. Migrations run **inside a transaction** — if one fails halfway, Postgres rolls back cleanly, leaving the schema untouched.
+3. Keep a `schema_migrations` table so re-running is idempotent (each version applied exactly once):
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version    TEXT PRIMARY KEY,       -- '001_create_shopcore_tables'
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+4. Migration tools your team might adopt later: **node-pg-migrate**, **Drizzle Kit**, **Prisma Migrate**, **Flyway**. They automate the runner — but understand the SQL first, or the tool will confuse you forever. For this book we run `.sql` files with `psql -v ON_ERROR_STOP=1` (12.1.3) — no magic, same result.
+
+### A Real Numbered Migration for ShopCore
+
+`003_add_products_weight.sql`:
+
+```sql
+BEGIN;
+ALTER TABLE products ADD COLUMN weight_grams INTEGER;
+INSERT INTO schema_migrations (version) VALUES ('003_add_products_weight')
+ON CONFLICT (version) DO NOTHING;
+COMMIT;
+```
+
+Apply it:
+
+```bash
+psql -U postgres -h localhost -v ON_ERROR_STOP=1 -d shopcore -f 003_add_products_weight.sql
+```
+
+Verify: `\d products` shows `weight_grams`. Undo requires a **new** migration (`004_drop_products_weight.sql` with `ALTER TABLE products DROP COLUMN weight_grams;`), never an edit to `003`.
+
+## 5. Seed Data as Data — Treat It Like Code
+
+Keep seeds in `db/seed/shopcore_seed.sql` (as in 11.1.3), versioned in git. Schema in one file, data in another, both replayed in CI with:
+
+```bash
+dropdb --if-exists shopcore_verify && createdb shopcore_verify
+psql -v ON_ERROR_STOP=1 -f schema.sql -f seed.sql shopcore_verify
+```
+
+If the seed stops matching the schema, **CI fails loudly** — exactly what you want.
+
+## 6. Practice
+
+**Guided exercise.** Create `004_add_products_origin.sql` adding `origin_country TEXT` (nullable) to products with a companion `schema_migrations` insert. Apply it, then `\d products` to confirm.
+
+**Independent exercise.** Break the schema on purpose: `ALTER TABLE products ALTER COLUMN price_cents SET NOT NULL;` then attempt `INSERT INTO products (...) VALUES (NULL, ...)`. Read the error. Now think: which app bug could have produced that NULL in the wild, and which layer caught it?
+
+**Challenge.** Write a complete rollback-safe "two phase" change: adding `sku` UNIQUE to a table that might already have duplicates — first `DELETE`/rewrite the duplicates (there are none in ShopCore), then `ALTER TABLE ... ADD CONSTRAINT`. Explain why adding a `UNIQUE` to a big table can lock it, and what `CREATE UNIQUE INDEX CONCURRENTLY` does differently.
+
+**Assessment checklist**
+
+- [ ] I have created, altered and rolled forward a table without losing data.
+- [ ] I know every constraint ShopCore uses and which bug each prevents.
+- [ ] I never edit applied migrations — I add new ones.
+- [ ] I can load schema + seed with one psql command sequence.
+- [ ] I can explain why adding `UNIQUE` on a large live table needs care.
+
+</BookNodePage>

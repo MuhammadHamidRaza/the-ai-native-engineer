@@ -1,0 +1,176 @@
+---
+id: "12-1-1-what-postgresql-is-and-how-to-install-it"
+title: "12.1.1 What PostgreSQL Is and Installing It"
+sidebar_label: "12.1.1 Installing PostgreSQL"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-1-install-and-run-postgresql/12-1-1-what-postgresql-is-and-how-to-install-it"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s1-t1">
+
+Before any SQL can run, a database server must exist on your machine (or in the cloud) and you must know how to start it, connect to it and prove it works. This lesson takes you from zero to a running **PostgreSQL 18** server and verifies the installation.
+
+## 1. Understand It First — What Is PostgreSQL?
+
+**PostgreSQL** (often written "Postgres") is a free, open-source **relational database management system (RDBMS)**. Think of it as a bouncer, librarian and accountant for your data rolled into one program:
+
+- It **stores** data durably in tables on disk (your `users`, `products`, `orders`).
+- It **protects** data integrity with constraints (foreign keys, UNIQUE, CHECK) — bad data is rejected at the door.
+- It **answers** questions written in SQL — joins, aggregates, searches — fast, thanks to indexes and a cost-based query planner.
+
+Where does it fit in a real app? Every serious backend you have ever used talks to a database: when you register on a website, your account row goes into a `users` table; when you order a product, rows go into `orders` and `order_items`. PostgreSQL is the default choice for that job because it is free, ACID-compliant, extensible (JSONB, full-text search, pgvector for AI), and battle-tested by companies from startups to banks.
+
+**PostgreSQL is a server, not just a program.** Once installed it runs as a background service (a Windows service, a macOS LaunchAgent, or a Linux systemd unit) listening on **port 5432**. Your tools — pgAdmin, `psql`, Node, Python — are *clients* that connect to that server.
+
+> Vocab you must know now:
+> - **Server/Host:** the machine running PostgreSQL. On your own laptop that's `localhost` (127.0.0.1).
+> - **Port:** which "door" the server listens on — PostgreSQL's default is **5432**.
+> - **Role/User:** PostgreSQL calls accounts "roles". The default superuser created by the installer is `postgres`.
+> - **Database:** a container for schemas/tables living inside the server. One server can host many databases — we will create `shopcore`.
+> - **Client:** any program that connects to the server — pgAdmin (GUI), `psql` (terminal), your app.
+
+## 2. Find the Official Software
+
+Only ever download PostgreSQL from official sources. The official download portal is:
+
+**https://www.postgresql.org/download/**
+
+Click **Windows** (we start there; macOS/Linux alternatives follow). You will land on "PostgreSQL: Windows installers", which offers:
+
+- **Interactive installer by EDB** — the official recommended path for most Windows users. Choose the **latest PostgreSQL 18.x 64-bit** installer (PostgreSQL 18 is the current stable major release; the download page lists the newest minor, currently 18.x).
+- **Zip archive** — advanced users only; no installer, no service registration, no pgAdmin. **Beginners: do not choose this.**
+- **Source code** — for contributors; **beginners: do not choose this.**
+
+Ignore any third-party "PostgreSQL free download" portals (Softonic, etc.) — they repackage binaries and add risk with zero benefit.
+
+Do the same for the **pgAdmin 4** GUI if you install it separately (pgAdmin bundles with the EDB installer by default): **https://www.pgadmin.org/download/**
+
+## 3. Install on Windows 10/11 — Step by Step
+
+1. Run the downloaded `postgresql-18.x-windows-x64.exe`. Windows asks for Administrator permission — click **Yes**.
+2. The EDB Setup Wizard opens → **Next**.
+3. **Installation Directory:** leave the default (`C:\Program Files\PostgreSQL\18`) → **Next**.
+4. **Select Components:** leave **PostgreSQL Server**, **pgAdmin 4** and **Command Line Tools** checked (these three are what you need). You may uncheck **Stack Builder** and the "Npgsql"/EnterpriseDB extras — they are optional and not needed for this book → **Next**.
+5. **Data Directory:** leave the default → **Next**.
+6. **Port:** leave the default **5432** → **Next**. *(If 5432 is already in use — another Postgres instance or Docker — the installer warns you. Change to 5433 and **remember it**; every connection command later uses your chosen port.)*
+7. **Superuser password:** choose a strong password for the `postgres` role and **write it down somewhere safe right now**. You cannot log in without it. → **Next**.
+8. **Advanced options (locale):** leave `[Default locale]` → **Next**.
+9. Review the summary → **Next** → **Install**. Copy starts; this takes 2–5 minutes. Windows may prompt to allow the app through the firewall — allow it on **private** networks.
+10. **Finish** — if the final screen offers "Launch Stack Builder", **uncheck it** (it installs extra components we don't need yet) and click **Finish**.
+
+PostgreSQL is now installed **and running as a Windows service** named `postgresql-x64-18` that starts automatically at boot.
+
+## 4. Install on macOS
+
+**Option A — Postgres.app (easiest, recommended for beginners):**
+1. Go to **https://postgresapp.com** and download the latest Postgres.app for macOS.
+2. Drag **Postgres.app** into Applications and launch it. Click **Initialize** on first launch — this creates a server with your macOS username as superuser (no password on localhost) and starts it.
+3. Add the CLI to PATH (the app shows a tip): add this line to `~/.zshrc` — `export PATH="$PATH:/Applications/Postgres.app/Contents/Versions/latest/bin"` — then `source ~/.zshrc`.
+
+**Option B — Homebrew:** `brew install postgresql@18` then `brew services start postgresql@18`. Homebrew installs into `/opt/homebrew/opt/postgresql@18/bin`; the formula page prints the PATH line to add if `psql` is not found.
+
+psql then works identically on both options: `psql postgres`.
+
+## 5. Install on Linux
+
+**Ubuntu/Debian (official repo, auto-starts a systemd service):**
+
+```bash
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+sudo systemctl enable postgresql
+sudo -u postgres psql        # run psql as the postgres system user
+```
+
+Inside `psql`, set a password for the postgres role and exit:
+
+```sql
+\password postgres     -- type a new password twice
+\q
+```
+
+**Fedora/RHEL:**
+
+```bash
+sudo dnf install -y postgresql-server postgresql-contrib
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql
+sudo -u postgres psql
+```
+
+## 6. Verify the Installation — Exactly What to Run
+
+Open a **new** terminal (on Windows, search "PowerShell"; on macOS, Terminal; on Linux, your terminal). New windows pick up the installer's PATH changes — old ones do not.
+
+```bash
+psql --version
+```
+
+Expected output (exact version may be newer — that is fine):
+
+```text
+psql (PostgreSQL) 18.7
+```
+
+If you see `'psql' is not recognized as an internal or external command` (Windows) or `command not found` (macOS/Linux), the command-line tools are not on PATH. Jump to **Troubleshooting** below.
+
+Next test the server is actually running. On Windows:
+
+```powershell
+Get-Service -Name "*postgresql*"
+```
+
+Expect `postgresql-x64-18` with `Status: Running`. If it says `Stopped`, run `Start-Service postgresql-x64-18` (or right-click → Start in `services.msc`).
+
+Finally connect over TCP (the same path your Node backend will use):
+
+```bash
+psql -U postgres -h localhost -p 5432 -d postgres
+```
+
+Enter the superuser password you set in step 7. At the `postgres=#` prompt, prove the server is alive:
+
+```sql
+SELECT version();
+```
+
+Expected (abbreviated): `PostgreSQL 18.7 on x86_64-pc-windows-msvc ...`. Type `\q` + Enter to quit.
+
+## 7. Troubleshooting the Classics
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `psql` not recognized on Windows | Command Line Tools not on PATH | Add `C:\Program Files\PostgreSQL\18\bin` to **PATH**: Start → "environment variables" → "Edit the system environment variables" → Environment Variables → Path → Edit → New → paste that path → OK; open a **new** PowerShell window |
+| Installer: "Port 5432 already in use" | Another Postgres instance or Docker container | Stop it (`docker stop <name>` / services.msc) or choose **5433** — and use `-p 5433` in every connection |
+| `psql: error: connection to server at "localhost", port 5432 failed: FATAL: password authentication failed` | Wrong superuser password | Re-set it: Windows — reinstall is overkill; instead open pgAdmin (it also stores the password) or use the EDB **Application Stack Builder → "Reset superuser's password"**? No — simplest correct path: `pg_ctl` / reconfigure via `pg_hba.conf` to `trust` locally, set password, restore. For beginners on a throwaway local install, an uninstall + reinstall is usually faster and safer; uninstall via Windows "Apps", then reinstall and record the password |
+| pgAdmin says "connection refused" | Windows service not running | `services.msc` → `postgresql-x64-18` → Start |
+| Linux: `psql: FATAL: role "<you>" does not exist` | Linux login user has no Postgres role | Use `sudo -u postgres psql` — that is the intended entry point on Debian/Ubuntu |
+| Everything hangs/timeouts | Firewall blocking port 5432 | Allow the app on private networks, or keep defaults |
+
+## 8. Practice
+
+**Guided exercise.** After installing, run `psql --version`, `Get-Service postgresql*` (Windows), and `SELECT version();` inside psql. Screenshot all three — you will need them for your portfolio README.
+
+**Independent exercise.** Create a throwaway database from the terminal:
+
+```bash
+createdb -U postgres -h localhost mytest
+psql -U postgres -h localhost -d mytest -c "SELECT current_database();"
+```
+
+You should see `mytest` printed back. Then delete it: `dropdb -U postgres -h localhost mytest`.
+
+**Challenge.** Install PostgreSQL on a **second** machine or OS (a VM, WSL, or a friend's laptop) and connect to it from pgAdmin using `host = <its IP address>` in the server settings. Notice everything you must get right: port reachable, service running, correct password.
+
+**Assessment checklist**
+
+- [ ] I can state what PostgreSQL is, what a role/port/database/client are.
+- [ ] I installed PostgreSQL from the official postgresql.org download only.
+- [ ] `psql --version`, the service check and `SELECT version();` all pass.
+- [ ] I know where my superuser password is stored and will never commit it anywhere.
+- [ ] I can fix the three most common local problems: PATH, port in use, service stopped.
+
+**Where to next.** With the server running, learn its graphical console → **12.1.2 pgAdmin 4 from Zero**.
+
+</BookNodePage>

@@ -1,0 +1,135 @@
+---
+id: "25-1-2-choosing-chatgpt-claude-or-gemini-by-job"
+title: "25.1.2 Choosing ChatGPT, Claude or Gemini by Job"
+sidebar_label: "25.1.2 Choosing ChatGPT, Claude or Gemini by Job"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-1-ai-assistants-for-everyday-work/25-1-2-choosing-chatgpt-claude-or-gemini-by-job"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s1-t2">
+
+People ask "which AI is best?" the way they once asked "which text editor is best?" — as if the tool were the craft. The honest answer as of **November 2026**: all three flagships are excellent; they differ in shape, not in kind. The right choice depends on your job, your constraints, and how much you value a specific workflow. This lesson gives you a defensible way to pick — with real plan names and prices, verified the week this was written.
+
+## 1. The Three Contenders at a Glance (Verified November 2026)
+
+**ChatGPT (OpenAI)** — free tier; Go (~$8/mo); Plus ($20/mo); Pro at $100 / $200 / $500 per month tiers (GPT-6 Astra reasoning, longest sessions). Deep research, projects, memory, image creation. Strongest all-rounder and most integrations. API: GPT-6 family (flagship `gpt-6-astra`; `gpt-6-sol`, `gpt-6-terra`, `gpt-6-luna`) and the earlier GPT-5.x line. Source: [chatgpt.com/pricing](https://chatgpt.com/pricing/).
+
+**Claude (Anthropic)** — free tier; Pro $20/mo (or $17/mo billed annually); Max $100/mo; Ultra $200/mo (renamed from Max 20x on 30 Oct 2026). Strong at long-document work, careful writing and structured analysis; Claude Code is included in Pro and above. API: Claude Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5. Source: [claude.com/pricing](https://claude.com/pricing).
+
+**Gemini (Google)** — free tier; Google AI Plus $4.99/mo; AI Pro $19.99/mo (Gemini 4 Argon access, 5 TB storage, Gemini in Workspace apps); AI Ultra $99.99/mo (5x limits) or $199.99/mo (20x). Deep Google Workspace integration (Gmail, Docs, Sheets, Drive); 1M-token context on Pro-class models. API: Gemini 4 Carbon / Argon / Hydrogen (Hydrogen free-tier available), Gemini 3.8 Flash, 3.1 Pro. Source: [gemini.google/subscriptions](https://gemini.google/subscriptions/).
+
+Others worth knowing, briefly: **Perplexity** ($20/mo Pro, annual ~$17) — cited-source answer engine, excellent for research with the caveats in 25.1.3; **GitHub Copilot** (free tier; Pro $10/mo) — AI in the editor/IDE, Swimlane B; **Grok** (xAI; merged into "The X Subscription" in 2026, Premium ~$30/mo) — real-time X data; **DeepSeek** — free web chat, very low API prices, but a China-based provider (see the data-residency note below); **Mistral** — Le Chat renamed **Vibe** (May 2026, Pro $14.99/mo), the main European option and the easiest EU data-residency story.
+
+**Prices drift.** Everything above is a snapshot from official pages on ~17 Nov 2026. Re-check before you pay.
+
+## 2. Picking by Job Class
+
+| Job | Usual best pick | Why — and the honest caveat |
+| :-- | :-- | :-- |
+| **Writer / content** | Claude (prose quality, voice consistency) or ChatGPT (fast, many formats) | Claude tends to hold a house style longer; ChatGPT's projects + memory are strong too. Caveat: all three AI-write recognizably when unedited — your edit is the differentiator. |
+| **Researcher / analyst** | ChatGPT (deep research + web) or Perplexity (citations); Gemini if sources are Google Workspace docs | Deep research produces long cited reports; Perplexity surfaces links inline. Caveat: citations ≠ verification; see 25.1.5. |
+| **Developer** | Claude (Sonnet 5.5 class, via Claude Code) or ChatGPT (GPT-6/Codex); Cursor if you want an agentic IDE | Coding strength is closer than marketing suggests; your *harness* (repo access, tests, editor flow) matters more than the model. Copilot if you live inside GitHub. |
+| **Data / spreadsheet analyst** | ChatGPT or Gemini (Sheets/Excel integration); Claude for the analysis narrative | Both can read uploaded sheets and propose formulas. Gemini inside Sheets is the least-friction path if you're in Workspace. Caveat: never trust a formula you haven't checked on sample rows. |
+| **Designer** | Gemini or ChatGPT for moodboards/Nano Banana–class image gen; Claude for design rationale and critique | Image-generation quality is a race that resets quarterly; check current examples, not 2024 reviews. |
+| **Product manager / founder** | Claude for specs and PRDs (long-context); ChatGPT for broad surface area; both fine for research | Long documents (spec + meeting notes + feedback) favor Claude's 1M-token context. Founders: use it as a sparring partner, never as the decider. |
+| **Admin / ops / EM** | Gemini if the company runs Workspace; Copilot if it runs Microsoft 365; ChatGPT as neutral default | The integration with your actual inbox/drive beats model subtleties. |
+| **EU / regulated entity** | Mistral Vibe or Claude/Gemini/ChatGPT **Enterprise** with EU data processing terms | Data residency beats benchmark wins. Confirm the DPA, not the ad. |
+
+## 3. The Same Subscription, Three Very Different Jobs — a Second Worked Example
+
+*Ravi is a data analyst at a bank. Same employer, three use cases.*
+
+1. **Recurring: auto-generating the weekly KPI narrative.** This is a templated, mid-capability task — a mid-tier model on the API with a fixed prompt, or even the consumer app with a saved prompt, is plenty. Cost on API: pennies per week. Pick: whatever's cheapest and compliant.
+2. **One-off: "explain this 400-line legacy SQL procedure with no comments."** High-context, single-shot, value in accuracy. Claude (1M context) or ChatGPT with the procedure pasted in; verify the explanation by checking two claims against the code. Pick: whoever won your §7 bake-off for code comprehension.
+3. **Regulated: customer complaint analysis.** Names, account data — leaves the consumer tier immediately. Either anonymize aggressively (strip names/IDs, keep the narrative) or use the bank's sanctioned enterprise deployment of any of the three. Pick: compliance decides, not you.
+
+The skill is noticing the three needs are different before defaulting to "my favorite app."
+
+## 4. Usage-Limit Reality — What "Unlimited" Never Means
+
+Every plan in §1 is metered — messages per 5-hour window, weekly caps, or compute budgets. Nobody publishes exact counters; they shift with model cost per message. Practical signals you're near a limit: answers get shorter, the model picker greys out flagship models, or you're routed to a smaller model silently. Mitigations: use flagship models only for hard steps; do extraction/iteration in a mid-tier model; move bulk work to the API (cheaper, predictable); on the consumer side, batch non-urgent work across the week. If you hit limits weekly, the right tier is one step up — not a second $20 subscription to the same vendor.
+
+## 5. Regional Availability and Access Notes
+
+- Consumer apps availability and pricing vary by country (Google AI Pro/Ultra explicitly 150+ countries; OpenAI and Anthropic price in USD and differ by region/tax).
+- DeepSeek: API has off-peak/peak pricing (off-peak ~half of peak as of late 2026); web chat is free.
+- Enterprise procurement: all three majors sell through resellers and cloud marketplaces (AWS/Azure/GCP) — that's how you get committed-use discounts and unified billing if your org buys that way.
+
+## 6. Worked Example — Picking for an Operations Manager
+
+*Mara runs operations for a 40-person logistics firm in Frankfurt. Company runs Google Workspace. She writes SOPs, answers vendor emails, builds KPI spreadsheets, and summarizes weekly all-hands recordings.*
+
+Step 1: list constraints — Workspace shop, EU customers (GDPR), German-English bilingual output, no IT department to vet a new tool.
+Step 2: integration beats raw quality here. Gemini inside Gmail/Docs/Sheets removes copy-paste friction, and Workspace terms keep customer data out of training by default (Google states Workspace content is not used to train models without permission — see [Generative AI in Google Workspace Privacy Hub](https://knowledge.workspace.google.com/admin/generative-ai/generative-ai-in-google-workspace-privacy-hub)).
+Step 3: cost check — AI Pro at $19.99/mo includes Workspace integration and 5 TB storage (useful). ChatGPT Plus at $20/mo is equally viable for writing, but no native Workspace grounding.
+Step 4: pilot, don't commit — one month on AI Pro, measure hours saved drafting SOPs and emails, then decide. Benchmark claims from launch blog posts are not pilot data.
+
+The pattern: **constraint list → integration → pilot → decide.** Never the reverse (see "benchmarks ≠ your workload").
+
+## 7. Benchmarks ≠ Your Workload (Read Before Believing Any Chart)
+
+Vendor launch charts show cherry-picked leaderboards. What matters: (a) does it handle *your* documents (your PDF formats, your domain jargon), (b) does it obey *your* output constraints, (c) is it available and allowed in your environment. A 2-point leaderboard gap routinely inverts on real work. How to do a 20-minute bake-off:
+
+1. Collect 5 real tasks you do weekly (e.g., "summarize this 8-page SOP", "draft this customer reply", "extract line items from this invoice PDF").
+2. Run all five on ChatGPT, Claude and Gemini free tiers, identical prompts.
+3. Score each output 1–5 on correctness, tone fit, and time-to-usable.
+4. Pick the winner *for your work*. Write down why — future-you will forget.
+
+## 8. Data Residency and Privacy Differences (Where Relevant)
+
+- Consumer tiers (Free/Plus/Pro, etc.): content **may be used to train models** unless you opt out. ChatGPT: turn off "Improve the model for everyone" (Settings → Data controls). Claude: opt out in privacy settings (consumer chats may be used for training otherwise). Gemini free: content used to improve products; Workspace accounts: not without permission.
+- Business/Enterprise tiers (ChatGPT Enterprise/Business, Claude Team/Enterprise, Gemini in Workspace, Gemini API paid tier): not used for training by default; DPAs available; some offer regional processing (e.g., OpenAI regional endpoints ~10% price uplift; Anthropic US-only inference 1.1x; Google Vertex/Workspace CDPA).
+- **DeepSeek** is operated by a company based in China; free-tier content and API traffic are subject to Chinese jurisdiction. Do not route client data, source code, or anything under NDA through it without explicit organizational approval.
+- **Mistral (Vibe/Le Chat)** processes data in the EU — the default answer for European sovereignty requirements, subject to your DPA review.
+- Full privacy protocol, including what never to paste anywhere, is in **25.1.5**.
+
+## 9. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| "The free tier got worse this month" | Silent model/limit changes — free tiers get the smallest models | Check the model picker; upgrade or switch provider for that task |
+| "ChatGPT and Claude give opposite answers" | Both are probabilistic; prompts differ subtly | Normalize prompts; run 3 times each; check which is right |
+| "Gemini can't see my file" | File type/size limits, or not on a plan with upload | Check plan limits; convert to PDF; remove scans |
+| "My company banned AI tools" | Shadow-IT risk or unvetted data flow | Ask IT for the approved tier/enterprise agreement; don't improvise |
+| "Benchmarks said X, I disagree" | Workload mismatch | Do the §7 bake-off; trust your five tasks |
+
+## 9.5 Reading an AI Launch Announcement Without Getting Sold To
+
+You will meet these weekly. The reliable tells of a marketing page: (1) a single benchmark chart with no task description; (2) "state-of-the-art" with no "on what, measured how"; (3) a demo GIF where the model answers perfectly on the first try; (4) no mention of refusals, latency, or cost. The reliable tells of substance: (1) named evals you can reproduce; (2) a model/system card with known limitations; (3) pricing and limits stated in the same paragraph as capability; (4) API model IDs you can call today. When both vendors launch within a week of each other, the honest move is §7's bake-off on your workload within 48 hours — leaderboard whiplash is a feature of this market, and your five tasks are the only stable metric you own.
+
+## 9.6 The Five Questions to Ask Before Buying Any AI Seat
+
+1. What are my top three tasks, and which tier's output passes my review on them this week?
+2. Does my team/cluster/client data enter this account, and is it training-excluded here? (§8)
+3. What is the exit — can I export history, and what happens to it on cancel?
+4. Who in my org is the admin, and where are the retention and feedback toggles?
+5. Is there a cheaper tier + 2 hours of prompting that does the same job? (Often yes; verify.)
+
+## 9.7 A Decision Walk-Through — Product Launch Page
+
+*Your team must ship a product landing page by Friday. Three assistants available. Who does what?*
+
+1. **Competitive blurb research:** ChatGPT or Perplexity deep-research with citations (vendor docs, not blogs) → 30 minutes, verify three links.
+2. **Hero copy + three headline options in brand voice:** Claude with your style guide pasted (it holds voice across a long doc); or ChatGPT with 2 examples. Either fine.
+3. **React/Next.js implementation:** Cursor or Claude Code in the repo — it reads your component library and conventions; Swimlane B all the way.
+4. **Final legal pass on claims:** *no model* — marketing, product and counsel sign off on real wording.
+5. **Image variants:** Gemini/ChatGPT image generation, or your designer; either way, replace any invented stats with real ones.
+
+Notice step 4: the professional stays accountable; AI does volume, humans do judgment. That ratio is the whole job description of the AI-native engineer in 2026.
+
+## 10. Practice
+
+**Guided exercise.** Do the §7 bake-off now: five real tasks, three assistants, a scored table. Thirty minutes, one decision.
+
+**Independent exercise.** Write the one-paragraph justification for your $20 (or $0) spend next month, citing the tasks it will actually do.
+
+**Assessment checklist**
+
+- [ ] I can name current ChatGPT, Claude and Gemini plan prices (free / ~$20 / power tiers) and the trade they represent.
+- [ ] I picked my assistant via constraints + pilot, not via a leaderboard.
+- [ ] I know which consumer tiers train on my content and how to opt out.
+- [ ] I know the EU-residency and China-jurisdiction answers for at least four providers.
+- [ ] I can say "it depends — here's the 20-minute test" when asked which AI is best.
+
+</BookNodePage>

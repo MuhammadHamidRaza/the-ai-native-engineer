@@ -1,0 +1,115 @@
+---
+id: "21-3-3-sync-apis-vs-event-driven-messaging"
+title: "21.3.3 Sync APIs vs Event-Driven Messaging"
+sidebar_label: "21.3.3 Sync APIs vs Event-Driven Messaging"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-3-sync-apis-vs-event-driven-messaging"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s3-t3">
+
+The fastest way to make ShopCore's checkout fragile is to call everything synchronously: charge the card, then decrement stock, then reserve courier, then send email, then score fraud — one chain, five dependencies, one timeout away from a 500 and a very angry customer. The fix is not faster code; it is better topology: decide what must be answered now versus what can happen soon. This lesson teaches the two patterns, the delivery semantics that actually exist, and the failure modes you will design around for the rest of your career.
+
+## 1. The Two Integration Patterns
+
+| Pattern | Caller blocks until | Use for | Example |
+| :-- | :-- | :-- | :-- |
+| **Sync request/response** | Callee responds | Reads; user-facing decisions | `GET /orders/1234` for the SPA |
+| **Async messaging** | Broker accepts the message | Fan-out, decoupling, retries | `order.paid` → inventory/email/fraud |
+
+Messaging flavors: **queue** (one message → one consumer work item — BullMQ on Redis, as in [13.4.1](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency)), **pub/sub** (one message → many subscribers — `order.paid` consumed by three services), **log/stream** (append-only ordered log — Kafka-style — not needed at ShopCore's scale yet; Redis streams or a Postgres events table suffice). Cache-aside reads stay synchronous; side effects go async.
+
+## 2. The ShopCore Walkthrough — `order.paid`
+
+```text
+customer        SPA                API                 broker           workers
+   |  pay (card token) |             |                     |               |
+   |----------------->| POST /orders |                     |               |
+   |                  |------------->| 1. charge intent    |               |
+   |                  |              | 2. INSERT order     |               |
+   |                  |              | 3. PUBLISH order.paid (outbox)      |
+   |                  |<------------| 201 + order id      |               |
+   |<-----------------|  receipt     |                     |               |
+   |                  |              |              -----> | inventory:    |
+   |                  |              |              |----> | decrement     |
+   |                  |              |              |----> | email: receipt|
+   |                  |              |              |----> | fraud: score  |
+   |                  |              |              |----> | analytics: KPI|
+```
+
+The **transactional outbox** makes the publish reliable: step 3 is not a separate network call after the commit; it is a row written in the same Postgres transaction (`outbox(event_type, payload, published_at NULL)`), and a relay process publishes and marks `published_at`. No order without its event, no event without its order — even if the API crashes between the two.
+
+## 3. Delivery Semantics — the Only Honest Model
+
+- **At-most-once** — fire and forget; messages can be lost. Unacceptable for money or stock.
+- **At-least-once** — redelivery guaranteed; duplicates possible. **This is the only model you get in practice.**
+- **Exactly-once** — does not exist across process boundaries; what vendors sell is "at-least-once + idempotent consumers" (or transactions *within* one broker). ShopCore rule: **every consumer is idempotent or it does not ship.**
+
+Idempotency recipe per consumer: dedupe table `processed_events(event_id UUID PK, processed_at)`; consumer checks-and-inserts in the same transaction as its effect. Email consumer sends all mail to a transactional provider with the event id as the provider's idempotency key; Stripe does the rest. Webhook replays (Stripe's job, and your reconciler's) become no-ops by construction.
+
+## 4. Ordering — Tolerate It, Never Trust It
+
+Events arrive out of order across consumers and across retries. ShopCore case: `order.shipped` lands before `order.paid` for order 4815 because the email worker was lagging. Tolerate with:
+
+1. **Sequence numbers** per order (`seq` from a Postgres sequence scoped by `aggregate_id`) and consumers that drop stale events (`WHERE seq > last_applied`).
+2. **Idempotent state machine** (21.1.3): `pending → paid → shipped` — applying `shipped` while in `pending` parks it in `waiting_for_paid` and a 1-minute reconciler applies it after `paid` lands. The state machine, not the broker, enforces order.
+3. **Partition by aggregate** when the broker supports it (Redis stream `ORDER BY` fields are not guaranteed cross-key; Kafka partitions `order_id`): same order always same partition, order preserved there.
+
+What to never do: `SELECT ... FOR UPDATE` across two consumers to "serialize" events, or assume the broker's global order — you have neither.
+
+## 5. Eventual Consistency — the Customer-Facing Window
+
+Between `201 Created` and the email arriving, the order exists but the world is asynchronous. Design the UX for it: order-status page polls or subscribes; states shown as `processing` not `failed`; inventory reserved-but-hidden until `paid`. The support team sees the same states. Eventual consistency is a product decision as much as an engineering one — tell the user the truth with optimistic-but-labeled UI.
+
+## 6. Sagas vs 2PC
+
+**Two-phase commit** blocks: prepare all participants, hold locks, commit all — and a coordinator failure between phases leaves the system stuck. It is also simply unavailable for HTTP participants like Stripe. Treat 2PC as a ghost: never implement it in ShopCore.
+
+**Saga** — a sequence of local transactions, each with a compensating action:
+
+```text
+1. reserve stock (Inventory)        compensate: release reservation
+2. create payment intent (Payments) compensate: cancel intent
+3. capture payment (Stripe)         compensate: refund
+4. create order row                 compensate: mark cancelled
+5. enqueue fulfilment               compensate: hold in exceptions queue
+```
+
+Failure at step 3 after 1–2 succeed: Inventory releases the reservation, the intent is cancelled, the customer sees "payment failed — no charge". Failure ambiguity (did the capture succeed? timeout?) is resolved by querying the provider — the ACL from 21.2.3 again — and only then compensating. Every compensation must itself be idempotent; a compensating action that runs twice is its own bug class.
+
+## 7. Failure Modes and Retries
+
+- **Broker down / queue full** — producers must not block the HTTP path. Outbox keeps the write durable; relay retries with backoff; if the outbox table grows past a watermark, page ops (that is your earliest signal, not consumer lag).
+- **Poison messages** — event that crashes every consumer twice. Route to a **dead-letter queue** after N attempts; alarm on DLQ depth > 0; human replay from runbook.
+- **Retry storms** — consumer retries with no budget amplify outages (21.1.1's loop). Exponential backoff with jitter, max 5 attempts, budget per partition; DLQ absorbs the rest.
+- **Duplicate webhook + queue redelivery** — same event delivered twice through two paths (webhook and relay). The `processed_events` dedupe catches both.
+- **Consumer lag grows silently** — alert on lag (messages behind × average processing time), and on oldest-unprocessed-age > 60 s for payment-adjacent events.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| "Order paid, email never arrived, replay shows it sent 3 times" | Non-idempotent email consumer + retries | Provider idempotency key = event id; `processed_events` dedupe |
+| Inventory decremented twice for one order | Duplicate `order.paid`, no dedupe | Same; plus reconciler: set-based comparison stock vs movements |
+| Shipped email before payment | Ordering violation | Park + reconciler (Section 4); lag alerts |
+| API 500s under Stripe outage | Sync call on the write path | Move to outbox + post-auth processing; never call Stripe in GET |
+| Outbox table at 2M rows | Relay dead or slow | Alert on outbox age, not row count; runbook replays relay |
+
+## 9. Practice
+
+**Guided exercise.** Implement the outbox table + relay for `order.paid` in the Chapter 15 codebase: same-transaction insert, a `relay` script, and a `processed_events` dedupe in the email worker. Crash the relay mid-publish; verify the event still lands.
+
+**Independent exercise.** Write the saga as a state machine with compensation for each step, including the ambiguous-timeout case at step 3. Identify which compensation can be retried safely N times and which needs a human.
+
+**Challenge.** Simulate a 40-minute broker outage in a test: stop the relay, create 100 orders, restart, and measure time-to-drain and duplicate rate. Report the reconciler's catch count before and after enabling dedupe.
+
+**Assessment checklist**
+
+- [ ] I can state why exactly-once delivery does not exist across boundaries.
+- [ ] I can draw the outbox pattern and explain what it guarantees.
+- [ ] I can design an idempotent consumer with the dedupe table recipe.
+- [ ] I can explain three ordering-tolerance mechanisms and when to use each.
+- [ ] I can narrate the checkout saga with compensations and the ambiguous-timeout resolution.
+
+</BookNodePage>

@@ -1,0 +1,117 @@
+---
+id: "00-4-6-verify-what-you-build"
+title: "00.4.6 Verify What You Build"
+sidebar_label: "00.4.6 Verify What You Build"
+slug: "/part-00-about-this-book/00-4-philosophy-of-this-book/00-4-6-verify-what-you-build"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-4-6">
+
+*"It worked once when I clicked it locally"* is not engineering verification. Neither is *"TypeScript compiled without red squiggles,"* *"the AI coding assistant assured me it fixed the bug,"* or *"the Docker container started."* Compilation verifies type signatures match; container startup proves a process didn't crash immediately on boot; a single happy-path click proves one clean input worked once. None of those prove the system handles malformed inputs, unauthorized users, concurrent writes, network timeouts, or probabilistic AI drift reliably.
+
+**Verify What You Build** establishes a non-negotiable engineering habit across every chapter of this book: **nothing is finished until concrete verification evidence matches reality.**
+
+## 1. The Four Verification Layers in Modern AI-Native Systems
+
+Production software combines deterministic mechanics and probabilistic model outputs. Reliable verification therefore spans four distinct, complementary layers:
+
+| Verification Layer | Exact Failure Modes Caught | Concrete Tools & Mechanisms Taught Here |
+| :--- | :--- | :--- |
+| **1. Static, Type & Contract Checks** | Type mismatches, unhandled `null`/`undefined`, syntax errors, invalid schema shapes, lint bugs | `tsc --noEmit`, strict Python type hints, ESLint, **Zod / Pydantic** runtime input/output contracts (**Parts 02–04**) |
+| **2. Unit & Integration Tests** | Broken arithmetic/tax logic, violated SQL foreign keys, missing tenant `WHERE` scopes, duplicate webhook writes, incorrect `401`/`403`/`409` status codes | **Vitest / Jest**, **Pytest**, real PostgreSQL test databases/fixtures, authenticated route tests (**Chapter 14**) |
+| **3. Build, E2E & Live Runtime Probes** | Broken client/server bundle boundaries, missing environment variables, SSR hydration failures, broken redirects, dead HTTP routes | `npm run build`, live HTTP/API `curl` verification, end-to-end browser journeys, container health checks (**Chapters 14, 18–20**) |
+| **4. AI Behavioral Evals & Guardrails** | Hallucinated citations, broken JSON extraction on messy scans, prompt-injection compliance, wrong-tenant RAG retrieval, runaway agent loops | Golden benchmark datasets, deterministic grading assertions, LLM-as-judge rubrics, trace telemetry (**Chapters 31, 36**) |
+
+## 2. Why Verification Matters Twice as Much With AI in the Loop
+
+AI changes software verification on **both sides** of the engineering workflow:
+
+1. **AI-written code hides subtle defects inside fluent syntax:** Coding models generate clean formatting, helpful comments, and idiomatic variable names—often wrapping subtle bugs like missing `await` calls, reversed inequality checks, deprecated library options, or unauthenticated API endpoints. Reading diffs carefully and executing real integration tests exposes those errors before users encounter them.
+2. **AI-powered features behave probabilistically:** Unlike deterministic SQL arithmetic, changing one sentence in a system prompt or upgrading an embedding model can improve five sample queries while silently breaking citation formatting or refusal accuracy on fifteen edge cases. Only repeatable **evaluation datasets (`Chapter 36`)** prevent silent quality regressions.
+
+## 3. Distinguishing Strong Evidence From False Confidence
+
+Train yourself to spot weak "verification theater" immediately during reviews and self-study:
+
+- **False signal:** *"I tested the endpoint in Swagger/browser and got a 200 OK."*
+  **Real verification:** Checked valid creation (`201`), verified row persisted accurately in PostgreSQL, verified duplicate submission handles idempotency cleanly (`409` or same resource), verified invalid schema fails (`400`/`422`), and verified another user's token returns `403`/`404`.
+- **False signal:** *"I fixed the unit test mock so tests are green."*
+  **Real verification:** Avoided mocking away the database constraint or SQL join that production actually relies on; ran real integration checks against PostgreSQL.
+- **False signal:** *"I tried three prompts in a playground and the AI answers looked great."*
+  **Real verification:** Ran a 30–100 case golden evaluation script containing noisy OCR text, out-of-scope questions, missing documents, and adversarial instruction injections—measuring exact pass rate, latency, and cost.
+
+## 4. Minimum Pre-Merge Verification Checklist
+
+Make this four-gate checklist automatic before marking any chapter exercise, branch, or client deliverable complete:
+
+1. **Clean static & production build:** `tsc` / typecheck, linter, and full production build execute with zero errors.
+2. **Verified unhappy paths:** Tested unauthorized access, empty/invalid fields, missing records (`404`), and simulated upstream timeouts or `429` errors.
+3. **Inspected real persisted state:** Checked PostgreSQL tables, log outputs, and HTTP status codes directly rather than trusting UI toast messages alone.
+4. **Reproducible documentation & env check:** Verified someone starting from a clean directory using your `.env.example` and commands reaches the exact same working state.
+
+## 4.1 Example: Testing What Should Fail Alongside What Should Work
+
+Notice how real verification commits as much assertion strength to **unauthorized and malformed rejection** as to happy-path `200 OK` checks:
+
+```python
+# Illustrative negative-path integration check (Ch 14 / Ch 22)
+def test_cross_tenant_document_read_is_denied(client, user_a_headers, user_b_doc_id):
+    resp = client.get(f"/v1/documents/{user_b_doc_id}", headers=user_a_headers)
+    assert resp.status_code in (403, 404)
+    assert "content" not in resp.json()
+```
+
+A single negative integration test like that protects your application permanently against accidental multi-tenant `WHERE` omissions across future refactors—something clicking a happy form in Chrome never catches.
+
+## 5. Mini Practice Exercise
+
+Suppose you built a small REST endpoint `POST /api/bookmarks` that accepts `{ "url": "...", "tags": [...] }`, saves it for the authenticated user, and optionally calls an AI model to suggest extra tags:
+
+1. List **six concrete test cases** covering **(a)** valid request, **(b)** unauthenticated user, **(c)** dangerous/malformed URL (`javascript:alert(1)`), **(d)** duplicate bookmark submission, **(e)** AI suggestion API timing out after 5 seconds (should saving the bookmark still succeed?!), and **(f)** attempting to update another user's bookmark ID.
+2. For each of the six cases, write down the **exact HTTP status code** and persisted database expectation.
+
+Check your answers cleanly against production-grade expectations:
+- **(a) Valid HTTPS URL (`user A`):** `201 Created` — row inserted with `user_id = A`.
+- **(b) Unauthenticated cookie:** `401 Unauthorized` — zero database inserts or AI calls executed.
+- **(c) Malformed / `javascript:` URL:** `422 Unprocessable Entity` — Zod/Pydantic `HttpUrl` check blocks XSS protocol schemes upfront (`[]` DB rows inserted).
+- **(d) Duplicate `(user_id, normalized_url)`:** Either `409 Conflict` or idempotent `200 OK` returning existing record (`UNIQUE` constraint guarantees 1 row max!).
+- **(e) AI tagger timeout (`5s`):** **`201 Created` with `tags: []` and `ai_tag_status: 'pending_retry'`!** Never fail core relational persistence merely because an optional AI enrichment timed out—degrade gracefully and enqueue retry cleanly.
+- **(f) User B updating User A's bookmark:** `403` or `404` (`WHERE id = $1 AND user_id = $2` updates 0 rows).
+
+Here is what proving **Case (c)** and **Case (e)** from the exercise above looks like cleanly in TypeScript + Vitest (`Ch 05, 14`)—converting abstract reliability advice into automated truth checked on every commit:
+
+```typescript
+import { z } from "zod";
+
+export const BookmarkSchema = z.object({
+  url: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith("https://") || u.startsWith("http://"), {
+      message: "Only http/https schemes permitted",
+    }),
+});
+
+// Proves unsafe script schemes never enter DB even if frontend validation is bypassed
+export function validateBookmarkUrl(raw: unknown) {
+  return BookmarkSchema.safeParse(raw);
+}
+```
+
+When `validateBookmarkUrl({ url: "javascript:alert(1)" })` returns `success: false` inside automated tests, you hold permanent machine-verified confidence—not hopeful guesses—every single time you ship changes forward.
+
+## Key Takeaways
+
+- Compilation and a single happy-path click do not constitute verification; real verification tests contracts, persistence, security boundaries, failure paths, and AI quality.
+- Both AI-generated application code and live AI-powered product features demand automated tests and versioned evaluation datasets.
+- Turning the four-gate checklist into muscle memory builds rock-solid reliability across Parts 01–10.
+
+## References and Further Reading
+
+- [Vitest Documentation — Testing TypeScript & JavaScript Systems](https://vitest.dev/)
+- [Pytest Documentation — Effective Python Testing](https://docs.pytest.org/)
+- [OpenAI Evaluation Guide — Designing Reliable AI Evals](https://platform.openai.com/docs/guides/evals)
+
+</BookNodePage>

@@ -1,0 +1,117 @@
+---
+id: "00-8-9-scenario-the-app-is-slow"
+title: "00.8.9 FDE Scenario: The App Is Slow"
+sidebar_label: "00.8.9 Scenario: The App Is Slow"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-9-scenario-the-app-is-slow"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-9">
+
+Two scenarios separate FDEs who can *write code* from FDEs who can *fix businesses*. The first is the most common message an FDE ever receives:
+
+> **"Can you take a look? The app is slow. It started last month and nobody can agree on why."**
+
+This is not a coding task. It is a discovery, diagnosis, and delivery task that happens to end inside a codebase. Work it in order — and notice how often the code is fine.
+
+## 1. The Client Request, Verbatim
+
+> "Since the end of last month the dashboard takes forever to load. Sometimes 20–30 seconds, sometimes it just hangs. Refreshing helps. Support tickets are up. Engineering says nothing changed. Can you fix it before our quarterly business review on Friday?"
+
+**Delivery constraint:** QBR Friday. Two business days.
+
+## 2. Discovery Questions — The Written Set
+
+Send these before touching anything. Every question has a job:
+
+1. **Scope:** Which pages/actions are slow — all of them, or specific ones? Since exactly when?
+2. **Workload:** How many concurrent users at peak? Did anything change in volume last month? (New customer onboarded? Bulk import?)
+3. **Reproduction:** Can you reproduce it now? Which browser/machine/network? Does it happen every time or intermittently?
+4. **For whom:** All users, or specific roles/accounts? (Useful: one giant account = data volume problem.)
+5. **Definition of "slow":** What would "fixed" look like — what number would make complaints stop?
+6. **Evidence:** What monitoring exists? Any APM, logs, DB metrics, error rates? Who has access?
+7. **Recent changes:** Deploys, schema migrations, data backfills, new integrations, traffic shifts — anything, however innocent.
+8. **Budget & rollback:** Is there an emergency change window? Can we roll back? Who approves production changes?
+
+**Hidden requirements the client will not volunteer (and must surface):**
+- The QBR is the *real* deadline — a mediocre fix that holds through Friday may be enough, with the real fix next week. Scope to the deadline, don't gold-plate.
+- Nobody has a repro because it only happens for the 14 largest customer accounts (data skew!).
+- The "slow" dashboard runs one unindexed `SELECT ... ORDER BY created_at DESC` across 40M rows *and then renders the same 500 rows for every user*.
+
+## 3. Reproduce and Gather Evidence — Before Any Fix
+
+```bash
+# 1. Get a clean profile, not anecdotes:
+curl -s -o /dev/null -w "TTFB: %{time_starttransfer}s  Total: %{time_total}s\n" \
+  -H "Cookie: session=..." https://app.example.com/dashboard
+
+# 2. Database: EXPLAIN ANALYZE the slow query (ask the client's DBA or use a read replica):
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT ... FROM events WHERE account_id = $1 ORDER BY created_at DESC LIMIT 500;
+
+# 3. Server: last 50 request logs — duration, route, user_id:
+grep 'GET /api/dashboard' access.log | tail -50 | awk '{print $NF}' | sort -n | tail -10
+```
+
+What you are hunting, in order of base rate:
+
+| Hypothesis | Evidence for | Evidence against |
+| :-- | :-- | :-- |
+| Missing index / bad query plan | `EXPLAIN ANALYZE` shows seq scan on huge table | Query fast in isolation |
+| Data skew (whale accounts) | Slow only for big accounts; row counts differ | All accounts slow equally |
+| N+1 in the API | Log shows hundreds of queries per request | Single slow query dominates |
+| Resource exhaustion (CPU/mem/connections) | Metrics peg at peak | Idle metrics, still slow |
+| Third-party API latency | Timing waterfall shows one external call dominating | All-internal slowness |
+
+## 4. The Solution Pattern (Do Not Skip Ahead)
+
+You will probably land on more than one. Do them in this order — cheapest, safest first:
+
+1. **Tonight's tourniquet (if it is one line and clearly safe):** add the index `CREATE INDEX CONCURRENTLY idx_events_account_created ON events (account_id, created_at DESC);` (never lock the table on a hot system). Verify with `EXPLAIN ANALYZE` + timing before/after.
+2. **If it's genuinely broken architecture:** cache the dashboard payload per account for 60s (invalidate on write), or paginate server-side — the two fixes that buy the most for the least risk.
+3. **Document what was deliberately NOT fixed.** The real query-architecture problem likely belongs in next sprint; write it down with the data you gathered.
+
+## 5. Verification You Can Put in Front of the Client
+
+```text
+Before: TTFB p95 8.4s (7-day window, 1 laptop, 3 test accounts)
+After:  TTFB p95 0.6s, same accounts, same window
+Method: curl timing, 20 samples each, sorted; EXPLAIN ANALYZE before/after attached
+```
+
+Numbers, not "feels faster". If you cannot produce before/after numbers, you did not finish.
+
+## 6. Delivery Note (the actual artifact the client keeps)
+
+```text
+To: Sam (Head of Ops)
+What we did: added index ... (CONCURRENTLY, zero downtime), deployed 14:20 UTC.
+Measured: p95 TTFB 8.4s -> 0.6s (20 samples/account, 3 largest accounts).
+Residual risk: dashboard query still does full-table sort for accounts > 10M rows;
+we capped it at 500 rows and cached for 60s. Recommend sprint-14 refactor; estimate 3 days.
+Rollback: DROP INDEX CONCURRENTLY idx_events_account_created (reverses fully).
+QBR line for Friday: "p95 dashboard latency 8.4s -> 0.6s after targeted index;
+structural fix scheduled next sprint."
+```
+
+## 7. Handover
+
+- 30-minute walkthrough for the ops lead: what you changed, how to see the index, how to revert.
+- One paragraph in the runbook: symptom → cause → fix → rollback.
+- Jira/ Linear issue for the structural fix, with the evidence attached. An unclosed loop is a regression waiting to happen.
+
+## 8. What This Scenario Teaches About FDE Work
+
+| Skill | Where It Shows Up |
+| :-- | :-- |
+| Discovery over implementation | §2 — most of the value was in the questions, not the index |
+| Evidence before opinion | §3 — nobody believed "it's the DB" until EXPLAIN ran |
+| Cheapest-safe-first ordering | §4 — hours, not days, before the QBR |
+| Communicating uncertainty | §6 — naming the residual risk, not hiding it |
+
+**Exercise.** A client reports "search is slower since our catalog doubled." Write your own 8 discovery questions, name your top-3 hypotheses with the evidence you'd collect for each, and draft the delivery note for the fix you expect to land.
+
+**Acceptance criteria.** Your delivery note includes measured before/after numbers (even if simulated in a lab), an explicit rollback, and one named residual risk.
+
+</BookNodePage>

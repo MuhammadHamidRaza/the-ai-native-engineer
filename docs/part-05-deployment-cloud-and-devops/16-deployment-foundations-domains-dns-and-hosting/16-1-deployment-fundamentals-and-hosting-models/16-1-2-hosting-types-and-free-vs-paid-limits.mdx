@@ -1,0 +1,123 @@
+---
+id: "16-1-2-hosting-types-and-free-vs-paid-limits"
+title: "16.1.2 Hosting Types and Free vs Paid Limits"
+sidebar_label: "16.1.2 Hosting Types and Free vs Paid Limits"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-1-deployment-fundamentals-and-hosting-models/16-1-2-hosting-types-and-free-vs-paid-limits"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s1-t2">
+
+"Where should I host this?" has a real answer, not a vibes answer. Hosting choices reduce to six models, and the right one is determined by what your artifact **is**. This lesson gives you the matrix and an honest look at free tiers as of **Nov 2026** — all limits below are approximate and change; every row links the provider's own limits page, which is the only source that stays true.
+
+## 1. The Six Hosting Models
+
+| Model | What it is | Fits | Does not fit |
+| :-- | :-- | :-- | :-- |
+| **Static / CDN** | Files served from edge caches; no server code | Vite/React SPAs, docs, landing pages | Anything server-side (auth, checkout) |
+| **PaaS** (Render, Railway, Fly.io) | Push git, platform builds and runs your app | Express APIs, Python, workers — no ops | Hostile budgets at scale; exotic runtimes |
+| **Containers** (any cloud, or VPS via Docker) | Build once, run anywhere | Docker introduced in [Chapter 18](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment) | Teams with no orchestration appetite |
+| **VPS** (Hetzner, DigitalOcean, Lightsail) | A Linux VM you babysit | Full control, long-running processes, learning ops | Zero-maintenance production |
+| **Serverless / FaaS** (Vercel Functions, Cloudflare Workers, AWS Lambda) | Functions scale to zero, per-request billing | Spiky traffic, low-baseline-cost APIs | Long-running jobs, WebSocket-heavy apps, stateful processes |
+| **Managed database** (Neon, Supabase, Render Postgres) | Postgres without host duty | Every real app's data | Bulk analytics; "just SQLite on the box" cases |
+
+**The ShopCore pairing you will actually deploy:** SPA → **static/CDN** (16.3.1). API → **PaaS** (16.3.2). Database → **managed Postgres** (Neon, 16.3.2). Docker + VPS is the alternative covered in [Chapters 17–18](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration) — same app, more responsibility, full control.
+
+## 2. Free vs Paid — Honest Limits (approximate, Nov 2026)
+
+| Provider / plan | Free includes | The catch | Paid starts at |
+| :-- | :-- | :-- | :-- |
+| **Vercel Hobby** | 100 GB transfer, 1M CDN requests, 1M function invocations, 100 deploys/day | Non-commercial personal use only; if exceeded, features typically pause ~30 days | Pro ~$20/user/mo (check [vercel.com/pricing](https://vercel.com/pricing)) |
+| **Netlify Free** | 300 credits/mo hard limit (15 credits/prod deploy, 20 credits/GB, 2 credits/10k requests) | 300 credits ≈ 20 deploys or ~15 GB/mo; at zero, **all sites pause** until next cycle | Personal ~$9/mo; Pro ~$20/mo ([netlify.com/pricing](https://www.netlify.com/pricing)) |
+| **Cloudflare Pages Free** | Static requests free & unlimited, 500 builds/mo, 20,000 files, unlimited preview deploys | Functions share Workers Free: 100k req/day (then 503s); 1 build at a time | Workers Paid from $5/mo ([Pages limits](https://developers.cloudflare.com/pages/platform/limits)) |
+| **Render Free** | 750 instance-hours/mo, spins down after 15 min idle (~1 min cold start), free static sites | Free Postgres expires **30 days** after creation (14-day grace), then deleted | Web service ~$7/mo; Postgres ~$6/mo ([render.com/docs/free](https://render.com/docs/free)) |
+| **Neon Free** | 100 CU-hours/project/mo (~400 compute-hours at 0.25 CU), 1 GB storage/project (20 GB account cap), 5 GB transfer/mo | Compute suspends at quota until next cycle; scale-to-zero after 5 min always on | Launch usage-based ~$0.106/CU-hour, no monthly minimum ([neon.com/pricing](https://neon.com/pricing)) |
+| **GitHub Pages** | Soft limit ~100 GB bandwidth, 1 GB site | Public repos effectively; 10 builds/hr; 429s under load | n/a (not a CDN SLA) |
+| **VPS (Hetzner/DO/Lightsail)** | No real free tier (with edge exceptions) | You are the ops team from minute one | Hetzner CX23 ~€5.99/mo (2 vCPU/4 GB, EU); DO $6/mo (1 GB) / $24/mo (4 GB); Lightsail from $5/mo — all change, check [hetzner.com/cloud](https://www.hetzner.com/cloud), [digitalocean.com/pricing](https://www.digitalocean.com/pricing), [aws.amazon.com/lightsail/pricing](https://aws.amazon.com/lightsail/pricing) |
+
+The **database decision matrix**, because every hosting answer above silently assumes one:
+
+| Need | Pick | Why |
+| :-- | :-- | :-- |
+| Relational, transactional (ShopCore) | **Neon Free** | Serverless Postgres, branching, no card, no 30-day clock |
+| Relational + you are already on Render | Render Postgres | Same private network; but free instance expires 30 days |
+| Relational, maximal SQL control, cheap | Self-hosted Postgres on the VPS (17.3) | You own backups — and you must |
+| Document/key-value-shaped data | MongoDB Atlas M0 / Supabase | See [Chapter 12](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb) |
+| Full-text-heavy, small catalog | Postgres `tsvector` is enough | Do not reach for a second database yet |
+
+**Three rules before you pick from any of this:**
+
+1. **Free tiers are for validation, not production SLAs.** Vercel's "non-commercial" clause and Netlify's hard pause at zero credits both end sites in ways visitors experience as an outage.
+2. **Always set a budget alert / spend cap the moment you attach a card.** Every provider above has one; find it on day one, not after the email. "Free" + "forgotten" = surprise invoice.
+3. **Egress is where clouds make money.** Neon, Render and DO all meter outbound transfer after the included amount. A bulky `/api/export` endpoint can cost more than the instance.
+
+## 3. The Five-Question Interview
+
+Run any artifact through these in order; the first "yes" usually decides the model:
+
+1. **Is it only static files (HTML/CSS/JS/images) with no server code?** → static/CDN. No server to patch, no runtime to bill per millisecond.
+2. **Does it hold state or talk to a database?** → you need a process (PaaS or serverless+managed DB), not pure static.
+3. **Are requests bursty with long idle gaps (demo, webhook receiver, cron)?** → serverless wins on cost; scale-to-zero is free.
+4. **Do requests need >5 min, WebSockets, or background queues?** → long-running process (PaaS or VPS); serverless timeouts will bite you.
+5. **Do you need SSH, custom kernel modules, local disk, or full control of the network?** → VPS. That is the only honest answer to those requirements.
+
+**ShopCore applied:** SPA → static. API → PaaS (Render) or VPS — 16.3.2 does PaaS; [17.3.1](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-3-vps-operations-and-real-server-deployment/17-3-1-vps-providers-updates-backups-and-real-deployment) does VPS. DB → Neon managed. Total target cost for this book: $0.
+
+## 4. Decision Workflow
+
+Answer in order:
+
+1. **Does it emit only static files?** → Static host (16.3.1). Done. Cheapest, fastest, scales to zero cost.
+2. **Is it a server process?** → PaaS if you want PaaS ergonomics and bounded ops (16.3.2); VPS if you want control and will own security (Ch 17); serverless if traffic is bursty and handlers are short-lived.
+3. **Does it need a database?** → Managed Postgres (Neon or Render Postgres) unless the workload is genuinely key-value/document-shaped — see [Chapter 12](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb).
+4. **Cost ceiling?** If the ceiling is $0: static + Neon Free + Render Free is viable for demos and portfolios — accepting cold starts and 30-day free-Postgres expiry. If the ceiling is "small but nonzero": Hetzner CX23 + self-hosted Postgres (Ch 17) or Render $7 + Neon Free is the usual floor for real availability.
+
+## 5. Free-Tier Failure Modes and Migration Paths
+
+Every free tier dies in one of four ways — know yours in advance:
+
+- **Pause at zero** (Netlify): traffic unpredictable → pre-scale alerts at 50%/75% of credit pool; keep the deploy-preview workflow light (previews cost 0).
+- **Spin-down/cold start** (Render Free): demos OK, real users complain → $7 Starter class instance; your `/health` endpoint going cold is the tell.
+- **Monthly quota suspend** (Neon CU-hours): compute suspends, data safe → watch the Neon dashboard; Launch plan is usage-based with no monthly minimum.
+- **Expiry deletion** (Render Free Postgres after 30 days): your database silently unavailability-windowed → never build on Render free Postgres for anything you care about; Neon Free has no expiry.
+
+Migration path when free breaks: static host → keep free (Cloudflare Pages is the usual endgame); API → Render Starter; DB → Neon Launch. Each is a same-day move with the walkthroughs in 16.3.
+
+## 6. Common Mistakes
+
+- **Choosing "free" as a permanent architecture.** Render free services sleep; your first real user waits 50+ seconds. Decide before the client demo, not after.
+- **Comparing year-1 promo discounts.** Compare the **renewal** price for domains and always-on instances.
+- **Ignoring data transfer.** A $5 VPS with 1 TB outbound beats a $6 managed box that bills egress per GB when your app serves files.
+- **Migrating before measuring.** Deploy on the simplest true model first; re-evaluate only at observable pain (latency, cost, limits).
+
+## 7. A Worked Cost Calculation
+
+Scenario: portfolio store, 2,000 page views/day, ~1.5 MB per page (hashed JS + images), an API call per product fetch, Postgres reads.
+
+- **Bandwidth:** 2,000 × 1.5 MB ≈ 90 GB/mo — over Vercel Hobby's 100 GB? close but OK; fine on Cloudflare Pages (unmetered); ~4.5 credits/GB × 90 GB = 1800 Netlify credits — **over the 300-credit pool**, so Netlify Free fails this scenario.
+- **Deploys:** 20 production deploys/mo ≈ 300 Netlify credits — the deploy budget alone eats the whole pool. Weekly releases only.
+- **API on Render Free:** fine at this traffic (cold starts annoy, nothing bills).
+- **Neon Free:** ~0.25 CU active maybe 5 h/mo ≪ 100 CU-hours. Fine.
+- **Total: $0 with Cloudflare Pages + Render Free + Neon Free.** Upgrade order when it outgrows free: Render Starter ($7) first (cold starts), Neon Launch second.
+
+**Assessment reminder:** if your own worked calculation ends in "…and then we get an overage bill," the plan is wrong — fix the architecture (cache headers, fewer deploys, unmetered static host), not the budget alert threshold.
+
+## 8. Practice
+
+**Guided exercise.** For the ShopCore stack (SPA + Express + Postgres), write the decision table row for each component: model, provider, expected monthly cost at 100 users/day, and the link to that provider's limits page.
+
+**Independent exercise.** Pick one provider you will actually use this chapter. Create the account, and **before any deploy**, find and set its budget/spend alert or confirm the free plan cannot auto-charge. Screenshot the setting.
+
+**Challenge.** Compute the real cost of serving 50 GB/month from: (a) Vercel Hobby (is it even allowed?), (b) Netlify Free (how many credits), (c) Cloudflare Pages Free, (d) a Hetzner VPS. Present a one-page comparison with links, dated Nov 2026.
+
+**Reference links (keep them open while deciding):** [vercel.com/pricing](https://vercel.com/pricing) · [netlify.com/pricing](https://www.netlify.com/pricing) · [developers.cloudflare.com/pages](https://developers.cloudflare.com/pages) · [render.com/pricing](https://render.com/pricing) · [neon.com/pricing](https://neon.com/pricing) · [hetzner.com/cloud](https://www.hetzner.com/cloud).
+
+**Assessment checklist**
+
+- [ ] I can name the six hosting models and place any artifact in one of them.
+- [ ] I checked every limit against the provider's official page, not a blog.
+- [ ] I know which free tier pauses vs bills vs expires data — and its expiry clock.
+- [ ] I set a budget alert before deploying anything that can bill me.
+
+</BookNodePage>

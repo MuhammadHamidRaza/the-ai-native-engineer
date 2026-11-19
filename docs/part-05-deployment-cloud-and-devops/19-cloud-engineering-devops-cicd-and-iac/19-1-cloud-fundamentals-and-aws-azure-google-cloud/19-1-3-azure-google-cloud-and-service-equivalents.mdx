@@ -1,0 +1,163 @@
+---
+id: "19-1-3-azure-google-cloud-and-service-equivalents"
+title: "19.1.3 Azure, Google Cloud and Service Equivalents"
+sidebar_label: "19.1.3 Azure, GCP & Service Equivalents"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-1-cloud-fundamentals-and-aws-azure-google-cloud/19-1-3-azure-google-cloud-and-service-equivalents"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s1-t3">
+
+Cloud providers sell the same physics with different nouns. Learn AWS deeply (you just did), then map it — do not re-learn from scratch. This lesson gives you the twelve equivalences used throughout the labs, and exactly where to verify live pricing and limits.
+
+## 1. The Twelve Equivalents Used in This Book
+
+| # | Job to be done | AWS | Azure | Google Cloud |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | Virtual machine | EC2 (`t3.micro`) | Virtual Machines (B1s) | Compute Engine (e2-micro / e2-small) |
+| 2 | Isolated virtual network | VPC | Virtual Network (VNet) | VPC (global by default) |
+| 3 | Object storage | S3 | Blob Storage | Cloud Storage |
+| 4 | Managed relational DB | RDS (PostgreSQL) | Azure Database for PostgreSQL / SQL Database | Cloud SQL for PostgreSQL |
+| 5 | Serverless containers | ECS + Fargate | Azure Container Apps / ACI | Cloud Run |
+| 6 | Managed app hosting (PaaS) | Elastic Beanstalk | App Service | App Engine |
+| 7 | Identity & access | IAM (users/roles/policies) | Microsoft Entra ID + Azure RBAC | Cloud IAM (+ Workload Identity Federation) |
+| 8 | CDN / edge delivery | CloudFront | Azure Front Door / CDN | Cloud CDN |
+| 9 | Functions / FaaS | Lambda | Azure Functions | Cloud Functions (+ Cloud Run functions) |
+| 10 | DNS | Route 53 | Azure DNS | Cloud DNS |
+| 11 | Metrics, logs, alerts | CloudWatch | Azure Monitor | Cloud Monitoring + Cloud Logging |
+| 12 | Load balancing | Elastic Load Balancing (ALB) | Azure Load Balancer / App Gateway | Cloud Load Balancing |
+
+Concepts map 1:1: security groups ↔ **NSGs** (Azure, network-interface level) ↔ **firewall rules** (GCP, VPC level, allow/deny verbs). IAM instance profiles ↔ **managed identities** (Azure) ↔ **service accounts** (GCP). Elastic IPs ↔ **static public IPs / reserved IPs** ↔ **static external IP addresses**. NAT gateways exist on all three with the same hourly-ish cost trap.
+
+## 2. Region Naming Differs — Same Geography, Three Dialects
+
+| Purpose | AWS | Azure | GCP |
+| :-- | :-- | :-- | :-- |
+| US East (Northern Virginia) | `us-east-1` | East US | `us-east1` |
+| Western Europe (Ireland/Netherlands) | `eu-west-1` (Ireland) | North Europe (Ireland) | `europe-west1` (Belgium) |
+| Southeast Asia (Singapore) | `ap-southeast-1` | Southeast Asia | `asia-southeast-1` |
+
+Same physically-isolated concept, zero naming alignment. Region choice affects: latency, service availability (newer services launch in major regions first), data-residency/legal constraints, and sometimes price. For labs, pick one region near you and stay in it — every console and CLI defaults differently when you drift.
+
+## 3. Where Your Money Goes on Each (Lab-Sized Thinking)
+
+| Component | AWS | Azure | GCP |
+| :-- | :-- | :-- | :-- |
+| VM (cheapest burstable) | t3/t4g.micro | B1s | e2-micro / e2-small |
+| Managed Postgres entry tier | db.t3.micro (RDS) | B1ms Burstable | db-f1-micro / db-g1-small |
+| Object storage entry | S3 ($0.023/GB-mo, first 5 GB free legacy) | Blob LRS | Cloud Storage Standard |
+| NAT gateway (the trap) | ~$0.045/hr + per-GB | Similar hourly + per-GB | Similar — Cloud NAT per-hour |
+| Free-credit runway | 12-month allowances / Free Plan | $200 / 30 days | $300 / 90 days |
+
+**Every number here is approximate and time-stamped Nov 2026 — verify on the official pages below before spending.** NAT gateways in particular bill whether traffic flows or not; this book deliberately uses public-subnet + IGW designs to avoid them.
+
+**The public-bucket trap (all three providers):** default object storage is private, but every provider lets you flip one switch and make 5 M customer photos world-listable — this misconfiguration is behind a large share of cloud breach headlines on AWS S3 and Azure Blob especially. When your lab uploads the ShopCore build somewhere, keep it private and serve through the web server, or gate it behind signed URLs. All three have dedicated public-access block settings (S3 Block Public Access, Azure "Allow Blob public access: Disabled", GCP uniform bucket-level access) — turn the block **on** at the account level, then un-block only when you truly need public serving.
+
+## 4. Console Tours — Where the Lab Screens Live
+
+**Azure Portal** (portal.azure.com): top search bar does everything — search "Virtual machines" → Create; the **Cost Management + Billing** blade hosts Budgets; **Network security groups** hold the NSG rules; NSGs attach to the NIC, so a subnet can look open while the NIC is not — check both.
+
+**GCP Console** (console.cloud.google.com): hamburger ☰ → **Compute Engine → VM instances → Create**; firewall rules live under **VPC network → Firewall**; budgets under **Billing → Budgets & alerts**; new projects **require a billing account linked** — nothing runs until then, and forgetting that is the most common "why is my Compute Engine menu empty" report.
+
+## 5. CLI Equivalents — Same Jobs, Three Dialects
+
+| Task | AWS | Azure | GCP |
+| :-- | :-- | :-- | :-- |
+| Who am I? | `aws sts get-caller-identity` | `az account show` | `gcloud auth list` / `gcloud config list` |
+| List VMs | `aws ec2 describe-instances` | `az vm list --output table` | `gcloud compute instances list` |
+| Create budget | Console / `aws budgets create-budget` | `az consumption budget create` | `gcloud billing budgets create` |
+| Static IP | `aws ec2 allocate-address` | `az network public-ip create` (Standard, Static) | `gcloud compute addresses create` |
+
+## 6. Working With Quotas Before They Bite You
+
+Every provider caps resources per account/region — instance types, vCPUs per region, open IPs, projects per account. New accounts start tight. Check **Service Quotas** (AWS) / **Usage + quotas** (Azure) / **IAM & Admin → Quotas** (GCP) the first time something mysteriously refuses to create. Quota increases are usually one form and minutes-to-days; blocking on them at deploy time is pure avoidable pain. This is also why Terraform chapters plan first — a refused API call mid-apply is normal, not dramatic.
+
+## 6.5 Further Verification and Data Residency
+
+| Need | Official docs |
+| :-- | :-- |
+| EC2/VPC/IAM depth | [docs.aws.amazon.com](https://docs.aws.amazon.com) |
+| Azure VMs, NSGs, Entra ID | [learn.microsoft.com/azure](https://learn.microsoft.com/azure/) |
+| GCP Compute, IAM, VPC | [cloud.google.com/docs](https://cloud.google.com/docs) |
+| Provider status pages | status.aws.amazon.com · status.azure.com · status.cloud.google.com |
+
+**Data residency in one line:** some regulated workloads must keep data inside a specific country/EU — Azure and GCP tag regions with residency tiers, and AWS offers data residency controls (e.g., European Sovereign Cloud for EU requirements — availability rolls out by Region, verify locally). If you ever handle client data this way, confirm residency **in writing** with the client before architecting anything.
+
+## 7. Choosing a Provider for This Book's Labs
+
+| Your situation | Recommendation |
+| :-- | :-- |
+| Student, zero cloud accounts | GCP's $300/90-day credit is the most forgiving runway |
+| Employer is an Azure shop | Use Azure — the labs map 1:1, and learning their RBAC pays twice |
+| Focused on AWS certification path | AWS — the lab defaults here match SAA-C03-style tasks |
+| Just want it working | Any — differences are screens, not concepts |
+
+Provider loyalty is a career decision, not a technical one. Learn one deeply; the other two are reading comprehension.
+
+## 8. What Maps Cleanly — and What Does Not
+
+**Clean:** VMs, object storage, managed Postgres, DNS, CDN, IAM concepts. **Not clean:** serverless containers (Cloud Run scales to zero natively; Fargate doesn't in the same way; Container Apps sits between), secrets management (Secrets Manager ↔ Key Vault ↔ Secret Manager — all fine), and observability (CloudWatch Logs is rougher than Azure Monitor or Cloud Logging). Managed Kubernetes behaves as K8s everywhere ([Chapter 20](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud)) but pricing/UX differs.
+
+## 9. Verifying Pricing and Limits — the Only Trustworthy Sources
+
+Prices and free tiers change quarterly. Bookmark these and check them **before** every new project — this page cannot promise numbers that stay true:
+
+| Need | Where to check |
+| :-- | :-- |
+| AWS pricing & Free Tier | [aws.amazon.com/free](https://aws.amazon.com/free) · [calculator.aws](https://calculator.aws) |
+| Azure pricing & free services | [azure.microsoft.com/pricing](https://azure.microsoft.com/pricing) · [calculator](https://azure.microsoft.com/pricing/calculator) · [free account](https://azure.microsoft.com/free) |
+| GCP pricing & free tier | [cloud.google.com/free](https://cloud.google.com/free) · [calculator](https://cloud.google.com/products/calculator) |
+| Quotas/limits per service | Service docs → "Quotas" (e.g., EC2 per-Region vCPU limits) |
+| Status/incidents | status.aws.amazon.com · status.azure.com · status.cloud.google.com |
+
+Rule of thumb: **any specific dollar amount in this book is approximate and time-stamped (Nov 2026)** — verifying takes 60 seconds and beats a $300 surprise.
+
+## 10. Signing Up Safely on Any of the Three
+
+1. Use a **personal** email and a strong password with MFA on day one (cloud accounts are crypto-mining goldmines).
+2. Set the billing budget/alert first (19.1.1 shows the AWS version; GCP: Billing → Budgets; Azure: Cost Management → Budgets).
+3. New-account credits (Azure $200/30 days, GCP $300/90 days) **expire** — track the date; set a reminder a week before.
+4. Create your working identity separately (IAM user / Entra user / GCP user) and avoid daily root/owner use.
+
+## 11. Mapping the 19.1.2 Lab to Azure and GCP
+
+| Lab step (AWS) | Azure equivalent | GCP equivalent |
+| :-- | :-- | :-- |
+| t3.micro Amazon Linux 2023 | B1s VM, Ubuntu/Linux image | e2-small (or e2-micro in free-tier Regions) |
+| Security group, port 22 from your IP | NSG inbound rule, source = your IP | Firewall rule `allow-ssh`, source ranges = your IP/32 |
+| Elastic IP | Static public IP (Standard SKU) | Static external IP |
+| IAM policy `ShopCoreLabEC2` | Custom role with the same action list (or Reader + action-specific) | Custom role, same permissions |
+| Budget $5 + email | Cost Management budget + action group | Billing budget + Pub/Sub or email notification |
+| Amazon Linux 2023 | Ubuntu 24.04 LTS image | Debian 12 image |
+
+If you redo the lab on Azure or GCP, note in your lab journal every screen that differs — that delta *is* the skill employers test.
+
+## 12. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| "Free" VM billed immediately | Wrong size/region or credit exhausted | Check pricing page; downgrade size; watch credit expiry date |
+| Can't SSH (Azure) | NSG missing the rule or just-in-time policy | Add inbound 22 restricted to your IP; check JIT if enabled |
+| GCP: VM unreachable, no external IP | External IP not attached at creation | Reserve/attach static IP; recreate if ephemeral only |
+| Azure RBAC denies an action AWS allows | Missing custom role assignment | Assign at resource-group scope, not subscription |
+| "vCPU quota exceeded" on launch | New-account per-Region quota | Request quota increase (usually approved in minutes) |
+| Costs vanished into one project | No budget/tagging | Tag resources `project=shopcore`; budget per project |
+
+## 13. Practice
+
+**Guided.** Open all three pricing calculators; cost the 19.1.2 lab for one month on each platform; write down which is cheapest and why (it's not just the VM price).
+
+**Independent.** Create (or sketch) the Azure/GCP equivalent of the `shopcore-lab-sg`: list the exact rule screens you'd use and the source-IP restriction.
+
+**Challenge.** Pick one service you use weekly (e.g., RDS/Postgres). Write the Azure and GCP equivalents, a 3-line "when would I choose each" note, and the URL where you verified current pricing.
+
+**Assessment checklist**
+
+- [ ] I can map the twelve services across AWS/Azure/GCP without notes.
+- [ ] I know where each provider publishes free-tier limits and that they change.
+- [ ] I set a billing alert before first use on whichever cloud I touch.
+- [ ] I know what does *not* map cleanly (serverless containers, observability).
+- [ ] I verify pricing on official pages, not blog posts or this book.
+
+</BookNodePage>

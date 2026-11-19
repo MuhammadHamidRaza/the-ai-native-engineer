@@ -1,0 +1,28 @@
+---
+id: "index"
+title: "22.1 Application Security Engineering"
+sidebar_label: "22.1 Application Security Engineering"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-1-application-security-engineering"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s1">
+
+**Subchapter 22.1** is about the two security surfaces ShopCore cannot outsource: the application's own attack surface (22-1-1) and everything it depends on — secrets and supply chain (22-1-2). Stripe keeps card data out of your systems; nothing keeps a stolen API key or a poisoned dependency out.
+
+## Lessons in Subchapter 22.1
+
+1. **[22.1.1 OWASP Risks: Injection, XSS and Prevention](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-1-application-security-engineering/22-1-1-owasp-risks-injection-and-xss-prevention):** The OWASP Top 10:2025 applied to real ShopCore endpoints — SQL injection via the `ORDER BY` string parameter, stored/reflected/DOM XSS, CSRF with SameSite + token, SSRF on webhook URLs, IDOR/BOLA on order ids, auth-failure patterns, XXE/deserialization pointers — each with attack, payload, fix and verification command.
+2. **[22.1.2 Secrets Management and Dependency Auditing](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-1-application-security-engineering/22-1-2-secrets-management-and-dependency-auditing):** Categorize every secret ShopCore holds; never in git (and why history purging doesn't un-leak); rotation without downtime (Stripe restricted keys, AWS dual keys, JWT `kid` overlap); least-privilege blast radius; the quarterly rotation drill; anomaly alerts; mTLS pointer; then dependency auditing — `npm audit`, Snyk, Dependabot, SBOM with CycloneDX, lockfile discipline, supply-chain incidents (SolarWinds, event-stream), pin+verify+scan cadence.
+
+Read in order: 22-1-1 shrinks the attack surface you own; 22-1-2 shrinks the one you inherited.
+
+**Exit checklist**
+
+- [ ] I can execute the stored-XSS payload against my local ShopCore product page and verify the fix with CSP headers.
+- [ ] I can enumerate every secret in the ShopCore repo with owner and rotation date.
+- [ ] `npm audit`, Dependabot and the SBOM generation step all run in CI and fail the build on criticals.
+- [ ] I have completed one secret rotation in under 30 minutes, live.
+
+</BookNodePage>

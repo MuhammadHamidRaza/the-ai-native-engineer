@@ -1,0 +1,25 @@
+---
+id: "index"
+title: "36.1 Evaluations, Benchmarks & Telemetry"
+sidebar_label: "36.1 Evaluations, Benchmarks & Telemetry"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-1-evaluations-benchmarks-and-telemetry"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-36-s1">
+
+This section is the measurement half of production AI: the eval you run **before** a change ships, and the telemetry you watch **after** it does. HelpBot passes every demo and still fails Tuesday's real traffic — this is where you find out before the customer does.
+
+## What This Section Covers
+
+- **36.1.1 Offline Datasets and Online Quality Signals** — what a production AI eval actually is; the 60-question ShopCore golden dataset; three scoring methods (exact match, rubric, LLM-judge — and what each costs in trust); the CI regression gate that blocks merges on a score drop above 2%; online quality signals (thumbs, escalation rate, override rate, re-contact within 24h, CSAT) with one-click instrumentation; A/B ramping with an auto-reversible guardrail metric; verdict statistics (when a "regression" is real noise, n and p = 0.05); eval coverage honesty — the risk classes your golden set does not cover; benchmark archaeology (public scores do not predict your workload); and a build-it-yourself eval pipeline with promptfoo.
+- **36.1.2 Latency, Token Cost and Model Routing** — TTFT vs tokens-per-second vs total latency, and why streaming wins perceived latency; per-request token economics with a worked cost table across model tiers; per-user and per-tenant cost tracing via `x-request-id`; model routing (frontier for the hard 5%, mid-tier for routine, small for classification); exact-match and semantic caching; 429 handling with backoff and jitter; queue-based smoothing for peaks; and the HelpBot SLO: 95% of agent runs complete under 30 seconds, with alerts on P95 latency and cost per resolution.
+
+## How to Work This Section
+
+Do 36.1.1 first — everything in 36.1.2 and in 36.2 assumes you can catch a regression in CI. Build the golden dataset before you touch routing or caching; otherwise you will "optimize" your way into a quality drop you cannot see.
+
+Verified November 2026: the OpenAI Evals platform is deprecated (read-only from 2026-10-31, shutdown scheduled 2026-11-30); promptfoo (v0.125.1, now part of OpenAI, MIT-licensed) and UK AISI's inspect-ai (v0.3.290) are the verified open-source paths. Re-check before relying on them.
+
+</BookNodePage>

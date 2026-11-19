@@ -1,0 +1,70 @@
+---
+id: "07-3-3-accessible-ui-component-libraries"
+title: "07.3.3 Accessible UI Component Libraries"
+sidebar_label: "07.3.3 Accessible UI Component Libraries"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-3-production-react-patterns/07-3-3-accessible-ui-component-libraries"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s3-t3">
+
+Building a reliable modal dialog, dropdown menu, combobox, or tooltip from scratch is deceptively hard: you must handle Escape-key dismissal, focus trapping inside modals, returning focus on close, arrow-key navigation, screen-reader ARIA states, and viewport collision detection. **Headless accessible UI libraries** solve those hard keyboard/ARIA invariants while giving you total control over styling.
+
+## 1. When You Do *Not* Need a Component Library
+
+Do **not** install a heavy component library just for buttons, cards, badges, forms, or layouts! Native HTML `<button>`, `<input>`, `<select>`, and Tailwind/CSS classes are lighter, faster, and easier to maintain.
+
+## 2. When Headless Primitives Shine
+
+Reach for **headless accessible primitives** (**Radix UI**, **React Aria**, or **Headless UI**) when building interactive overlays:
+- Modal Dialogs & Drawers (focus trap + `Escape` + background scroll lock + `aria-modal`)
+- Accessible Popovers, Tooltips, Dropdown Menus, and Tabs (roving `tabIndex` + arrow keys)
+- Searchable Comboboxes / Select menus
+
+Example using a headless Dialog primitive (`@radix-ui/react-dialog`) styled with your own CSS classes:
+
+```tsx
+import * as Dialog from "@radix-ui/react-dialog";
+
+export function DeleteProjectDialog({ onConfirm }: { onConfirm: () => void }) {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
+        <button type="button" className="btn-danger">Delete Project</button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-6 rounded-xl max-w-md w-full">
+          <Dialog.Title className="text-lg font-semibold">Delete project?</Dialog.Title>
+          <Dialog.Description className="text-sm text-slate-600 mt-1">
+            This permanently deletes all project tasks and cannot be undone.
+          </Dialog.Description>
+          <div className="mt-4 flex justify-end gap-2">
+            <Dialog.Close asChild>
+              <button type="button">Cancel</button>
+            </Dialog.Close>
+            <button type="button" onClick={onConfirm} className="btn-danger">
+              Confirm Delete
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+```
+
+Notice how you get full keyboard trapping, `Escape` closing, and screen-reader `Title`/`Description` wiring automatically—while owning 100% of the visual markup and classes.
+
+## 3. Practice Exercises
+
+1. Audit any interactive modals or dropdowns in a project using only `Tab`, `Shift+Tab`, `ArrowDown`, and `Escape`—list every focus trap or keyboard bug you uncover.
+2. Replace a raw `<div>` modal with either native HTML `<dialog>` (`showModal()`) or a headless Dialog primitive and re-test keyboard restoration on close.
+
+## Mastery Checklist
+
+- [ ] Uses native HTML (`<button>`, `<dialog>`, `<select>`) before installing third-party UI packages.
+- [ ] Chooses headless accessible primitives when building complex dropdowns, tabs, or comboboxes.
+
+</BookNodePage>

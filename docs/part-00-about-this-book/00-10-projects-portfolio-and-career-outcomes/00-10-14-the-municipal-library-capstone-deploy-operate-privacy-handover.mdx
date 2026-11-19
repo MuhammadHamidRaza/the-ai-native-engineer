@@ -1,0 +1,99 @@
+---
+id: "00-10-14-the-municipal-library-capstone-deploy-operate-privacy-handover"
+title: "00.10.14 The Municipal Library Capstone: Deploy, Operate, Privacy & Handover"
+sidebar_label: "00.10.14 Capstone: Deploy, Operate & Handover"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-14-the-municipal-library-capstone-deploy-operate-privacy-handover"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-14">
+
+Stages 6–9: the part that separates a project from a **production system** — deployment, operations, privacy, and the handover pack the client actually keeps. All methods here are the ones taught in Part 05 (verbatim).
+
+## 1. Deploy (Chapter 16–20, No Improvisation)
+
+```bash
+# VPS path (recommended for pilot): one box, Docker Compose
+docker-compose up -d api web db caddy
+curl https://chapterhouse.example.org/health          # { "status": "ok" }
+curl https://chapterhouse.example.org/health/ready    # { "db": "ok" }
+```
+
+Checklist: migrations applied (`001..003 + catalog/holds`), `.env` on the box only, Caddy/Nginx TLS + redirect HTTP→HTTPS, `ufw` allows 22/80/443 only (SSH first — always), backups to object storage (nightly `pg_dump`), restore **tested once**, DNS A/AAAA records, CDN optional.
+
+**Local fallback** (no budget/hosting available): the same Compose file runs on a laptop; demo via `cloudflared tunnel` or ngrok for the review session. Document which path you used — never claim a deployment you did not do.
+
+## 2. Operations — Metrics That Mean Something
+
+| Signal | What to log | Alert condition |
+| :-- | :-- | :-- |
+| Request metrics | count, p50/p95/p99 latency per route (Part 22/23) | p95 > 800ms for 10 min |
+| Error rate | 5xx per route | > 1% over 5 min |
+| Hold failures | `409` rate on `POST /holds` | spike = traffic or a bug |
+| Assistant | p50/p95 latency, `refused` count, `tainted` count | `refused` > 40% = corpus/retrieval problem |
+| Sweeper | expired holds per night | 0 runs in 48h = sweeper dead |
+
+Percentile math must be honest — use `PERCENTILE_CONT` or your platform's native histogram, never `avg() AS p50`. Example latency query:
+
+```sql
+SELECT route,
+       round(percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms))  AS p50,
+       round(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)) AS p95,
+       count(*) AS n
+FROM request_log WHERE created_at > now() - interval '24 hours' GROUP BY route;
+```
+
+**Synthetic check** (every 5 min): search "asimov", expect 200 and non-zero `total`; log it as a metric, not just a monitor ping. **Incident drill:** kill the assistant env var; confirm §5 unavailability behavior; then one tabletop "DB runs out of disk" walk-through — write both drills into the runbook.
+
+**Deliberately not imposed:** cache-hit ratio targets and "99.9% uptime" — those derive from an actual workload and an actual budget. State your pilot SLO as: *"pilot = one branch, best-effort, next business-day recovery"* — that is honest and achievable; anything more is theater.
+
+## 3. Privacy & Security — The Map Before the Lawyer
+
+Write the four lists, for real:
+
+| Data class | Examples | Where stored | Can it reach the LLM? |
+| :-- | :-- | :-- | :-- |
+| Public | catalog metadata, policy texts | `works`, PDFs | **Yes** (corpus) |
+| Patron-private | email, name, holds, card number | `users`, `holds` (Postgres box) | **Never** — assistant gets no account data |
+| Operational | request logs, assistant logs | log store, 30d retention | Never full PII (IPs hashed, no email bodies) |
+| Secrets | DB password, LLM key | `.env` on box only | Never logged |
+
+Plus: retention (7 years for financial, 24 months chats then anonymize), deletion path (`privacy@…` + 30 days), backups included in deletion scope, audit log for staff overrides, and a one-line DPIA-style statement: *"Processing is minimal, purpose-bound, and local; no profiling."* — reviewed by the client (it is their call, not yours).
+
+## 4. Handover Pack — What Karen's Successor Receives
+
+- **README** — architecture photo, local setup, `npm run migrate && npm run dev`, test command.
+- **Configuration guide** — every env var, its default, what breaks without it.
+- **API reference** — the table from Stage 3, with curl examples and status codes.
+- **Deployment guide** — the exact Compose + Caddyfile, TLS renewal, rollback to previous tag.
+- **Operations guide** — the metrics table above, alert playbook, backup/restore steps (tested).
+- **Known limitations** — honest list: trigram search quality on misspellings, sweeper latency, assistant refusal rate (~10%), no e-books yet.
+- **Handover checklist** — 12 items the outgoing engineer ticks with the client in the room (access handed over, backups verified, one restore demo, one assistant-off demo, DNS docs, billing account transferred, runbook walkthrough, escalation contact list).
+
+## 5. Capstone Grading Rubric
+
+| Dimension (weight) | 0 | 1 | 2 |
+| :-- | :-- | :-- | :-- |
+| Problem understanding (10%) | Built what's asked blindly | Asked some questions | Discovery brief drove design; client-shaped |
+| Requirements & scope (10%) | Scope unclear | v1 defined, thin out-of-scope | v1 + risks + anti-goals, all written |
+| Technical decisions (15%) | Cargo-cult choices | Reasoned locally | Every non-obvious choice has a "why" + a "why not" |
+| Implementation (20%) | Demo only | Works happy path | Works under failure (concurrency, outage, bad data) |
+| Testing (10%) | None | Some units | Deterministic + assistant scoreboards, separate |
+| Security & privacy (15%) | PII leaks into prompts | Boundaries stated | Verified by test; deletion path exists |
+| Deployment & ops (10%) | Local only | Runs on a box | Monitored, backed up, rollback drilled |
+| Documentation & handover (10%) | README stub | Docs exist | Client could operate it without you |
+
+Pass bar: ≥ 1.5 average and zero zeros on Security/Privacy or Deployment. Review with a mentor or honestly with yourself.
+
+## 6. Final Verification
+
+- [ ] `docker-compose up` from a clone on a clean machine → works
+- [ ] Backup taken and restored into a scratch DB → data verified
+- [ ] Assistant disabled → catalog + holds work
+- [ ] Malicious doc in the index → flagged, never cited
+- [ ] Handover checklist ticked end-to-end with a real human on the call (or recorded honestly)
+
+If you can tick all six honestly, you have built the thing most juniors never finish: a complete, operated, handed-over system. That is the portfolio piece.
+
+</BookNodePage>

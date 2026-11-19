@@ -1,0 +1,116 @@
+---
+id: "04-3-3-es-modules-and-modern-syntax"
+title: "04.3.3 ES Modules and Modern Syntax"
+sidebar_label: "04.3.3 ES Modules and Modern Syntax"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules/04-3-3-es-modules-and-modern-syntax"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s3-t3">
+
+Real applications cannot live inside a single 2,000-line script. Splitting logic across files with explicit imports and exports (**ES Modules**, or **ESM**) keeps code maintainable, enables bundler tree-shaking, and lets `node --test` verify functions cleanly in isolation.
+
+## 1. Setting Up a Clean ESM Project in Node.js
+
+Create a new folder and initialize `package.json`:
+
+```bash
+mkdir js-starter && cd js-starter
+npm init -y
+```
+
+Open `package.json` and add `"type": "module"` at the top level:
+
+```json
+{
+  "name": "js-starter",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  }
+}
+```
+
+**Why `"type": "module"` matters:** Without it, `.js` files default to legacy CommonJS (`require()`/`module.exports`) and `import ... from ...` fails with `SyntaxError: Cannot use import statement outside a module`.
+
+## 2. Named Exports vs. Default Exports, and Relative File Extensions
+
+Create `src/currency.js`:
+
+```javascript
+// Named exports: explicit names, safe refactoring, IDE autocomplete
+export const DEFAULT_CURRENCY = "USD";
+
+export function formatMoney(cents, currency = DEFAULT_CURRENCY) {
+  if (!Number.isInteger(cents)) {
+    throw new TypeError("cents must be an integer");
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+  }).format(cents / 100);
+}
+```
+
+Create `src/index.js` importing from `./currency.js` (note: in native Node ESM, **include the `.js` file extension** on relative imports!):
+
+```javascript
+import { formatMoney } from "./currency.js";
+
+const rawJson = '{"item":"Mechanical Keyboard","priceCents":12900}';
+const parsed = JSON.parse(rawJson);
+
+// Modern optional chaining (?.) + nullish coalescing (??)
+const label = parsed?.item ?? "Unnamed Item";
+console.log(`${label}: ${formatMoney(parsed.priceCents)}`);
+```
+
+Run it with `npm start`:
+
+```text
+Mechanical Keyboard: $129.00
+```
+
+## 3. Modern Syntax Essentials & JSON Boundaries
+
+- **Optional chaining (`user?.address?.city`):** Short-circuits safely to `undefined` instead of throwing `TypeError: Cannot read properties of undefined` when `user` or `address` is `null`/`undefined`.
+- **Nullish coalescing (`value ?? fallback`):** Falls back *only* on `null` or `undefined`, preserving `0`, `false`, and `""`.
+- **JSON parsing (`JSON.parse` / `JSON.stringify`):** JSON keys require double quotes, supports no trailing commas or functions, and throws `SyntaxError` on malformed input—always wrap `JSON.parse()` of untrusted input inside `try/catch`.
+
+## 4. Testing Your Module with `node --test`
+
+Create `src/currency.test.js`:
+
+```javascript
+import test from "node:test";
+import assert from "node:assert/strict";
+import { formatMoney } from "./currency.js";
+
+test("formats integer cents into USD currency string", () => {
+  assert.equal(formatMoney(12900), "$129.00");
+  assert.equal(formatMoney(50), "$0.50");
+});
+
+test("throws TypeError for non-integer floats", () => {
+  assert.throws(() => formatMoney(12.99), TypeError);
+});
+```
+
+Run `npm test` (`node --test`). Zero third-party test packages required!
+
+## 5. Practice Exercises
+
+1. Add a second module `src/discount.js` exporting `applyPercentDiscount(cents, percent)` with validation (`0 <= percent <= 100`), import it into `src/index.js`, and write at least three `node --test` assertions covering edge cases (`0%`, `100%`, `-5%`).
+2. Add `"test:watch": "node --test --watch"` to `package.json` and observe tests re-running automatically on save.
+
+## Mastery Checklist
+
+- [ ] Configures `"type": "module"` in `package.json` cleanly.
+- [ ] Remembers `.js` extensions on relative ESM imports in Node.js.
+- [ ] Prefers named exports (`export function ...`) and guards `JSON.parse()` with `try/catch`.
+- [ ] Runs multi-file unit tests with `npm test` (`node --test`).
+
+</BookNodePage>

@@ -1,0 +1,48 @@
+---
+id: "index"
+title: "24. Database Performance & Operations"
+sidebar_label: "24. Database Performance & Operations"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24">
+
+Chapter 23 scaled the application tier until it met the database. **Chapter 24 makes the database no longer the wall** — first by making queries fast (indexes and plans), then by making the database survivable at operational scale (connections, locks, replicas, partitions, archives).
+
+**Chapter 24 (`12 Focused Hours`)** follows the DBA's triage order: query → plan → connection → scale:
+
+**Index → Analyze → Pool → Scale Out**
+
+1. **Index** — 24-1-1 covers B-Tree internals (pages, leftmost prefix, composite order via Equality → Sort → Range), covering indexes (`INCLUDE`), partial indexes (hot pending orders), GIN (JSONB, full-text, arrays), BRIN for append-mostly tables, index-only scans, bloat, and when *not* to index.
+2. **Analyze** — 24-1-2 teaches `EXPLAIN (ANALYZE, BUFFERS)` anatomy: Seq Scan vs Index Scan vs Bitmap, nested loop vs hash join, buffer hits, loops, and the row-underestimation trap; plus `auto_explain` for production sampling and `pg_stat_statements` for the top offenders.
+3. **Pool** — 24-2-1 covers `max_connections = 100` reality, PgBouncer (session vs transaction pooling, `default_pool_size`) vs app-side pools, lock contention and the ShopCore stock-update deadlock, READ COMMITTED vs SERIALIZABLE failure models, and the ORM N+1 walkthrough fixed by JOIN/eager loading.
+4. **Scale Out** — 24-2-2 covers streaming replication (async vs sync, RPO), read-your-writes workarounds, the read:write > 3:1 replica threshold, declarative monthly range partitioning for `orders` (with `pg_partman` pointer), cold-row archival, and tenant isolation via Row-Level Security — plus the migration plan to introduce partitioning without a maintenance window.
+
+## Chapter 24 Structure
+
+- **24.1 Indexing & Query Optimization** — every index type with its internal mechanics and ShopCore queries it serves; reading real EXPLAIN ANALYZE plans with before/after timing characterisation; production query sampling.
+- **24.2 Connection Pooling & Operational Scale** — connection math and pooler topology; locking, isolation levels, deadlocks, N+1; replicas, partitioning, archival, RLS.
+
+## What You Will Have After This Chapter
+
+- A **ShopCore index set** you designed from actual queries (not from column names) — with `pg_stat_user_indexes` evidence on which ones earn their keep.
+- A **before/after EXPLAIN file** for the four hottest ShopCore queries (orders by user+status, catalog search, order+items join, pending-orders queue) with typical timings you measured.
+- A **connection budget**: PgBouncer in transaction mode, app pools sized so the worst case cannot exceed `max_connections`, and a documented `pg_stat_activity` check in your runbook.
+- A **deadlock postmortem** for the two-orders-update-inventory scenario — including the retry-on-`40P01` handling in code.
+- A **partitioned `orders` table** design (monthly RANGE) with an archive path for > 24-month-old rows, and an RLS policy enforcing tenant isolation verified by test.
+- The **replica decision** written down: whether ShopCore is at the read:write 3:1 threshold yet, and what you will monitor to know when it crosses.
+
+## How to Work Through This Chapter
+
+1. 24-1-1 and 24-1-2 are one skill split in two — never create an index you did not verify with `EXPLAIN ANALYZE`, and never read a plan without knowing the indexes that exist.
+2. Run every command against a real (local or throwaway) Postgres with ShopCore's schema loaded ([11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema)) and seed data. A plan on an empty table teaches the wrong lesson (the planner loves seq scans on small tables).
+3. 24-2-1 before 24-2-2: replicas do not fix lock contention, and partitioning does not fix connection exhaustion.
+4. Keep [12.2.3](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-3-indexes-and-explain-analyze) open as the "first 20%" reference — this chapter is the remaining 80%.
+
+Prerequisites: Chapter 23 (23.2's cache layer removes most read pressure, which changes what the database sees), [12 SQL & PostgreSQL](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb), and a running ShopCore with seed data. If `EXPLAIN` output is unfamiliar, do 12.2.3 first.
+
+**Exit gates.** This chapter is complete when: every hot ShopCore query has a verified plan you can narrate; your connection budget is written down and cannot be exhausted by the worst-case math; you have diagnosed a deadlock and an N+1 from the outside, without opening the code; and your partition/archive/replica plan for `orders` is concrete enough to schedule.
+
+</BookNodePage>

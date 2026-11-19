@@ -1,0 +1,43 @@
+---
+id: "index"
+title: "35.1 Coordination Topologies"
+sidebar_label: "35.1 Coordination Topologies"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35-s1">
+
+Before writing a line of orchestration code, name the shape. Topology is the highest-leverage decision in a multi-agent system: get it right and failure modes are obvious; get it wrong and no amount of prompt tuning recovers coherence.
+
+## The Topology Taxonomy at a Glance
+
+| Topology | Shape | Communication | ShopCore example |
+| :-- | :-- | :-- | :-- |
+| **Supervisor** | One orchestrator delegates to specialists, synthesizes | Star — hub routes tasks, workers never talk directly | Postmaster as supervisor: refund specialist, shipping specialist, policy specialist |
+| **Router** | Classifier picks one specialist; done | Classify-once, then hand off | Inbound ticket → billing-agent vs support-agent vs escalation |
+| **Pipeline** | Fixed linear stages with typed handoffs | A → B → C | Research Brief: retrieve → draft → critique → publish |
+| **Map-Reduce** | Parallel fan-out, then merge/reduce | Workers independent; reducer merges | Competitor scan: 6 agents in parallel → synthesis |
+| **Swarm** | Peer agents cooperate via shared workspace, no boss | Many-to-many via blackboard | Experimental; rarely justified — see honest guidance |
+
+Selection is a function of **dependency structure**: independent subtasks → map-reduce; sequential dependency → pipeline; routing by classification → router; judgment-heavy coordination → supervisor; nothing else fits → question whether you need multi-agent at all.
+
+## The Two Topics in This Section
+
+- **[35.1.1 Supervisor, Router and Pipeline Patterns](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies/35-1-1-supervisor-router-and-pipeline-patterns)** — the five topologies in depth, with ShopCore walkthroughs, when each breaks, and the selection decision table.
+- **[35.1.2 Shared State and Inter-Agent Contracts](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies/35-1-2-shared-state-and-inter-agent-contracts)** — the blackboard pattern, scratchpad vs committed store, optimistic concurrency (version/etag compare-and-swap), event-sourcing pointer, and versioned typed message contracts with zod/pydantic.
+
+## Why Contracts Come With Topologies
+
+Every topology is only as reliable as its handoff format. A supervisor that delegates with prose ("handle the refund stuff") instead of a typed envelope (`{kind:"refund_review", orderId, ...}`) fails silently at 2 a.m. Topology and contracts are one design decision, taught together here.
+
+## Section Exit Criteria
+
+- Given a new ShopCore automation request, you can name the right topology and justify it in one sentence.
+- You can draw the dataflow and point at the contract on every edge.
+- You can say, out loud, why swarm is almost never the first choice — and what evidence would change your mind.
+
+Prerequisites: Chapters 29–31 (agent loops, tools, state). Verified November 2026.
+
+</BookNodePage>

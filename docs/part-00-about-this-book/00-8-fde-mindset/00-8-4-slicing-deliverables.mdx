@@ -1,0 +1,88 @@
+---
+id: "00-8-4-slicing-deliverables"
+title: "00.8.4 Slicing Deliverables"
+sidebar_label: "00.8.4 Slicing Deliverables"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-4-slicing-deliverables"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-4">
+
+Once you map an entire messy operational workflow (`00.8.2`) and measure its baselines (`00.8.3`), an ambitious builder faces a classic temptation: designing one comprehensive Phase-1 architecture covering all twelve document templates, three legacy ERP bi-directional syncs, an executive analytics dashboard, custom workspace theming, SSO federation, and multi-agent edge handling before letting anyone use the system.
+
+In both enterprise field deployments and early-stage products, monolithic Phase-1 builds fail routinely. Unforeseen quirks in live customer data surface in month three instead of day four; stakeholder priorities shift mid-quarter; operators endure long waits with zero tangible relief; and huge amounts of code accumulate unverified against actual user behavior.
+
+The **Slice** stage (`Listen → Map → Measure → Slice → Build → Verify → Handover`) solves this cleanly by partitioning deliverables into **thin, production-minded vertical slices**—putting real working software against live data within days while preserving crisp architectural seams for Slice 2 and Slice 3.
+
+## 1. Horizontal Layering vs. Vertical Slicing
+
+Compare how the exact same 4-week project unfolds under traditional horizontal layering versus FDE vertical slicing:
+
+| Dimension | Horizontal Layering (Fragile) | Vertical Slicing (`FDE Standard`) |
+| :--- | :--- | :--- |
+| **Week 1 work** | Designs and migrates 15 SQL tables covering every hypothetical Phase-2 feature | Ships **Slice 1 end to end** on one core workflow: upload → schema validate → AI extract → store → 1 review screen |
+| **Week 2 work** | Writes all 14 REST endpoints without connecting UI or real documents yet | Real operators test Slice 1 with messy real files; immediate feedback fixes date/parsing bugs on day 6 |
+| **Week 3 work** | Builds static React screens against mock JSON arrays | Ships **Slice 2**: adds side-by-side citation highlight + structured escalation queue + CSV export |
+| **Week 4 work** | Attempts big-bang integration; discovers broken data assumptions, proxy bugs, and UI friction all at once | Ships **Slice 3**: hardens webhook sync, golden eval suite (`30+` cases), alerts, and clean handover docs |
+
+## 2. Five Rules for Cutting an Effective Vertical Slice
+
+Cutting a slice well requires surgical discipline—too thick creates delays, while too sloppy creates throwaway junk:
+
+1. **Every slice crosses the full stack (`UI → API → Storage → Verification`):** Never call *"a Python CLI script with hardcoded file paths"* or *"a static React screen with fake mock arrays"* a vertical slice. Slice 1 must ingest real input, enforce real permissions, persist cleanly in PostgreSQL, surface outputs in a real UI, and execute repeatable tests.
+2. **Constrain *breadth of cases*, never *engineering hygiene*:** Slice 1 supports **1 high-volume carrier invoice format** completely—with Zod/Pydantic validation, idempotent deduplication, clean error banners, and audit logs—rather than supporting 15 vendor templates sloppily with no auth or error handling.
+3. **Route unsupported edge cases cleanly rather than pretending they don't exist:** If Slice 1 handles 75% of routine cases cleanly and detects the tricky 25% (multi-currency splits, blurry scans, missing PO numbers) deterministically to surface an explicit `"Route to Manual Queue"` banner with context intact, operators still get massive immediate relief with **zero silent data corruption**.
+4. **Keep architectural seams open without building speculative bloat:** Store `document_type` cleanly as an extensible enum or config mapping (`Slice 1 = 'carrier_invoice'`) instead of writing a convoluted 10-layer plugin factory upfront.
+5. **Write explicit Slice Non-Goals in plain text:** Align stakeholders before building: *"Slice 1 excludes automated ERP write-back (uses verified CSV download first) and excludes multi-region SSO (uses workspace email auth first)."* Written boundaries eliminate scope creep gently and transparently.
+
+## 3. Concrete Walkthrough: Slicing an AI Support & Order-Lookup Workbench
+
+Suppose a fast-growing e-commerce brand wants an AI support workbench connecting Shopify orders, warehouse shipping APIs, and 120 warranty PDF policies:
+
+- **Bloated monolith attempt:** Tries wiring live bidirectional order cancellations, automated refund triggers, multi-language RAG across all 120 PDFs, Slack alerts, and analytics dashboards before Day 20.
+- **Clean 3-Slice FDE Roadmap:**
+  - **Slice 1 (Days 1–4):** Read-only order lookup (`email/order_id` -> deterministic order timeline) + hybrid RAG over the top 20 high-volume warranty policies with strict source citations + human-copied reply draft (**Zero autonomous mutations!**). Tested immediately by 3 support leads on live tickets.
+  - **Slice 2 (Days 5–9):** Expands corpus to all 120 policies with metadata tags (`region`, `product_line`), adds golden 40-ticket eval harness, and logs `human_override_count` when agents edit drafted responses.
+  - **Slice 3 (Days 10–14):** Adds one-click **human-approved** warehouse reshipment staging (idempotent API integration) plus production alerts and support handover runbooks.
+
+Support leads gain huge time savings in **four days** instead of waiting four weeks—and Slice 1 insights immediately shape Slice 2's UI layout based on live clicks rather than guesses.
+
+## 4. Applying Vertical Slicing Inside This Book's Projects & Capstone
+
+Treat every project across **Parts 02–10** (`00.6.5`) and your **36-hour Capstone (`Ch 42`)** identically: finish Slice 1 (minimal end-to-end working vertical path persisted in PostgreSQL and tested) in your **first build session**, commit cleanly to Git, and expand capability slice by slice. You will never sit staring at ten half-finished UI screens with zero working backend again.
+
+## 5. Mini Practice Exercise
+
+Take a classic full-stack AI app idea—for instance, **an AI Meeting Action-Item Tracker** where teams upload call transcripts and extract owners, deadlines, and follow-up tasks:
+
+1. Define **Slice 1** achievable in one focused weekend: exact 1-screen UI, exact 1 database table, exact 1 structured extraction contract, and 1 unhappy-path test.
+2. List **five appealing features** you deliberately defer into **Slice 2** and **Slice 3** (calendar OAuth sync, live Zoom bot recording, Slack digest bots, multi-workspace billing, analytics charts) and explain why Slice 1 still proves core product value cleanly without them.
+
+Compare your Slice 1 cut cleanly against a crisp FDE execution charter:
+
+```markdown
+# Weekend Slice 1 Charter: Meeting Action-Item Tracker
+- Single UI View: Upload `.txt`/`.vtt` transcript -> side-by-side Transcript + Editable Action Items Table -> Approve & Export CSV
+- Single Postgres Spine: `action_items(id, workspace_id, transcript_hash, owner_name, due_date, task_text, status)`
+- Structured AI Contract: Zod `{ items: Array<{ owner: string, dueDateIso: string | null, summary: string, quoteSnippet: string }> }`
+- Non-Negotiable Negative Test: Empty or >500 KB file returns HTTP 422 cleanly; cross-workspace GET returns 403/404.
+```
+
+Notice why disciplined slicing creates unstoppable velocity: by Sunday evening, real teammates can paste real messy Zoom transcripts, verify extracted `quoteSnippet` provenance, edit mistakes, and tell you whether they want Slack sync (`Slice 2`) or Jira push (`Slice 3`) next—all grounded in live software usage rather than three months of unvalidated guesswork.
+
+Before kicking off Slice 2, pause for five minutes to verify Slice 1 actually earned production ground: did real operators finish the workflow cleanly without your verbal instructions, did PostgreSQL constraints stay intact under duplicate submits, and did you commit clean baseline metrics (`00.8.3`) showing what broke or slowed users down in Slice 1? Disciplined slice boundaries keep velocity fast and complexity strictly honest.
+
+## Key Takeaways
+
+- **Vertical slicing** replaces risky big-bang integration with fast, end-to-end usable increments touching UI, API, storage, and verification on live data.
+- Narrow the **breadth of supported scenarios** in Slice 1—never compromise validation, security, persistence, or honest escalation queues.
+- Delivering Slice 1 in days turns early stakeholder/user friction into high-signal architectural feedback while changes are still cheap.
+
+## References and Further Reading
+
+- [Section 00.6.5 Cross-Reference — Hands-On Labs and Projects](/book/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-5-hands-on-labs-and-projects)
+- [Chapter 40 Curriculum Preview — Product Thinking & MVP Development](/book/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development)
+- [Next Step — 00.8.5 Building Solutions](/book/part-00-about-this-book/00-8-fde-mindset/00-8-5-building-solutions)
+
+</BookNodePage>

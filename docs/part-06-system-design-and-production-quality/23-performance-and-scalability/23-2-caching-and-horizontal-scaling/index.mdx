@@ -1,0 +1,37 @@
+---
+id: "index"
+title: "23.2 Caching & Horizontal Scaling"
+sidebar_label: "23.2 Caching & Horizontal Scaling"
+slug: "/part-06-system-design-and-production-quality/23-performance-and-scalability/23-2-caching-and-horizontal-scaling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-23-s2">
+
+23.1 made one instance of ShopCore fast. **23.2 makes many instances of ShopCore boring** — the kind you can add, remove, and restart without anyone noticing, because state lives somewhere else and every copy is interchangeable.
+
+## What Is In This Section
+
+- **23.2.1 Redis, Cache Invalidation and Rate Limiting** — the three caching patterns and when each lies to you (cache-aside / read-through / write-through); a worked ShopCore TTL strategy with jitter; **single-flight** request coalescing against the cache stampede; invalidation-on-write without deleting the world; stale-while-revalidate at the HTTP layer; a Redis-backed token-bucket rate limiter for `POST /v1/orders`; Redis operational basics (TTL, `maxmemory-policy`, LRU), and the failure modes that actually page you: cache poisoning and the dogpile.
+
+- **23.2.2 Stateless Services and Load Balancing** — why "stateless" is a data-placement decision, not a deployment trick (JWT validation at the pod vs server sessions in Redis); sticky sessions as a crutch; L4 vs L7 in two minutes (with the deep dive left to [20.2.1](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-1-scaling-load-balancing-caching-and-database-scaling)); connection draining so deploys don't cut requests; working Nginx/HAProxy round-robin configs; autoscale triggers (CPU vs RPS vs p95) and their failure modes; WebSocket load balancing; liveness vs readiness probes — plus the ShopCore reference architecture you should be able to draw from memory: CDN → LB → API×3 → Postgres primary/replica + Redis.
+
+## How the Two Lessons Fit
+
+```text
+  23.2.1 (make reads free)              23.2.2 (make instances disposable)
+  ---------------------------           ----------------------------------
+  catalog hit rate -> 90%+              no session state in pod memory
+  DB load collapses                     N interchangeable API instances
+  limiter protects checkout    -->      LB + drain + autoscale just works
+              \                                  /
+               +--> same Redis powers both <----+
+               (cache + rate-limit + sessions)
+```
+
+## Exit for This Section
+
+You are done with 23.2 when ShopCore can lose any one API pod mid-traffic and no user notices, the catalog database sees a fraction of its pre-cache query load (measurable in `pg_stat_activity`), and checkout refuses the 6th 20-requests-per-minute burst from a single client with a clean `429` instead of a database funeral.
+
+</BookNodePage>

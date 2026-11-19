@@ -1,0 +1,110 @@
+---
+id: "04-2-2-objects-prototypes-and-references"
+title: "04.2.2 Objects, Prototypes and References"
+sidebar_label: "04.2.2 Objects, Prototypes and References"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-2-functions-objects-and-data-structures/04-2-2-objects-prototypes-and-references"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s2-t2">
+
+A huge percentage of mysterious frontend and Node.js bugs stem from one confusion: thinking `const copy = original` copies an object. In JavaScript, primitives copy by **value**, whereas objects, arrays, and functions copy their **memory reference**. Understanding references, cloning boundaries, `this`, and JavaScript's prototype chain prevents accidental state corruption across your entire codebase.
+
+## 1. Values vs. References in Memory
+
+```javascript
+let a = 10;
+let b = a;
+b = 99;
+console.log({ a, b }); // { a: 10, b: 99 } — primitives are independent
+
+const userA = { name: "Ada", settings: { theme: "dark" } };
+const userB = userA; // Copies the REFERENCE (same heap object!)
+userB.name = "Grace";
+console.log(userA.name); // "Grace" — BOTH changed!
+```
+
+### Shallow Copy (`{ ...obj }`) vs. Deep Copy (`structuredClone`)
+
+Using spread syntax `{ ...userA }` creates a **new outer object**, *but nested objects still share references*:
+
+```javascript
+const original = { name: "Ada", tags: ["admin", "staff"] };
+
+const shallow = { ...original };
+shallow.name = "Linus";         // Safe: outer property replaced
+shallow.tags.push("billing");   // BUG! Mutates original.tags too!
+
+const deep = structuredClone(original);
+deep.tags.push("readonly");
+console.log("original.tags:", original.tags); // ['admin', 'staff', 'billing']
+console.log("deep.tags:", deep.tags);         // ['admin', 'staff', 'billing', 'readonly']
+```
+
+Use built-in **`structuredClone(value)`** (available natively in modern Node.js and browsers) when you need an independent deep copy of plain data (objects, arrays, Dates, Maps, Sets). Avoid `JSON.parse(JSON.stringify(x))` because it drops `undefined`, breaks `Date` into strings, and fails on circular references.
+
+## 2. Property Lookup & the Prototype Chain
+
+Every JavaScript object has an internal hidden link `[[Prototype]]` pointing either to another object or to `null`. When you access `user.toString()`:
+1. The engine checks `user`'s **own properties**.
+2. Not found? It walks up to `Object.prototype` and finds `toString`.
+3. Still not found (`user.nonExistent`)? It reaches `null` and returns `undefined`.
+
+```text
+myArray ([1, 2, 3])
+   └── [[Prototype]] ──> Array.prototype (.map, .filter, .push)
+                             └── [[Prototype]] ──> Object.prototype (.toString, .hasOwnProperty)
+                                                       └── [[Prototype]] ──> null
+```
+
+### Checking Own Properties Safely
+
+Never trust `if (key in obj)` when inspecting user input—it matches inherited properties like `"toString"` or `"constructor"`. Use `Object.hasOwn(obj, key)` instead!
+
+## 3. `this` Binding and Modern `class` Syntax
+
+Modern JavaScript `class` syntax is clean syntactic sugar over constructor functions and prototypes:
+
+```javascript
+export class Invoice {
+  #items = []; // Private field (truly inaccessible outside Invoice)
+
+  constructor(customerName) {
+    this.customerName = customerName;
+  }
+
+  addItem(title, priceCents) {
+    if (priceCents < 0) throw new RangeError("Price cannot be negative");
+    this.#items.push({ title, priceCents });
+    return this;
+  }
+
+  totalCents() {
+    return this.#items.reduce((sum, item) => sum + item.priceCents, 0);
+  }
+}
+
+const inv = new Invoice("Acme Corp").addItem("Audit", 50000).addItem("Support", 15000);
+console.log(inv.customerName, inv.totalCents()); // "Acme Corp" 65000
+```
+
+**Watch Out for Detached Methods (`this === undefined`):**
+If you pass `const getTotal = inv.totalCents; getTotal();` without `inv.` before the dot, `this` becomes `undefined` in strict mode / ES modules. Wrap it in an arrow function (`() => inv.totalCents()`) or bind it (`inv.totalCents.bind(inv)`).
+
+## 4. Prototype Pollution Security Note
+
+Never merge untrusted JSON keys like `__proto__`, `constructor`, or `prototype` blindly into objects with recursive `target[key] = source[key]`. Validate payloads with Zod (`05.3.1`), use `Object.hasOwn()`, or store dynamic user-keyed dictionaries inside a `Map` instead of a plain `{}` object.
+
+## 5. Practice Exercises
+
+1. Create a nested object `cart` (`{ user: { id: 1 }, items: [{ sku: "A", qty: 1 }] }`). Demonstrate in code how `{ ...cart }` fails to isolate `items[0].qty` and prove `structuredClone(cart)` isolates it completely.
+2. Explain what `Object.create(null)` produces and why some libraries use it for lookup tables.
+
+## Mastery Checklist
+
+- [ ] Knows why `{ ...obj }` only copies one level deep and when to use `structuredClone`.
+- [ ] Understands how `[[Prototype]]` lookup works and why `Object.hasOwn` is safer than `in`.
+- [ ] Knows why detaching a class method loses `this`.
+
+</BookNodePage>

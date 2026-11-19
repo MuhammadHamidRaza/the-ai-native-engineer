@@ -1,0 +1,218 @@
+---
+id: "30-2-1-function-tools-and-typed-pydantic-contracts"
+title: "30.2.1 Function Tools and Typed Pydantic Contracts"
+sidebar_label: "30.2.1 Function Tools and Typed Pydantic Contracts"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-2-tools-handoffs-and-tracing/30-2-1-function-tools-and-typed-pydantic-contracts"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30-s2-t1">
+
+Tools are the only way your agent touches the world, and the model is the least reliable part of every tool call. The fix is not better prompting — it is making wrong arguments **unrepresentable**: types, ranges, patterns and enums in the schema, checked twice (by Pydantic before the function runs, and by your code inside it). Verified November 2026 (`openai-agents` 0.24.0, Pydantic 2.14.3).
+
+The examples assume the ShopCore world from Parts 04–07: `orders`, `order_line_items`, `customers`, `refunds` tables in Postgres, reached through your Express/Prisma layer or directly. Code below uses a thin `db` stub — swap in your real session.
+
+## 1. `@function_tool` — What the Decorator Actually Does
+
+```python
+from agents.decorators import function_tool     # `tool` is an alias for function_tool
+```
+
+On decoration, the SDK: (1) parses the **signature** with `inspect` → JSON Schema for the parameters; (2) parses the **docstring** (Google/Sphinx/NumPy, auto-detected) → tool and per-argument descriptions the model reads; (3) wraps it in a `FunctionTool` whose `params_json_schema` is served to the model; (4) at call time validates arguments against that schema (strict mode is the default) and only then invokes you. `@function_tool` accepts `needs_approval=…`, `timeout=…` (async tools only), `failure_error_function=…`, `is_enabled=…`, `tool_input_guardrails=…`, `strict_mode=…`.
+
+**The model cannot invent enum values.** With `strict_mode=True` (default), a `Literal["a","b"]` argument becomes `{"enum": ["a","b"]}` in the schema — a value outside the set is a validation error before your code runs. Ranges (`ge`/`le`), patterns (`pattern=r"ORD-[0-9]{4}-[0-9]{6}"`) and lengths (`min_length`/`max_length`) ride along via `Field(…)`. This is your injection defense for tool arguments — not a filter on top of trust, but a contract the model cannot route around.
+
+**See what the model sees — dump the schema once:**
+
+```python
+import json
+for t in [lookup_order, get_customer_tier, open_dispute_ticket, issue_refund]:
+    print(t.name, "->", json.dumps(t.params_json_schema, indent=2)[:400])
+```
+
+For `lookup_order` you will see `pattern: "^ORD-[0-9]{4}-[0-9]{6}$"` on the `order_id` property — that pattern is enforced *before* your function body runs. If the model emits `order_id: "ORD-1"`, the call is rejected before any database access happens (the SDK raises `ModelBehaviorError` for malformed tool-call payloads; with a `failure_error_function` configured, some failure paths surface as model-visible error text instead — check your config) — the exact mechanism varies, but you never query with a malformed ID.
+
+**strict_mode notes (the default, deliberately kept):** with `strict_mode=True`, defaults make parameters optional, `additionalProperties` is false, and only schema-expressible types are allowed — this is what puts `enum` on the wire and keeps invented values out. Disable (`strict_mode=False`) only when you truly need open-ended JSON (`**kwargs` via `{"param": {…}}`) — you trade injection-safety for flexibility you almost never need in ops tools.
+
+## 2. The Postmaster Read Tools — Full Code
+
+```python
+# postmaster/tools.py
+from typing import Annotated, Literal
+from pydantic import Field
+from agents import RunContextWrapper
+from agents.decorators import function_tool
+from .context import PostmasterContext
+
+OrderId = Annotated[str, Field(pattern=r"^ORD-[0-9]{4}-[0-9]{6}$")]
+
+@function_tool
+def lookup_order(ctx: RunContextWrapper[PostmasterContext], order_id: OrderId) -> str:
+    """Fetch one order by exact ID. Use when the ticket names an order ID.
+
+    Args:
+        order_id: Exact order ID, e.g. ORD-2026-004417.
+    """
+    row = ctx.context.db.execute(
+        "SELECT status, paid_cents, placed_at FROM orders WHERE order_id = %(id)s",
+        {"id": order_id}).mappings().one_or_none()
+    if row is None:
+        return f"error: order {order_id} not found. Do NOT fabricate one; ask for the ID."
+    return f"order {order_id}: status={row['status']} paid_cents={row['paid_cents']} placed_at={row['placed_at']}"
+
+@function_tool
+def get_customer_tier(
+    ctx: RunContextWrapper[PostmasterContext],
+    customer_id: Annotated[str, Field(min_length=4, max_length=32)],
+) -> str:
+    """Return loyalty tier and goodwill balance for a customer. Read-only."""
+    row = ctx.context.db.execute(
+        "SELECT tier, goodwill_cents FROM customers WHERE customer_id = %(id)s",
+        {"id": customer_id}).mappings().one_or_none()
+    if row is None:
+        return f"error: customer {customer_id} not found."
+    return f"tier={row['tier']} goodwill_cents={row['goodwill_cents']}"
+```
+
+Returns are **strings the model reads** — put the *actionable* fact first, keep it under ~200 tokens, and make errors start with `error:` so the model learns the shape of failure. (Returning Pydantic models is also supported — typed returns serialize to JSON for the model and to real objects for you.)
+
+## 3. The Write Tools — Where the Money Is
+
+```python
+@function_tool(timeout=5.0)
+async def open_dispute_ticket(
+    ctx: RunContextWrapper[PostmasterContext],
+    order_id: OrderId,
+    amount_cents: Annotated[int, Field(ge=1, le=500_000,   # dispute cap: $5,000
+                                 description="Disputed amount; <= paid total, code-verified")],
+    evidence: Annotated[str, Field(min_length=10, max_length=2000,
+                                   description="Customer's claim, verbatim gist + facts")],
+) -> str:
+    """Open a formal dispute ticket for human review. Moves NO money."""
+    paid = ctx.context.db.execute(
+        "SELECT paid_cents FROM orders WHERE order_id = %(id)s",
+        {"id": order_id}).mappings().one_or_none()
+    if paid is None:
+        return f"error: order {order_id} not found; cannot open dispute."
+    if amount_cents > paid["paid_cents"]:
+        return f"error: amount_cents {amount_cents} exceeds paid total {paid['paid_cents']}; refusing."
+    if ctx.context.policy.read_only:
+        return "error: read-only mode; dispute NOT opened (proposal only)."
+    new_id = ctx.context.db.execute(
+        "INSERT INTO disputes(order_id, amount_cents, evidence, correlation_id) "
+        "VALUES (%(o)s, %(a)s, %(e)s, %(c)s) RETURNING dispute_id",
+        {"o": order_id, "a": amount_cents, "e": evidence,
+         "c": ctx.context.correlation_id}).scalar_one()
+    return f"dispute_opened id={new_id} amount_cents={amount_cents} corr={ctx.context.correlation_id}"
+
+@function_tool(timeout=5.0, needs_approval=lambda ctx, params, _: params.get("amount_cents", 0) > 5000)
+async def issue_refund(
+    ctx: RunContextWrapper[PostmasterContext],
+    order_id: OrderId,
+    amount_cents: Annotated[int, Field(ge=1,
+        description="Refund in cents; derived from verified line items — never from the email")],
+    reason: Literal["damaged", "not_received", "wrong_item", "duplicate", "other"],
+) -> str:
+    """Issue a refund. <= $50 executes; > $50 pauses for human approval;
+    > $500 is ALWAYS refused in code (Tier 4 — never offered to a human either)."""
+    if amount_cents > 500_00:
+        return ("error: amount exceeds the $500 absolute cap. This action is blocked "
+                "in code regardless of approval; escalate to queue=ops instead.")
+    # Key is ALWAYS derived in code from the run's correlation id — never passed by
+    # the model. A retried run with the same correlation id replays as a no-op.
+    idempotency_key = f"{ctx.context.correlation_id}:issue_refund:{order_id}"
+    paid = ctx.context.db.execute(
+        "SELECT paid_cents, COALESCE((SELECT SUM(amount_cents) FROM refunds "
+        "WHERE order_id = %(id)s), 0) AS already FROM orders WHERE order_id = %(id)s",
+        {"id": order_id}).mappings().one_or_none()
+    if paid is None or paid["already"] + amount_cents > paid["paid_cents"]:
+        return "error: refund would exceed paid total; refusing. Escalate."
+    if ctx.context.policy.read_only:
+        return "error: read-only mode; refund NOT issued (proposal only)."
+    refund_id = ctx.context.db.execute(
+        "INSERT INTO refunds(order_id, amount_cents, reason, idempotency_key) "
+        "VALUES (%(o)s, %(a)s, %(r)s, %(k)s) ON CONFLICT (idempotency_key) DO NOTHING "
+        "RETURNING refund_id", {"o": order_id, "a": amount_cents, "r": reason,
+                                "k": idempotency_key}).scalar_one_or_none()
+    if refund_id is None:
+        return f"duplicate: idempotency_key {idempotency_key} already refunded; no double-charge."
+    return f"refund_issued id={refund_id} amount_cents={amount_cents} reason={reason}"
+```
+
+Three load-bearing details: `needs_approval=` is a **callable** receiving `(run_context, params, call_id)` — approval is demanded per call, not per tool; the `$500` cap is **not** delegated to the approval gate (approving a >$500 refund is itself forbidden); the `idempotency_key` column has a `UNIQUE` constraint so a retried agent run is a no-op, not a second Stripe refund (see [13.4.1](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency)).
+
+## 4. Errors Go Back to the Model — Don't Raise
+
+Unhandled exceptions inside a tool trip the SDK's `failure_error_function`, which by default returns "an error occurred" to the model — information-free but safe. Deliberate design instead: return structured `error: …` strings (above) so the model can react — pick the other read tool, or escalate. Only pass `failure_error_function=None` when you *want* the run to crash (never for Postmaster). For async tools add `timeout=5.0`; on timeout the default `error_as_result` sends the model a visible timeout message so it can narrow or escalate (29.2.2, rung 2).
+
+**Custom `failure_error_function` — safe but informative:**
+
+```python
+import logging
+from typing import Any
+from agents import RunContextWrapper
+
+logger = logging.getLogger("postmaster")
+
+def postmaster_tool_error(ctx: RunContextWrapper[Any], error: Exception) -> str:
+    # log full detail locally with the correlation id; tell the model LESS
+    logger.exception("tool failed corr=%s", getattr(ctx.context, "correlation_id", "?"))
+    return "error: tool failed (logged for operators). Try one different read, then escalate."
+
+@function_tool(failure_error_function=postmaster_tool_error)
+def get_ticket_history(...): ...
+```
+
+Note the asymmetry: *operators* get the traceback (local logs, correlation ID), the *model* gets a sanitized, actionable instruction. Your stack traces are not model fuel — they are often where connection strings and customer data live.
+
+**The idempotency column your `issue_refund` assumes (DDL):**
+
+```sql
+ALTER TABLE refunds ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE;
+CREATE UNIQUE INDEX IF NOT EXISTS refunds_idem ON refunds (idempotency_key);
+```
+
+## 5. Testing Tools — No LLM Required
+
+The decorator exposes the underlying callable as `__wrapped__` — call it with a forged context and assert on strings, or factor logic into plain helpers (`_issue_refund(db, …)`) and test those:
+
+```python
+def test_refund_refuses_over_cap(fake_ctx):
+    out = issue_refund.__wrapped__(fake_ctx, "ORD-2026-004417", 600_00, "other")
+    assert out.startswith("error:") and "$500" in out
+
+def test_refund_idempotent(fake_db):
+    first = issue_refund.__wrapped__(ctx(fake_db), "ORD-2026-004417", 1000, "damaged")
+    out = issue_refund.__wrapped__(ctx(fake_db), "ORD-2026-004417", 1000, "damaged")
+    assert first.startswith("refund_issued")
+    assert out.startswith("duplicate:")
+```
+
+Unit-test envelope rules: argument validation (bad `order_id` pattern), business invariants (over-paid-total, over-cap), idempotency, read-only mode, timeout behavior. The model is a component you test *around*, never a dependency of your tool test suite — Chapter 36 turns these into the eval harness.
+
+## 6. Common Mistakes
+
+- `Field(ge=0)` refunds, no ceiling — the "parameter exists, money flows" bug. Cap in code.
+- Descriptions written for humans: "Does refund stuff" tells the model nothing about when to pick it.
+- Raising exceptions for expected failures — the model never learns the difference between "retry with other tool" and "escalate".
+- Idempotency keys composed by the model. Compose them in code from `(ticket_id, action, item_ids)` or the key is as random as the model.
+- Testing via the agent. Slow, flaky, and it tests the model, not your invariants.
+
+## 7. Practice
+
+**Guided exercise.** Implement `lookup_order` + `get_customer_tier` against a SQLite stub with seeded orders/customers; unit-test both.
+
+**Independent exercise.** Add `lookup_shipment_status(order_id) -> str` so refund evidence can be checked (this closes F4 from 29.2.2). Test timeout via a sleeping stub.
+
+**Challenge.** Write a red test proving `issue_refund` refuses a refund whose cumulative total would exceed `paid_cents` — then run it.
+
+**Assessment checklist**
+
+- [ ] I can explain how `Literal` + `Field` constraints reach the model as an enum schema.
+- [ ] My write tools enforce caps in code and pass tests without any LLM.
+- [ ] I know what `needs_approval`'s callable receives and what `$500` does NOT route through approval.
+- [ ] I return `error: …` strings the model can act on instead of raising.
+- [ ] I can test a `@function_tool` via `__wrapped__` and say why that bypasses schema validation by design.
+
+</BookNodePage>

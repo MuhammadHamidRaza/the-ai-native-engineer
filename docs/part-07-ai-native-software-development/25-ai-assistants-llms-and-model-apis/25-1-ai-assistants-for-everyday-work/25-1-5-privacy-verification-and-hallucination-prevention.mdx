@@ -1,0 +1,134 @@
+---
+id: "25-1-5-privacy-verification-and-hallucination-prevention"
+title: "25.1.5 Privacy, Verification and Hallucination Prevention"
+sidebar_label: "25.1.5 Privacy, Verification and Hallucination Prevention"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-1-ai-assistants-for-everyday-work/25-1-5-privacy-verification-and-hallucination-prevention"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s1-t5">
+
+Two questions decide whether you are an AI professional or an AI liability: *should this content be in a prompt at all?* and *how do I know the answer is true?* This lesson answers both with the discipline you can apply today, including a reproducible hallucination and the checklist your legal team will eventually ask for.
+
+## 1. What NOT to Paste (Memorize This Table)
+
+| Never paste | Why | What to do instead |
+| :-- | :-- | :-- |
+| Client PII (names, emails, health, finance) | Trains consumer models; violates GDPR/DPA; regulated sectors = fines | Use enterprise tier with no-training terms, or anonymize first |
+| Secrets (API keys, passwords, connection strings, private keys) | Model providers may retain; leaked secrets get scraped and used | Redact; rotate immediately if already pasted |
+| Proprietary source code you don't own (employer's, client's) | IP leakage; usually breach of your NDA/employment terms | Enterprise/approved tools only; or self-hosted open models |
+| Legal, medical, or regulatory advice you will act on | Confidentiality duty + professional liability | Brief a professional; AI is for orientation, not counsel |
+| Anything under NDA or a court seal | Legally compelled disclosure risk | Don't. Ask counsel what tools are cleared |
+| Credentials of any kind | See above — and assume pasted = compromised | Rotate the credential; report per your IR plan |
+
+**The test:** if this text appearing in a vendor's log file would be a problem, it is a problem in the prompt. There is no "ephemeral" chat that guarantees deletion — treat paste as durable.
+
+## 2. Enterprise Tiers and Data Controls (Verified November 2026)
+
+- **OpenAI.** ChatGPT Business / Enterprise / Edu / Teachers: inputs and outputs **not used for training by default**; you own inputs/outputs; SAML SSO; admin-controlled retention (deleted conversations removed within ~30 days); DPA available. Consumer tiers (Free/Go/Plus/Pro) **may be used for training** — opt out via *Settings → Data controls → "Improve the model for everyone"*; note a thumbs-up/down on a response may still attach that conversation to training. Source: [openai.com/enterprise-privacy](https://openai.com/enterprise-privacy/) and [help.openai.com data controls](https://help.openai.com/en/articles/7730893-data-controls-in-chatgpt).
+- **Anthropic.** Claude for Work (Team/Enterprise) and the API: not used to train models by default; feedback may be used if you submit it (orgs can disable); deleted chats removed from back-end within ~30 days; DPA available. Consumer Free/Pro/Max: chats **may be used to improve models** unless you opt out in privacy settings. Source: [claude.com/pricing](https://claude.com/pricing) and Anthropic's Privacy Center.
+- **Google.** Gemini in Workspace: content is **not used** to train models without your permission (Workspace Service Specific Terms — Training Restriction); admins control retention (90 days–indefinite in Workspace; Gemini app up to 36 months, default 18); covered by the Cloud Data Processing Addendum. Consumer Gemini: free tier may be used to improve products; paid API tier says content is not. Source: [Generative AI in Google Workspace Privacy Hub](https://knowledge.workspace.google.com/admin/generative-ai/generative-ai-in-google-workspace-privacy-hub) and [Gemini API pricing](https://aistudio.google.com/docs/pricing).
+- **Mistral** (Vibe/Le Chat, Pro $14.99/mo): EU data processing — the natural fit for European sovereignty needs, confirm your DPA. **DeepSeek:** free chat and API operated from China — do not route client or proprietary data without explicit approval.
+
+**Universal control:** even on enterprise tiers, check *your* admin console for retention settings, training toggles, and whether feedback buttons are enabled — organizations differ.
+
+## 2.5 The Human Side — Your Employer's AI Policy Beats Any Default
+
+Before you paste anything work-related: read your company's AI acceptable-use policy (if one exists) and your DPA with clients. Common clauses: no client data in non-enterprise tools; no source code in consumer tiers; AI-drafted content requires human review before external send; disclosure when AI materially authored a deliverable. Absence of a policy is not permission — it's ambiguity you own. If unsure: anonymize, or use the sanctioned enterprise route, or ask. The five minutes you spend here is the cheapest insurance in this book.
+
+**Special case — regulated industries (health, finance, legal, government, education of minors):** treat every AI tier as non-compliant until the compliance owner says otherwise in writing. HIPAA has no "but the AI was really careful" clause.
+
+## 3. Hallucination, Defined — and Reproduced
+
+**Definition.** A hallucination is output that is grammatically fluent, confident, and false — including fabricated citations, invented figures, nonexistent laws, and plausible-but-wrong summaries. The model is not lying; it is completing a pattern with no ground truth attached.
+
+**Reproduction demo (try it — 2 minutes):**
+
+```text
+Give me full bibliographic references: title, authors, year, journal, DOI
+for five peer-reviewed studies on "cache-line ping-pong in
+in-memory databases" published between 2015 and 2025.
+```
+
+Typical result (we will not print invented specifics as if they were real): five beautifully formatted references, some of which resolve to nothing. DOIs that 404. Journals that don't exist. Authors who never wrote on the topic. This is not a bug to report — it is the expected failure mode of the tool for open-ended bibliographic recall, and it is *why* workflow (c) in 25.1.3 forces vendor domains only.
+
+**Why it happens:** the model samples the *most probable next token*, not "the reference that exists." For well-attested topics, probability aligns with truth. For niche or fabricated queries, probability aligns with *plausibility*.
+
+## 4. The Verification Workflow — Claims Inventory → Source Check → Contradiction Test
+
+Apply to **any AI output that will leave your desk.**
+
+**Step 1 — Claims inventory.** Highlight every checkable claim in the output: numbers, dates, names, quotes, legal/technical assertions, "studies show" statements. (Ask the model to help: *"List every factual claim in this text as a numbered list, with your confidence 0–1."*) This is also your audit trail for the reviewer.
+
+**Step 2 — Source check.** Each numbered claim gets: a real source you open yourself (official doc, vendor page, filing, paper), or an explicit `UNVERIFIED` tag. No source, no claim ships.
+
+**Step 3 — Contradiction test.** Actively try to break the conclusion: ask the model adversarially — *"Argue the strongest case that the opposite conclusion is true."* — then check the two or three load-bearing claims on both sides against sources. Disagreement between the two views is where your errors live.
+
+**Worked mini-example.** Output claims: "Vendor X grew revenue 40% YoY to $120M, citing their Series C press release." Inventory: (1) 40% growth, (2) $120M, (3) Series C exists. Source check: vendor blog shows raise announcement — "$18M Series C… funding to date $46M" — revenue figure absent. **Verdict: claim is fabricated; discard; contact PR or drop the stat.** Caught in 90 seconds by step 2.
+
+## 5. Citation Styles That Force Honesty
+
+When you want sources you can defend, ask with a format instead of a hope:
+
+```text
+Answer with: (1) your answer; (2) a numbered claims list where each claim
+is tagged [SOURCED: full URL to the primary source] or [INFERRED] or [UNVERIFIED];
+(3) your confidence 0–100 and what would change it.
+If you have browsing, you must open each URL. Do not cite sources you did not open.
+```
+
+Then verify [SOURCED] items by opening them — the model cannot reliably tell you it opened a page. For your own deliverables, carry the same structure into your doc: **claim → source link → confidence**, visible to your reviewer. This turns "trust me" into "check me."
+
+## 6. Pre-Flight Checklist — Anything Leaving Your Desk
+
+- [ ] No client PII / secrets / NDA content in the prompt (or enterprise no-training tier confirmed).
+- [ ] Every number, date, name and quote verified against a primary source or marked unverified.
+- [ ] Every citation opened by me, not trusted from the model.
+- [ ] Contradiction test run on the load-bearing conclusion.
+- [ ] Fabrication smell-test: does anything here *sound* too neat? (Even numbers, suspiciously clean rounding, "studies show") → re-source.
+- [ ] Numbers/wording checked if translated or reformatted (25.1.3).
+- [ ] For external distribution: one human domain-expert read it once.
+- [ ] I can explain every claim in the document in my own words.
+
+## 6.5 What Your Legal Team Will Ask — and Your Answers
+
+**"Where does the data physically reside?"** — evidence: the provider's DPA naming regions/subprocessors (OpenAI regional processing options; Anthropic US-routing default with 1.1x US-only option; Google Workspace CDPA + region controls). Attach the current doc, dated.
+
+**"Can we delete on request?"** — evidence: deletion SLA in the DPA (e.g., ~30-day removal of deleted conversations OpenAI states; admin retention controls Google states). Test it once if your policy demands.
+
+**"Who can read my prompts internally?"** — evidence: enterprise privacy pages: automated classifiers always; human review only under stated conditions (abuse investigation, incident recovery, legal requirement). Consumer tier: materially weaker — hence §1.
+
+**"What if the model invents a fact in a client deliverable?"** — evidence: your verification workflow from §4, applied and logged. This is the entire point of keeping the claims inventory: it converts "trust us" into "here's the audit trail."
+
+## 6.6 Red Flags That an Output Deserves Extra Scrutiny — a Field Guide
+
+- **Suspiciously round numbers** ("grew 40% to exactly $10M") — models love tidy fiction.
+- **Authoritative vagueness** — "studies show", "experts agree", "the market is projected to" with no name.
+- **Citation DOI patterns that look right** (`10.xxxx/...`) but resolve nowhere.
+- **Perfect internal symmetry** — three causes, four recommendations, all equal weight; real analysis is uneven.
+- **Too-fluent chronology** — a vendor "founded in 2019, Series A 2021, profitable by 2023" when reality was lumpier.
+None of these proves falsehood; each earns a mandatory source-check. Track your personal hit-rate: after a month of §4 discipline, you'll know which categories of claim your assistant invents most — that's your custom red-flag list.
+
+## 6.8 A 60-Second Pre-Share Drill You Can Actually Run
+
+Before any AI-assisted message reaches a person outside your team, run this out loud: **(1) "Where did each number come from?"** (2) "Which sentence would embarrass us in front of legal, and what's my edit?" (3) "If the recipient asks for the source of the strongest claim, what do I show them in the next 30 seconds?" If any answer is "the model said so," stop — open the file, check the table, fix the line. This drill takes one minute, catches most fabrication, and takes your verification from aspiration to habit. Teach it to one junior teammate this month; it compounds.
+
+## 7. Practice
+
+**Guided exercise.** Reproduce the §3 demo in your own account; paste the references into a DOI resolver (doi.org); record what resolved and what didn't.
+
+**Independent exercise.** Take a recent AI-drafted message you actually sent. Run it through §4. Count the unverified claims you shipped. wince accordingly.
+
+**Assessment checklist**
+
+- [ ] I can list what never to paste and name one cleared alternative per category.
+- [ ] I can explain the enterprise-vs-consumer training difference for OpenAI, Anthropic and Google.
+- [ ] I have personally reproduced a hallucination this month.
+- [ ] I apply claims-inventory → source-check → contradiction-test before external use.
+- [ ] I demand [SOURCED]/[INFERRED]/[UNVERIFIED] tags when I need publishable output.
+- [ ] I never present AI output as my independent verification when I haven't done it.
+
+**CLAIM TO VERIFY:** Anthropic consumer-training default as of writing ("may be used unless you opt out") reflects late-2025 policy reporting and Anthropic's Privacy Center; confirm current wording in the Anthropic Privacy Center before relying on it in a compliance document.
+
+</BookNodePage>

@@ -1,0 +1,121 @@
+---
+id: "00-8-2-mapping-workflows"
+title: "00.8.2 Mapping Workflows"
+sidebar_label: "00.8.2 Mapping Workflows"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-2-mapping-workflows"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-2">
+
+Once you have listened closely and gathered concrete sample inputs (`00.8.1`), the **Map** stage (`Listen → Map → Measure → Slice → Build → Verify → Handover`) turns scattered observations and transcripts into an explicit, shared, end-to-end **workflow and system-boundary diagram**.
+
+Most disappointing internal tools, broken automations, and stalled AI pilots fail because engineers zoom blindly into one glamorous middle step—for instance, *"run an LLM over the uploaded file"*—while remaining blind to where the input actually originates, which spreadsheets or legacy tabs operators cross-check mid-process, which exception paths stall work for three days, and where verified records must land downstream. **Mapping exposes invisible human glue, split-brain data sources, and exact integration seams *before* code hardens wrong assumptions.**
+
+## 1. Five Concrete Layers Every Engineering Workflow Map Must Capture
+
+Do not draw decorative management-slide boxes reading `Input → AI Engine → Output`. An operational workflow map captures five technical realities:
+
+1. **Triggers & entry points:** What event initiates work—an inbound customer email, a signed SaaS webhook, a scheduled CSV SFTP drop, a scanned portal upload, or a manual operator click? Note arrival frequency and burst patterns.
+2. **Systems of record & shadow stores:** Every CRM, ERP, PostgreSQL database, SharePoint folder, local Excel workbook, email thread, and Slack DM channel touched from start to finish. Shadow Excel trackers almost always mark the exact gap where current software fails operators.
+3. **Human handoffs & manual transformations:** Every place Person A copies IDs from System 1, reformats dates manually in a spreadsheet, or messages Person B for policy approval. Each manual re-entry point reveals data-normalization friction or missing validation.
+4. **Decision rules & exception branches:** How the workflow diverges when identifiers are missing, totals mismatch, documents arrive in foreign languages, or amounts cross approval thresholds. Exceptions—not standard happy paths—dictate most of production system architecture.
+5. **Idle queues & failure blast radius:** Where tasks wait hours/days for human replies, and what breaks financially or legally if a silent error escapes downstream.
+
+## 2. Worked Field Example: Mapping a Vendor Onboarding & Rate Validation Flow
+
+Watch how an eight-line **As-Is Map** followed by a crisp **To-Be Map** transforms a messy procurement bottleneck into clear software architecture:
+
+### Current State (`As-Is Map` — Observed Directly)
+
+```text
+[Vendor Emails PDF W-9 + Rate Schedule]
+   │  (Sits in shared inbox 15–90 min; downloaded manually by Ops Coordinator)
+   ▼
+[Ops Cross-Checks 2 Legacy ERP Tabs + "Master Rates 2026 FINAL_v3.xlsx"]
+   ├── Missing Tax ID / Unsigned W-9? ──▶ Manual email reply (2–5 days stalled)
+   └── Complete? ──▶ Ops manually re-types 18 fields into ERP + pings Finance on Slack
+                        ▼
+               [Finance Approves Blindly Without Side-by-Side PDF Source]
+                        ▼
+               (Rate card typos discovered 3 weeks later on first disputed invoice)
+```
+
+Look closely at what five minutes staring at that **As-Is Map** reveals immediately:
+
+- **Surprise #1:** The biggest calendar delay (`2–5 days`) is *not* field typing—it is discovering missing W-9 signatures three hours or two days after vendors emailed! Automated completeness validation right at upload cuts days immediately with almost zero AI complexity.
+- **Surprise #2:** `"Master Rates 2026 FINAL_v3.xlsx"` is a classic shadow database. Migrating canonical active rate rules into versioned **PostgreSQL** tables eliminates split-brain errors permanently.
+- **Surprise #3:** Finance approves blindly because jumping between Slack, ERP, and PDF folders takes too long—explaining *why* rate typos slip through.
+
+### Target State (`To-Be Map` — Deterministic + Bounded AI Boundaries Marked)
+
+```text
+[Authenticated Vendor Portal / Email Ingest Webhook]
+   │  (Idempotent file hash check + PDF readability check — Deterministic)
+   ▼
+[Python Intake Worker]
+   ├── Incomplete / Unreadable PDF? ──▶ Instant structured checklist bounce to Vendor
+   └── Valid PDF? ──▶ Structured LLM Extraction (Pydantic schema + bounding page refs)
+                         │
+                         ▼
+               [Deterministic Validation Gate (SQL / Python)]
+                 • Verify Tax ID format, duplicate vendor check, math check on rates
+                         │
+                         ▼
+               [Operator / Finance Review Workbench (Next.js)]
+                 • Extracted fields side-by-side w/ highlighted PDF clauses
+                 • One-click Approve ──▶ Idempotent ERP API Sync + Audit Log
+```
+
+Notice how crystal clear ownership becomes: **zero ambiguity** on what runs deterministically in Python/SQL, where narrow structured AI extraction adds real speed, and where humans hold final sign-off.
+
+## 3. Verifying the Map With Frontline Operators (The "Messy Tuesday Test")
+
+Never lock a workflow map solely from your own first draft. Sit with one veteran operator for ten minutes holding your As-Is diagram and ask explicitly:
+
+> *"Walk through this map pretending it's a chaotic Tuesday afternoon when three files arrive half-broken. Which step did I oversimplify, and which weird exception rule did you forget to mention yesterday?"*
+
+Operators consistently perk up right there: *"Oh—except for Canadian carriers, where Finance converts CAD and checks tax exemption column H."* Catching that single hidden branch during **Map** saves an entire sprint of rewritten migrations during **Build**.
+
+## 4. Documenting Boundaries Cleanly Before Coding
+
+Keep the final Map artifact short enough to fit on one Markdown page inside the project repo (`docs/workflow-map.md`):
+- **Current As-Is ASCII/diagram + 5-bullet bottleneck summary**
+- **Target To-Be diagram tagging `[Deterministic]`, `[AI-Assisted]`, and `[Human Gate]` nodes**
+- **System Integration Inventory** (every external system, credential mechanism, rate limit, and failure fallback)
+
+## 5. Mini Practice Exercise
+
+Sketch a complete **As-Is → To-Be Map** for a workflow you know personally—such as **expense report approvals**, **freelance project onboarding**, or **triaging GitHub bug issues on a small team**:
+
+1. Draw the current **As-Is flow** marking at least **two manual handoffs** and **one shadow store** (spreadsheet, DM, personal note) or exception loop.
+2. Draw the **To-Be flow**, explicitly tagging each step as `[Deterministic]`, `[AI-Assisted]`, or `[Human Gate]`, and name one condition where AI is deliberately kept *out* of the critical path.
+
+## Standard Integration Inventory Table Attached to Every Map
+
+Pairing your workflow diagram with a crisp four-column **System Integration Inventory** catches missing API quotas, manual logins, and auth surprises before **Build** begins:
+
+| External System / File | Access Mechanism Verified? | Failure / Rate-Limit Behavior | Owner Who Approves Access |
+| :--- | :--- | :--- | :--- |
+| **Shared Intake Mailbox** | Graph API OAuth / webhook verified (`read-only`) | Polling fallback every 5 min if webhook drops | IT Mail Admin (`it@client`) |
+| **Legacy ERP Customer Table** | REST v2 API key (120 req/min burst cap) | Exponential backoff + Dead-Letter table (`Ch 34`) | Finance Systems Lead |
+| **Vendor Rate Cards (`Excel → PG`)** | Imported cleanly into PostgreSQL `vendor_rates` | Strict validation blocks missing tax/currency codes | Procurement Manager |
+
+Documenting those three realities prevents the all-too-common Week-3 nightmare where a finished prototype discovers the legacy ERP locks API keys to an on-premise VPN nobody opened!
+
+Before moving from **Map** into **Measure (`00.8.3`)** and **Slice (`00.8.4`)**, verify two final details beside operators: (1) confirm peak concurrency burst times (e.g., 400 CSV uploads every Monday at 08:00 AM), and (2) verify whether any regulated data (`PII`/`PHI`/PCI card digits) crosses external AI gateways so redaction or regional hosting gets built into the boundary upfront.
+
+## Key Takeaways
+
+- Mapping translates messy field notes into explicit **triggers, systems of record, manual workarounds, exception branches, and failure points**.
+- Always distinguish an operator-verified **As-Is Map** from a boundary-tagged **To-Be Map** (`Deterministic` vs. `AI-Assisted` vs. `Human Gate`).
+- Catching hidden exception branches ("Canadian invoice column H") during **Map** prevents expensive mid-build schema rewrites later.
+
+## References and Further Reading
+
+- [Section 00.8.1 Cross-Reference — Listening & Problem Briefs](/book/part-00-about-this-book/00-8-fde-mindset/00-8-1-understanding-customer-problems)
+- [Chapter 21 Curriculum Preview — Systems Thinking, Architecture & Decision-Making](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making)
+- [Next Step — 00.8.3 Measuring Impact](/book/part-00-about-this-book/00-8-fde-mindset/00-8-3-measuring-impact)
+
+</BookNodePage>

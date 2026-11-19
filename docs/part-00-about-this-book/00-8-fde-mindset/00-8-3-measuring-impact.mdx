@@ -1,0 +1,123 @@
+---
+id: "00-8-3-measuring-impact"
+title: "00.8.3 Measuring Impact"
+sidebar_label: "00.8.3 Measuring Impact"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-3-measuring-impact"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-3">
+
+Without baseline numbers and built-in instrumentation, engineering launches collapse into subjective impressions: *"The ops team really liked the workshop demo"* or *"Search feels way quicker now."* Ninety days later, an engineering VP, founder, or client CFO asks a completely reasonable question: **Did this system actually cut operational effort, reduce costly errors, or stay within budget as traffic grew?** Without concrete before-and-after metrics, teams cannot answer honestly—and cannot tell whether the next iteration improved accuracy or silently broke it.
+
+The **Measure** stage (`Listen → Map → Measure → Slice → Build → Verify → Handover`) embeds empirical measurement *before* code ships and designs lightweight telemetry directly into the application schema.
+
+## 1. The Balanced Metric Triad: Never Optimize One Axis Blindly
+
+Strong Forward Deployed and AI Engineers never track a single vanity statistic in isolation—because speeding up latency by dropping citations or lowering token cost by cutting retrieval quality ruins operational trust. Balance **three complementary metric categories**:
+
+| Metric Category | Concrete Observable Measures | Engineering Failure Caught Early |
+| :--- | :--- | :--- |
+| **1. Operational & Human Outcome** | Median cycle time (intake → resolution); manual entry minutes per ticket; operator adoption / completion rate; human escalation & override percentage | Catches *"fast on server, ignored by staff"* UX failures or misleading AI drafts operators constantly delete and rewrite |
+| **2. Technical Quality & Reliability** | Structured JSON validity rate; golden-set field accuracy / citation faithfulness; webhook/job dead-letter rate; HTTP p50/p95 latency & Time-To-First-Token (`TTFT`) | Separates impressive demos from dependable production systems; stops silent prompt regressions during model/prompt updates |
+| **3. Unit Economics & Sustainability** | Average input/output tokens and exact inference cost per 100 completed runs; PostgreSQL query timing; weekly support/maintenance minutes | Prevents *"works great at 50 docs, bankrupts budget at 50,000 docs"* cost explosions (`Ch 36`) |
+
+## 2. Capturing Honest Baselines *Before* Writing Feature Code
+
+Human memory distorts before-and-after comparisons dramatically—stakeholders routinely claim *"this takes 30 minutes"* before launch and *"maybe it saved a little time"* afterward unless real timestamps exist upfront. During **Listen + Map (`00.8.1–00.8.2`)**, gather an honest 30-minute baseline:
+
+1. **Time 10–15 real historical runs:** Pull timestamps from email receipts, ERP created/approved logs, or sit beside an operator with a stopwatch across 10 varied tickets (include 2 ugly edge cases alongside routine cases).
+2. **Sample historical error & bounce-back rates:** Inspect 50 recent completed items—how many required manual correction, missed a required field, or triggered customer disputes downstream?
+3. **Verify real throughput & document scale:** Confirm exact volume (`400 invoices/month` vs. `40,000/day`), peak concurrency windows (Monday 9:00 AM batch uploads), and average document page counts so database indexes and model `TPM` quotas reflect truth.
+
+## 3. Designing Measurement Directly Into PostgreSQL and Logs
+
+Do not wait until after rollout to run clunky spreadsheets asking staff *"how many minutes did you save?"* Bake clean audit timestamps and override tracking directly into your primary data model (**Chapters 11–12, 22, 36**):
+
+```sql
+CREATE TABLE triage_audit_events (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id      uuid NOT NULL,
+  case_id           uuid NOT NULL,
+  prompt_version    text NOT NULL,
+  ai_suggested_json jsonb NOT NULL,
+  final_human_json  jsonb,
+  changed_fields    text[] NOT NULL DEFAULT '{}',
+  latency_ms        integer NOT NULL,
+  input_tokens      integer NOT NULL,
+  output_tokens     integer NOT NULL,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+```
+
+Notice the high-leverage engineering insight captured in one column—`changed_fields`:
+- Every time an operator accepts an AI extraction or drafted category untouched (`changed_fields = '{}'`), you measure **true zero-edit straight-through trust**.
+- Every time an operator manually edits `tax_amount` or `carrier_code` before approving, `changed_fields` records *exactly which field drifted*—giving your next prompt, schema, or deterministic parser improvement laser-focused empirical feedback!
+
+## 4. Reporting Honest Results Without Exaggeration
+
+Never invent inflated percentages (*"99% accuracy guaranteed"* or *"10x productivity boost"*). Real engineering credibility—with hiring managers reviewing your portfolio (`00.10`), engineering leadership, or enterprise clients—comes from **specific, auditable, bounded claims**:
+
+- **Weak hype:** *"Built an AI invoice agent that saves huge time and eliminates manual errors."*
+- **Illustrative example (not a benchmark):** *"Across a 50-invoice benchmark sampled from Q3 submissions, structured extraction + deterministic PO matching cut median analyst review time in the typical range for document-processing PoCs (this example is for teaching, not for citation), routed 100% of math-mismatch cases to explicit review queues, and cost roughly cents per processed invoice."*
+
+Even modest verified numbers earn immediate trust because every figure maps back to inspectable evidence.
+
+## 5. Mini Practice Exercise
+
+Suppose you are launching an internal **AI Knowledge Base Search & Citation Helper** (`Ch 28`) for a 25-person customer support team:
+
+1. Define **three exact baseline metrics** you would record during Week 0 *before* writing code (time to find policy answer, Slack escalation rate to senior leads, stale-doc error count).
+2. Name **two lightweight database/telemetry columns** you will log on every user query after launch so you know immediately whether users found the cited answer helpful or abandoned search and asked a teammate anyway.
+
+## Live Post-Launch Impact Readout Query (`Ch 12` + `Ch 36`)
+
+Because `triage_audit_events` tracks duration, overrides, and token counts natively inside PostgreSQL, computing your weekly **Measure** scorecard requires one zero-cost SQL query—no third-party analytics SaaS needed in Slice 1:
+
+```sql
+-- Weekly Operational Impact, Reliability & FinOps Report
+SELECT prompt_version,
+       COUNT(*) AS total_runs,
+       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
+       ROUND(100.0 * AVG(CASE WHEN array_length(changed_fields, 1) IS NULL THEN 1 ELSE 0 END), 1) AS zero_edit_pct,
+       ROUND(AVG(input_tokens + output_tokens)) AS avg_tokens_per_run
+FROM triage_audit_events
+WHERE created_at >= NOW() - INTERVAL '7 days'
+GROUP BY prompt_version
+ORDER BY total_runs DESC;
+```
+
+Pair that weekly query with two hard **regression tripwires**:
+- If `zero_edit_pct` drops more than 8 percentage points after a prompt or document sync change, inspect the exact `changed_fields` rows before pushing further updates.
+- If `avg_tokens_per_run` climbs unexpectedly (often caused by un-truncated thread histories or oversized retrieved chunks), trim retrieval chunk budgets immediately (`00.9.10`) before monthly spend drifts upward.
+
+## 6. Stakeholder Baseline Sign-Off Card (`docs/metrics-baseline.md`)
+
+Never leave baseline metrics buried inside chat logs—commit a four-line agreement card inside `docs/metrics-baseline.md` before Slice 1 launches:
+
+```markdown
+# Baseline & Target Agreement (Signed Before Slice 1 Build)
+- Current Manual Cycle Time: 11.2 min median across 15 observed historical packets
+- Target Slice 1 Outcome: <= 3.5 min operator review w/ zero silent arithmetic skips
+- Cost Ceiling Guard: <= $0.02 average inference spend per packet (`prompt_tokens + output_tokens`)
+- Honest Disqualifier: Handwritten legacy faxes route straight to manual review queue in Slice 1
+```
+
+Writing both the numeric goal and the honest disqualifier into Git protects both engineering teams and customers from vague *"moving the goalposts"* debates weeks after launch.
+
+Additionally, schedule one recurring **metric hygiene check** every two weeks after launch: inspect sampled false positives *and* false negatives rather than reading aggregated averages alone. A `92%` overall success score can silently mask `100%` failure on a high-value segment such as multi-page tables or international tax formats. Stratifying your `triage_audit_events` query by document type or tenant tier exposes silent tail failures long before customers lose patience.
+
+## Key Takeaways
+
+- Track impact across **three balanced axes**: Human/Operational Outcomes, Technical Quality/Latency, and Unit Economics/Cost.
+- Record **empirical baselines before building**; human hindsight cannot substitute for timestamped pre-launch numbers.
+- Persist **override tracking (`changed_fields`), latency, and token metrics** inside core schemas so production usage drives continuous improvement automatically.
+
+## References and Further Reading
+
+- [Google SRE Book — Service Level Objectives & Error Budgets](https://sre.google/sre-book/service-level-objectives/)
+- [OpenAI — Production Evaluation & Telemetry Patterns](https://platform.openai.com/docs/guides/evals)
+- [Next Step — 00.8.4 Slicing Deliverables](/book/part-00-about-this-book/00-8-fde-mindset/00-8-4-slicing-deliverables)
+
+</BookNodePage>

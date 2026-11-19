@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "30.2 Tools, Handoffs & Tracing"
+sidebar_label: "30.2 Tools, Handoffs & Tracing"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-2-tools-handoffs-and-tracing"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30-s2">
+
+**Subchapter 30.2** is where the spec becomes a system: typed tools the model cannot mis-call, errors the model can recover from, handoffs between specialist agents, and the trace UI that tells you which of your beliefs about the run are wrong.
+
+## Lessons in Subchapter 30.2
+
+1. **[30.2.1 Function Tools and Typed Pydantic Contracts](/book/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-2-tools-handoffs-and-tracing/30-2-1-function-tools-and-typed-pydantic-contracts):** `@function_tool`, Pydantic input models the model cannot route around (enums, ranges, patterns), the Postmaster read/write tool suite with real code, error surfacing as tool output, and testing tools with no LLM involved.
+2. **[30.2.2 Agent Handoffs and Execution Traces](/book/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-2-tools-handoffs-and-tracing/30-2-2-agent-handoffs-and-execution-traces):** Triage → RefundSpecialist → Escalation with the current `handoff(…)` API, reading a failed trace in the OpenAI dashboard, SDK guardrails vs application policy, a full morning-loop build with budget and timeout, SDK pitfalls, and honest limits.
+
+Do 30.2.1 first — the handoffs in 30.2.2 are only as safe as the tools they gate.
+
+</BookNodePage>

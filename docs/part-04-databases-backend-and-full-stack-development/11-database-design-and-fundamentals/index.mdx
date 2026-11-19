@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "Chapter 11: Database Design & Fundamentals"
+sidebar_label: "Chapter 11: Database Design & Fundamentals"
+slug: "/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-11">
+
+Application code is easy to refactor compared to a badly designed database. Once 500,000 orders live in tables missing foreign keys, with repeating CSV lists inside text columns and mutable prices standing in for receipts, every query becomes painful and every feature a gamble.
+
+**Chapter 11 (`8 Focused Hours`)** teaches you to model domains cleanly *before* writing SQL or touching MongoDB — using one continuous project, **ShopCore**, throughout:
+
+## Chapter 11 Structure
+
+- **11.1 Data Modeling & Relationships:** Entities and ER diagrams (crow's-foot notation), primary and foreign keys, 1:1 / 1:N / M:N cardinality and junction tables, 1NF–3NF normalization, intentional denormalization (historical price snapshots), and the canonical ShopCore schema every later chapter uses.
+- **11.2 Storage Engines, ACID & Choosing Databases:** Transactions and the four ACID guarantees, isolation levels, atomic conditional updates that defeat lost-update races, and how to choose relational vs document vs vector stores — and local vs hosted databases.
+
+## What You Will Be Able to Do After This Chapter
+
+- Read and draw the ShopCore ER diagram from memory.
+- Write down the canonical ShopCore DDL and seed data (11.1.3) without looking.
+- Explain exactly which table enforces which invariant (foreign keys, UNIQUE, CHECK, NOT NULL).
+- Decide when to normalize, when to denormalize deliberately, and why.
+- Wrap multi-row writes in a transaction that never leaves the database inconsistent.
+
+## How to Work Through This Chapter
+
+1. Read 11.1.1 and redraw the ER diagram yourself.
+2. Read 11.1.2 and apply the three-step 3NF walkthrough to the `bad_orders` example.
+3. Read 11.1.3 carefully — it is the reference for every SQL lesson that follows.
+4. Read 11.2.1 and complete the two-session isolation exercise.
+5. Read 11.2.2 and complete the store-selection exercises.
+
+Finish this chapter **before** installing anything. Chapter 12 assumes the mental model built here.
+
+</BookNodePage>

@@ -1,0 +1,116 @@
+---
+id: "09-2-2-classes-dataclasses-and-inheritance"
+title: "09.2.2 Classes, Dataclasses and Inheritance"
+sidebar_label: "09.2.2 Classes, Dataclasses and Inheritance"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-2-functions-oop-and-type-hints/09-2-2-classes-dataclasses-and-inheritance"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s2-t2">
+
+Object-Oriented Programming (`OOP`) groups **state (attributes)** and **behavior (methods)** inside classes so invariants stay protected rather than scattered across loose dictionaries. Mastering OOP means understanding **all four core pillars**, choosing **composition over deep inheritance**, knowing `@dataclass`, and recognizing when plain functions or modules are simpler than classes.
+
+## 1. The Four Pillars of OOP in Python
+
+| Pillar | What It Solves | Python Mechanism |
+| :--- | :--- | :--- |
+| **Encapsulation** | Protects internal state from invalid external mutations | Methods, `_protected` convention, `__private` name mangling, `@property` |
+| **Abstraction** | Hides complex mechanics behind a minimal interface | Abstract Base Classes (`abc.ABC`, `@abstractmethod`) or `Protocol` |
+| **Inheritance** | Shares common structure/behavior in true *"is-a"* hierarchies | `class Sub(Base):`, `super().__init__()`, `Class.mro()` |
+| **Polymorphism** | Lets one caller work seamlessly across many interchangeable types | Method overriding + **Duck Typing** ("walk/quack" matching methods) |
+
+### Pillar 1 & Pillar 2: Encapsulation + Abstraction
+
+```python
+from abc import ABC, abstractmethod
+
+class PaymentProcessor(ABC):
+    """Abstraction: callers depend only on `charge`, never provider internals."""
+
+    @abstractmethod
+    def charge(self, amount_cents: int) -> str:
+        """Charge the customer and return a transaction ID."""
+
+class WalletAccount:
+    """Encapsulation: `_balance_cents` cannot drop below zero via direct writes."""
+
+    def __init__(self, owner: str, starting_cents: int = 0) -> None:
+        self.owner = owner
+        self._balance_cents = 0
+        self.deposit(starting_cents)
+
+    @property
+    def balance_cents(self) -> int:
+        return self._balance_cents
+
+    def deposit(self, amount_cents: int) -> None:
+        if amount_cents < 0:
+            raise ValueError("Deposit cannot be negative")
+        self._balance_cents += amount_cents
+```
+
+### Pillar 3 & Pillar 4: Inheritance (`super()` / MRO) + Polymorphism
+
+```python
+class StripeProcessor(PaymentProcessor):
+    def __init__(self, api_key: str) -> None:
+        super().__init__()
+        self._api_key = api_key
+
+    def charge(self, amount_cents: int) -> str:
+        return f"ch_stripe_{amount_cents}"
+
+class MockProcessor(PaymentProcessor):
+    def charge(self, amount_cents: int) -> str:
+        return f"ch_test_{amount_cents}"
+
+# Polymorphism: checkout() works identically for ANY processor implementing charge()!
+def checkout(processor: PaymentProcessor, total_cents: int) -> str:
+    if total_cents <= 0:
+        raise ValueError("Total must be positive")
+    return processor.charge(total_cents)
+
+print(checkout(StripeProcessor("sk_live_xxx"), 4900))
+print(checkout(MockProcessor(), 4900))
+```
+
+*(Inspecting **MRO**—Method Resolution Order—with `StripeProcessor.mro()` shows the exact inheritance lookup sequence Python follows: `[StripeProcessor, PaymentProcessor, ABC, object]`.)*
+
+## 2. Composition Over Inheritance & `@dataclass`
+
+Deep 4-level inheritance trees (`Vehicle -> Car -> ElectricCar -> AutonomousTaxi`) snap easily when requirements change. Prefer **Composition** ("has-a"): inject small helper objects (`Mailer`, `Storage`) into `__init__`.
+
+For data-carrying classes, `@dataclass` eliminates repetitive `__init__`, `__repr__`, and `__eq__` boilerplate—and `frozen=True` makes instances immutable:
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class TaskItem:
+    id: str
+    title: str
+    done: bool = False
+
+t1 = TaskItem("t1", "Review PR")
+t2 = TaskItem("t1", "Review PR")
+print(t1)          # TaskItem(id='t1', title='Review PR', done=False)
+print(t1 == t2)    # True!
+```
+
+## 3. When *Not* to Write a Class
+
+If a class has only `__init__` and **one method**, it is almost always clearer as a plain function (`def export_csv(rows): ...`). Use classes when maintaining cohesive internal state with invariants (`WalletAccount`) or implementing interchangeable interfaces (`PaymentProcessor`).
+
+## 4. Practice Exercises
+
+1. Add a `refund(self, tx_id: str) -> bool` abstract method to `PaymentProcessor`, implement it in both `StripeProcessor` and `MockProcessor`, and verify trying to instantiate `PaymentProcessor()` directly raises `TypeError`.
+2. Build a `@dataclass` called `Money(cents: int, currency: str = "USD")` with a method `add(self, other: "Money") -> "Money"` that raises `ValueError` if currencies do not match.
+
+## Mastery Checklist
+
+- [ ] Explains and writes Python examples for **Encapsulation, Abstraction, Inheritance, and Polymorphism**.
+- [ ] Uses `@property` for controlled attribute access and `super()` for clean inheritance initialization.
+- [ ] Chooses `@dataclass` for structured records and composition over deep inheritance trees.
+
+</BookNodePage>

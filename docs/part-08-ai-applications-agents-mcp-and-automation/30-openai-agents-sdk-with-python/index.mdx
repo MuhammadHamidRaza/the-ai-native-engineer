@@ -1,0 +1,35 @@
+---
+id: "index"
+title: "30. OpenAI Agents SDK with Python"
+sidebar_label: "30. OpenAI Agents SDK with Python"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30">
+
+Chapter 29 settled the design: pipeline up front, bounded agent where judgment lives, budgets and gates everywhere, deterministic fallback always. Chapter 30 turns that spec into running code with the **OpenAI Agents SDK for Python** — the same library OpenAI ships and documents at [openai.github.io/openai-agents-python](https://openai.github.io/openai-agents-python/).
+
+**Verified November 2026:** `openai-agents` **0.25.0** on PyPI (requires Python ≥ 3.10; a project virtual environment with `pip install openai-agents` is all you need), Pydantic **2.14.3**, against the SDK documentation as of this writing. The SDK moves fast — if you are reading this later, re-check the current version and the model IDs before you ship. Names like `gpt-5.6-luna` (the SDK's built-in default) and `gpt-6-sol` are the current house models; treat them as examples of "a cost-sensitive model" and "a frontier model," not as eternal constants.
+
+## What This Chapter Builds
+
+The **ShopCore Postmaster**, for real this time: a triage agent, a refund specialist, and an escalation agent — Python functions as tools, handoffs between agents, human approval on money movement, and execution traces you can read in the OpenAI dashboard. By the end you will have run the agent locally, read its trace, and know exactly what breaks if you ship it naively.
+
+## Chapter 30 Structure
+
+- **30.1 SDK Primitives & Agent Loops:** Installing the SDK, the `Agent(…)` constructor, the Postmaster triager, `Runner.run` / `run_sync` / `run_streamed`, streaming events, and typed context objects carrying DB session + policy + correlation ID.
+- **30.2 Tools, Handoffs & Tracing:** `@function_tool` with typed Pydantic contracts (the model *cannot* invent enum values), error surfacing into the agent loop, testing tools without an LLM, agent handoffs (Triage → RefundSpecialist → Escalation), and the execution trace UI — including a full morning-loop build with timeout, budget, and trace review.
+
+## How to Work Through This Chapter
+
+1. Type the code; do not paste it. `hello_agent.py` in 30.1.1 must run end-to-end on your machine before you continue.
+2. Keep `postmaster/` in one folder: `context.py`, `tools.py`, `agents.py`, `run_morning.py`. This is the artifact you will harden in Chapters 31 and 36.
+3. 30.2.2 ends with a trace-review exercise. If you skip it, you will never trust your agent — and you should not.
+
+Prerequisites: Parts 03–07 (Python fluency, Postgres/Express ShopCore, prompt and context engineering). Chapter 29 read in full — this chapter assumes the spec, not just the vocabulary.
+
+**Hours honesty.** Budget 8–10 focused hours including the exercises. The SDK is deliberately small; what takes time is *your judgment*, which is why the exercises outnumber the API tours.
+
+</BookNodePage>

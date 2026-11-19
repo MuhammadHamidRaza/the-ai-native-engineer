@@ -1,0 +1,82 @@
+---
+id: "14-2-2-commit-conventions-and-release-hygiene"
+title: "14.2.2 Commit Conventions and Release Hygiene"
+sidebar_label: "Commit Conventions and Release Hygiene"
+slug: "/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-2-collaborative-git-workflows/14-2-2-commit-conventions-and-release-hygiene"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-14-s2-t2">
+
+Six months after launch, a bug breaks CSV exports in production. You run `git log --oneline -n 10` and see:
+
+```text
+e49b12c fix stuff
+a92f01d wip
+91d880e changes
+8c3f101 update
+```
+
+Those messages force engineers to read every diff manually just to find which change caused the outage. Clean commit conventions and release tags turn `git log` into an automated changelog, instant rollback index, and `git bisect` superpower.
+
+## 1. Conventional Commits (`type(scope): summary`)
+
+[Conventional Commits](https://www.conventionalcommits.org/) give both humans and release tools a structured contract:
+
+```text
+<type>(<optional-scope>): <imperative lowercase summary>
+
+[optional body explaining WHY, not just what]
+
+[optional footer: BREAKING CHANGE: ... / Fixes #142]
+```
+
+| Prefix | Meaning | SemVer Impact | Example |
+| :--- | :--- | :--- | :--- |
+| `feat` | New user-facing capability | **MINOR** (`0.X.0`) | `feat(products): add category filter endpoint` |
+| `fix` | Bug fix | **PATCH** (`0.0.X`) | `fix(auth): clear expired session cookie on 401` |
+| `refactor` | Behavior-preserving cleanup | None | `refactor(db): extract query pool helper` |
+| `docs` | Documentation only | None | `docs(api): document pagination cursor rules` |
+| `test` | Adding/fixing tests | None | `test(orders): cover idempotent retry conflict` |
+| `chore` / `ci` | Build scripts, deps, CI workflows | None | `ci: cache npm dependencies in GitHub Actions` |
+| `feat!` / `BREAKING CHANGE:` | Incompatible API/contract change | **MAJOR** (`X.0.0`) | `feat(api)!: replace numeric IDs with UUIDs` |
+
+### Why Atomic Commits Matter
+
+One commit should represent **one logical, compiling change**. Mixing a formatting sweep of 40 files with a 5-line authentication fix makes `git revert` dangerous because reverting the commit also rolls back unrelated formatting or schema work.
+
+Use `git add -p` (patch staging) when you fixed two unrelated things in one file so you can stage and commit them separately!
+
+## 2. Semantic Versioning (`MAJOR.MINOR.PATCH`)
+
+Every library, API contract, and internal deployment tag communicates risk through `MAJOR.MINOR.PATCH`:
+
+- **`MAJOR` (`2.0.0`):** Breaking changes — removed endpoints, altered JSON response keys, dropped Node/Python runtime versions.
+- **`MINOR` (`2.3.0`):** Backwards-compatible new features — new optional query params, new routes, new fields.
+- **`PATCH` (`2.3.4`):** Backwards-compatible bug or security fixes.
+- **Pre-`1.0.0` (`0.x.y`):** Initial development where public contracts may still shift rapidly.
+
+## 3. Release Hygiene: Tags, Changelogs, and Safe Reverts
+
+1. **Tag every production release** with an annotated Git tag so any engineer knows the exact commit running in production:
+   ```bash
+   git tag -a v1.4.0 -m "Release v1.4.0: task filtering and webhook retries"
+   git push origin v1.4.0
+   ```
+2. **Generate clean release notes** directly from Conventional Commits (via GitHub Releases "Generate release notes" or `release-please`).
+3. **Prefer `git revert` over `git reset --hard` on `main`:** On a shared branch, `git revert <bad-sha>` creates a *new* commit that safely undoes the faulty change without rewriting history or breaking teammates' local repos.
+4. **Keep secrets and generated artifacts out of Git:** Never commit `.env`, `node_modules/`, `.venv/`, build output (`dist/`, `.next/`), or database dumps — enforce `.gitignore` on Day 1 and configure secret scanning on GitHub.
+
+## Practice Exercises
+
+1. **Refactor Commit Log:** Stage only half of a modified file using `git add -p`, inspect `git diff --staged`, and write a compliant Conventional Commit message explaining *why* the change was needed.
+2. **Safe Rollback Drill:** Merge a deliberate bug commit onto a test `main` branch, then undo it cleanly with `git revert` and verify the earlier commit stays visible in `git log`.
+
+## Mastery Checklist
+
+- [ ] Writes clear, atomic Conventional Commits using imperative mood and meaningful scope/body context.
+- [ ] Distinguishes `MAJOR`, `MINOR`, and `PATCH` changes cleanly under SemVer.
+- [ ] Tags releases and uses `git revert` (never `reset --hard` + force push) to roll back shared `main`.
+
+</BookNodePage>

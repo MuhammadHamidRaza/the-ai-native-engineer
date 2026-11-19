@@ -1,0 +1,150 @@
+---
+id: "31-2-2-permission-scopes-and-action-confirmation"
+title: "31.2.2 Permission Scopes and Action Confirmation"
+sidebar_label: "31.2.2 Permission Scopes and Action Confirmation"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-2-input-and-output-guardrails/31-2-2-permission-scopes-and-action-confirmation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-31-s2-t2">
+
+Guardrails (31.2.1) stop *malformed* actions. Scopes stop *well-formed but unauthorized* ones — the agent that politely asks to refund $9,999 with a perfect schema. This lesson defines the permission model for the Postmaster, the confirmation UX a human approver actually uses, the audit trail each action leaves, and the kill switch you pull when the whole class of agent misbehaves.
+
+## 1. Four Scope Dimensions
+
+| Dimension | Question it answers | ShopCore example |
+| :-- | :-- | :-- |
+| **Tool-level** | May the agent call this tool at all? | Triager: read-only. Refund specialist: read + `issue_refund ≤ $50`. |
+| **Resource-level** | On *which* objects? | Only orders in the caller's tenant; only the specific `order_id` from the ticket; never cross-customer. |
+| **Time-level** | When? | External-email sends only 08:00–18:00 tenant-local; batch deletes never on Sundays (human hours). |
+| **Approval tier** | Whose blessing? | T0 auto (read) · T1 auto under cap ($50) · T2 human approve (>$50, exports, mass email) · T3 forbidden (>$500, bulk delete) |
+
+Scopes compose: a call is allowed iff every dimension allows it. "T1 refund of $30 on order ORD-2026-004417 at 21:00 Saturday for tenant euro-fr" → resource ok, tier ok, **time-level says no** → denied with reason.
+
+## 2. Worked Postmaster Policy (Canonical)
+
+```text
+Tier 0  read tools (lookup_order, get_customer_tier, policy search): auto, always, any hour
+Tier 1  issue_refund ≤ $50  ·  send_internal_note:                        auto
+Tier 2  issue_refund > $50  ·  external email to > 4 recipients
+        ·  data export (CSV of orders/customers)  ·  account tier change:   human approval
+Tier 3  refund > $500 (absolute, code-enforced)  ·  bulk DELETE of any rows
+        ·  email to > 25 recipients  ·  disabling guardrails:               NEVER — not offered
+```
+
+Encode as data, not prose — the policy file is loaded by the approval layer, and the agent's system prompt merely *describes* it:
+
+```yaml
+version: 2026-11
+tiers:
+  T1_max_refund_cents: 50_00
+  T2_max_refund_cents: 500_00        # above: T3 hard refuse
+  external_email_max_recipients_auto: 4
+  bulk_delete: forbidden             # maps to tool not registered at all
+  business_hours: { days: [Mon..Fri], from: "08:00", to: "18:00", tz: "tenant_local" }
+```
+
+## 3. Mapping OAuth Scopes to MCP Tools
+
+Remote MCP servers (Chapter 32) express permissions as OAuth scopes; your gateway maps them to the same tools 1:1:
+
+| OAuth scope | MCP tools covered | Grant to |
+| :-- | :-- | :-- |
+| `read:orders` | `lookup_order`, `list_orders` | All ShopCore agents |
+| `read:customers` | `get_customer_tier` | All ShopCore agents |
+| `write:refunds` | `issue_refund` (with per-call tier gate) | Refund specialist only |
+| `write:disputes` | `open_dispute_ticket` | Refund specialist only |
+| `export:data` | `export_orders_csv` | Human-triggered only, never model-initiated |
+| `admin:*` | server admin, kill switch | Break-glass humans, never agents |
+
+Rules: scopes are *capabilities*, approval tiers are *per-call gates* — you need both (a refund specialist may hold `write:refunds` always, and still pause for T2 on $150). Never grant `admin:*` to an agent client. If the IdP only offers coarse scopes, implement tiers at the MCP server; don't widen scopes to "make it work".
+
+## 4. Confirmation UX — Out-of-Band, No Emoji, No Guessing
+
+When T2 triggers, the agent **stops the run** and emits a pending-action record; a human approves **outside the agent's context** (Slack button / email link / admin panel):
+
+```text
+PENDING ACTION  apv_01J8…   ticket #4471
+  tool:      issue_refund
+  order:     ORD-2026-004417        (DB-verified paid_cents=12_400)
+  amount:    $180.00                (from line items, NOT from the email)
+  reason:    damaged
+  requested: agent=postmaster run_id=r_881 corr=c_31x
+  diff:      refunds INSERT + Stripe charge ch_3Qb…
+[ Approve ]  [ Reject with reason ]   expires in 15 min
+```
+
+UX rules: the card shows only DB-derived facts (never the model's summary); timeout auto-rejects (never auto-approves); approver identity + timestamp + card hash go to the audit log; rejection reason is fed back so the agent can tell the customer truthfully. "Looks good" is not an approval. No emoji, no "yes/no" vibes — two explicit buttons and a diff.
+
+## 5. Audit Log Per Action
+
+```sql
+CREATE TABLE agent_actions (
+  action_id    TEXT PRIMARY KEY,
+  ts           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  agent        TEXT NOT NULL,               -- postmaster | helpbot
+  run_id       TEXT NOT NULL,
+  tool         TEXT NOT NULL,
+  resource     TEXT NOT NULL,               -- order id / customer id / export id
+  tier         TEXT NOT NULL,               -- T0..T3
+  approved_by  TEXT,                        -- NULL = T0/T1 auto
+  approval_id  TEXT REFERENCES pending_actions(id),
+  before_json  JSONB, after_json JSONB,     -- the diff
+  outcome      TEXT NOT NULL                -- executed | rejected | expired | blocked
+);
+```
+
+Retention ≥ 2 years for money actions. On-call reads this table *first* in any incident. 31.1.1's idempotency key and this row share `run_id`, so "what exactly happened to ORD-2026-004417 at 03:12" is one query.
+
+## 6. The Kill Switch
+
+One flag, checked in three places — the runner, the tool layer, the MCP gateway:
+
+```python
+if flags.agent_kill_switch(tenant_id, agent="postmaster"):
+    return "error: postmaster is disabled for this organization. Contact ops."
+```
+
+Scopes: per-agent, per-tenant, global. Flipping it: (a) blocks new runs at the runner, (b) refuses every mutating tool immediately, (c) returns a static string to clients ("disabled, contact ops") — never an LLM-generated apology. Test it quarterly: flip it in staging, fire the morning loop, assert zero tool calls, unflip. A kill switch that has never been pulled is a rumor.
+
+## 7. Confused Deputy — Worked Example
+
+The agent is the deputy; the user is not trusted; the permissions are the user's *intent* vs the agent's *keys*. Client-side prompts cannot fix this — only server-side mediation can.
+
+*Scenario:* A HelpBot user asks: "What's the status of ORD-2026-004417?" — an order belonging to a *different* customer. The agent holds `read:orders` (it needs it for its own customers). Without resource scoping, the model will happily fetch and relay it: permission confused, deputy misused.
+
+*Fix (in code, not prompt):* `lookup_order` receives `ctx.context.tenant_id` and `ctx.context.user_id`; the query is `WHERE order_id=%(id)s AND tenant_id=%(t)s AND (customer_id=%(c)s OR %(c)s = ANY(agent_shared_with))`. Returns `error: order not found` for foreign orders — *not* "access denied" (don't confirm existence). The model cannot widen the WHERE clause; it never sees SQL.
+
+*Second scenario:* Support agent asks Postmaster to "export all orders from last week for analysis" — user is support, not finance. Export is `export:data`, T2, and the approval card shows row *count* and *columns* before any CSV exists. The deputy confirms both identity and intent.
+
+## 7.5 Planned vs Emergency Approval
+
+Two distinct flows — do not blur them:
+
+- **Planned (T2):** the normal card flow from §4. 15-minute expiry, full diff, routine volume. Metrics: approval latency, rejection rate.
+- **Emergency (break-glass):** an incident where *not* acting is worse — e.g., fraudulent refunds draining `ch_…`. Break-glass = a single named human (not the requester) flips a time-boxed override token (30–60 min) in the admin panel, with mandatory post-incident review within 24h. The token unlocks only the named tool class (e.g., `write:refunds`), never `admin:*`, and every call made under it is tagged `breakglass=true` in `agent_actions`. Break-glass is never a permanent permission and never available to agents.
+
+Scope creep is the slow version of the confused-deputy mistake: each quarter, diff the *granted* scopes against the *actually used* tools (`agent_actions` join `oauth_grants`) and revoke the unused ones. Unused `export:data` on a support agent is a breach waiting for its ticket.
+
+## 8. Troubleshooting & Assessment
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Approvals rubber-stamped | Card too vague | Card shows DB diff; approver must type `APPROVE ORD-2026-004417` |
+| Agent runs at 02:00 sending emails | No time-level gate | `business_hours` in policy; queue sends, don't blast |
+| Audit gaps for refunds | Only money path logged | Log *every* mutating tool, approved or auto |
+| Kill switch flips but runs continue | Only runner checks flag | Check at tool layer too; in-flight calls abort |
+| Cross-tenant leak via agent | Prompt-level "don't look" | SQL-layer `tenant_id` predicate; test with foreign order id |
+
+**Practice.** (1) Implement resource scoping in `lookup_order` with two seeded tenants; prove foreign order returns `not found`. (2) Build the pending-action card as a static HTML page reading from `pending_actions`; approve a $180 refund; verify `approved_by` in `agent_actions`. (3) Pull the global kill switch in staging mid-run; verify zero Stripe calls.
+
+**Assessment checklist**
+
+- [ ] I can state tier T0/T1/T2/T3 for the Postmaster without looking.
+- [ ] I map OAuth scopes to tools and never grant agents `admin:*`.
+- [ ] Approval UX is out-of-band, DB-derived, time-boxed, and recorded.
+- [ ] I can explain confused deputy and name the layer that fixes it (server-side predicate, not prompt).
+- [ ] I have fired the kill switch at least once in staging.
+
+</BookNodePage>

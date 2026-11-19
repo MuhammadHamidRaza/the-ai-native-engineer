@@ -1,0 +1,129 @@
+---
+id: "20-2-1-scaling-load-balancing-caching-and-database-scaling"
+title: "20.2.1 Scaling, Load Balancing, Caching and Database Scaling"
+sidebar_label: "20.2.1 Scaling, Load Balancing, Caching and Database Scaling"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-2-production-reliability-scaling-and-observability/20-2-1-scaling-load-balancing-caching-and-database-scaling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s2-t1">
+
+"Add more servers" is the most repeated — and most misunderstood — scaling advice in the industry. Scaling is a systems problem with arithmetic underneath it. This lesson gives you the arithmetic, the tiers that usually break first, and the fixes in the order engineers apply them.
+
+## 1. Understand — The Scaling Equation
+
+**Little's Law** is the whole math: `concurrency = throughput × latency`. If your API handles 100 req/s per instance at 50 ms average latency, one instance holds ~5 concurrent requests. Need 1000 req/s? You need ≥ 10 instances — *if* nothing downstream saturates first.
+
+**Worked capacity example (ShopCore checkout):** peak measured traffic is 400 req/s across the site, p99 latency 120 ms. Concurrency demand = 400 × 0.12 ≈ 48 in-flight requests. One pod holding ~16 concurrent connections (comfortable at `cpu: 200m` limits) → minimum 3 pods, deploy 4–5 for headroom and rolling-update surge. If instead latency is 400 ms (slow DB), demand = 160 → you need 10+ pods of the *same* throughput — scaling out to fix high latency just hides the symptom while multiplying DB connections. Fix latency first, then scale.
+
+Scaling sequence (do not skip steps):
+
+1. **Measure** — establish peak RPS, p95/p99 latency, error rate, CPU/memory per pod. You cannot scale blind.
+2. **Scale out stateless tiers** — web/API pods behind a balancer. Easy, linear until the database objects.
+3. **Cache before you replicate** — most read load never needs to reach the DB.
+4. **Scale reads, then writes** — read replicas; writes need sharding (a much bigger conversation).
+5. **The database is the wall** — always. Plan backwards from it.
+
+**Where autoscaling fits:** the HPA from 20.1.2 scales *pods*; the cluster-autoscaler scales *nodes* (adds/removes node VMs when pods can't be scheduled or nodes are idle); VPA (vertical pod autoscaler) adjusts per-pod CPU/memory requests over time. These stack, and confusing them is the classic beginner stall: HPA asking for 8 replicas when the cluster only fits 5 changes nothing until the autoscaler adds nodes. On kind, there is no node autoscaler — memory is whatever your Docker VM has.
+
+## 2. Stateless vs Sticky Sessions
+
+Horizontal scaling breaks the moment one pod "remembers" what others don't. Two failure modes:
+
+- **In-memory sessions** — user lands on pod A, gets routed to pod B, gets logged out. Fix: externalize sessions to **Redis** (or the DB); every pod is then interchangeable.
+- **Local file uploads / in-process caches / WebSocket fan-out** — sticky routing or shared storage (object store, Redis pub/sub) required.
+
+**Sticky sessions** (affinity by cookie/IP at the balancer) are a legitimate crutch, not a design: they block balancing quality and complicate rollouts. Prefer stateless + externalized state. See Part 04 for why [session stores and Redis fit together](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases/11-2-2-relational-vs-document-vs-vector-stores) and how auth sessions are implemented.
+
+## 3. Load Balancing — L4 vs L7
+
+| Layer | Routes on | Examples | Use when |
+| :-- | :-- | :-- | :-- |
+| **L4** (transport) | IP + port, no payload inspection | AWS NLB, GCP TCP LB, kube-proxy, HAProxy L4 | Raw TCP/UDP, WebSockets, ultra-low overhead, TLS passthrough |
+| **L7** (application) | HTTP method, path, host, headers | AWS ALB, nginx, Traefik, Envoy, GCP HTTPS LB | Path-based routing (`/api` vs `/static`), host-based virtual hosting, TLS termination, retries, header manipulation |
+
+**Connection draining** matters on every deploy: the balancer stops sending *new* connections to a draining pod while in-flight requests complete (drain period 10–60s typical). Kubernetes does this via readiness gates + preStop hooks + the Service's endpoint removal — if your pod kills requests on SIGTERM, zero-downtime is fictional. Configure `terminationGracePeriodSeconds` and a `preStop: sleep 5` (or proper drain) and let the Service controller remove the endpoint *before* the process exits.
+
+Also L7 hygiene: keep-alive pools, sane timeouts (connect/read/write), max request size limits, and retries only on idempotent methods with budgets — blind retries turn 1 failure into 3.
+
+## 4. Caching — Cheapest Scale You Will Ever Buy
+
+Cache-aside pattern: check Redis → hit? return. Miss → read DB, `SET key value EX 300`. Directly applicable to ShopCore's catalog/product pages:
+
+```bash
+# in redis-cli
+SET product:42 '{"id":42,"name":"Keyboard","price":79}' EX 300
+GET product:42
+TTL product:42
+```
+
+Key rules: **always set a TTL** (stale keys are how bugs live forever), delete/version keys on write (`product:42:v7` or purge-on-update), and handle **cache stampede** (1000 pods miss the same key simultaneously) with a short-TTL "lease" or singleflight logic.
+
+**CDN strategy in concrete headers:**
+
+| Content | `Cache-Control` | Why |
+| :-- | :-- | :-- |
+| Hashed assets (`/assets/app.a1b2c3.js`) | `public, max-age=31536000, immutable` | Content-addressed — cache forever |
+| Product images | `public, max-age=2638000` | 30 days; bust by renaming |
+| HTML (`/`, `/products/*`) | `no-cache` or `max-age=0, must-revalidate` | Must reflect the active deploy |
+| API JSON (`/api/*`) | `private, no-store` | User-specific; never shared-cache |
+
+That one table is 80% of perceived performance — and a free one: CDNs bill egress at a fraction of origin rates (see 20.3.1).
+
+## 5. Database Scaling — Where the Wall Is
+
+The sequence your DB will demand, roughly in order:
+
+1. **Indexes and query tuning** — the cheapest 10x. `EXPLAIN ANALYZE` in Part 04; most "scaling problems" are unindexed lookups.
+2. **Connection pooling** — Postgres forks per connection; 500 pods × 20 conns = dead database. **PgBouncer** (transaction mode) collapses that.
+3. **Read replicas** — route SELECTs to replicas; beware **replication lag** (reads-after-writes inconsistency) and route read-your-writes to the primary.
+4. **Vertical headroom** — bigger instance; buys time, not scale.
+5. **Caching** — as above; the DB's traffic drops before any infrastructure change.
+6. **Sharding** — last resort; cross-shard joins and rebalancing are real costs. Don't design for it on day one, don't ignore it forever either.
+
+See Part 04's [PostgreSQL in practice](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice) for `pg_dump` restores and the in-practice context this builds on.
+
+## 6. Load-Test Before You Scale
+
+Never guess capacity; buy a number. Two battle-tested tools:
+
+```bash
+# hey — quick and dirty
+hey -z 30s -c 50 http://localhost:8080/products
+
+# k6 — scripted scenarios, thresholds, CI-friendly
+k6 run --vus 50 --duration 30s load.js
+```
+
+Measure at **production-like data size**, against a non-production environment (or a sacrificial instance — never the live system your users share). Set pass/fail thresholds in the test (`http_req_failed < 1%`, `p95 < 300ms`) so "is it fast enough?" is a check, not an opinion.
+
+**What to watch while the test runs** (ties to 20.2.3): per-pod CPU (is one pod the hot spot?), DB connection count (`pg_stat_activity` length), Redis `hitrate`, and p95 vs p99 spread. If the balancer rotates evenly (`kubectl logs` shows balanced pod names across requests) but latency is uneven, the slow pod is usually CPU-throttled at its limit — raise the limit or lower per-pod pool size. Symmetric load + asymmetric latency is a limit problem, not a balancer problem.
+
+## 7. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| p99 latency climbs while average is flat | One hot pod / tail-latency dependency | Check per-pod metrics; CPU-throttling? GC? lock waits? |
+| All pods Ready, users see 5xx after deploy | No connection draining; killed in-flight requests | preStop hook, terminationGracePeriodSeconds, readiness gates |
+| Works until ~2x traffic, then falls off a cliff | Saturated DB connection pool | PgBouncer transaction mode; lower per-pod pool size |
+| Cache helps nothing | TTL too low / keys never reused (unbounded cardinality) | Profile key hit-rate; cache only high-fan-out reads |
+| Replicas inconsistent, users see stale data | Replication lag | Route read-your-writes to primary; check lag metric |
+| Scaled to 10 pods, throughput flat | Shared bottleneck downstream | Little's Law audit — you scaled the wrong tier |
+
+## 8. Practice and Assessment
+
+**Guided.** Load-test `shopcore-api` in kind with `hey`: 20 concurrent for 30s; note RPS and p99. Raise replicas 2 → 4, re-run, compare. Then saturate the DB (simulate by hammering a heavy endpoint) and observe pods staying "healthy" while the app fails — that is the wall.
+
+**Independent.** Externalize a toy session store to Redis in a local container; demonstrate that two app replicas behind port-forward keep a user logged in across the two pods.
+
+**Challenge.** Write a one-page capacity plan for ShopCore at 10x current traffic: required pods (show Little's Law), cache hit rate assumed, whether read replicas suffice or sharding is on the table.
+
+**Assessment checklist**
+
+- [ ] I can compute required instances from RPS, latency and Little's Law.
+- [ ] I can explain why in-memory sessions break horizontal scaling and how to fix it.
+- [ ] I can distinguish L4 vs L7 balancing and when each is correct.
+- [ ] I can list the database scaling sequence in order, and where caching fits.
+
+</BookNodePage>

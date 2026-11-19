@@ -1,0 +1,97 @@
+---
+id: "00-6-5-hands-on-labs-and-projects"
+title: "00.6.5 Hands-On Labs and Projects"
+sidebar_label: "00.6.5 Hands-On Labs and Projects"
+slug: "/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-5-hands-on-labs-and-projects"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-6-5">
+
+Conceptual reading and isolated 20-line exercises build vocabulary, yet true engineering intuition forms only when **multiple subsystems collide inside one living project**. Writing a TypeScript union type in isolation feels easy; wiring that TypeScript contract cleanly across a React form, a FastAPI or Node.js REST route, a PostgreSQL migration with foreign-key constraints, an authenticated session boundary, a Docker Compose network, and a grounded AI pipeline forces real architectural decisions you never confront inside toy drills.
+
+Across **The AI-Native Engineer**, labs and milestone projects escalate deliberately in scope and integration depth—eliminating the harsh cliff between "simple chapter lessons" and "architect an entire production AI product independently."
+
+## 1. Three Progressive Tiers of Hands-On Builds
+
+Every practical build across **Parts 01 through 10** falls into one of three structured tiers:
+
+| Build Tier | Curriculum Location | Typical Focus Scope | Core Engineering Standards Required |
+| :--- | :--- | :--- | :--- |
+| **Tier 1: Focused Chapter Labs** | End of Chapters 01–41 | **1.5–4 hours** | Single-domain complete artifact (accessible multi-step React form, indexed PostgreSQL schema + queries, FastAPI endpoint with Pydantic validation, non-root Docker image, bounded MCP tool server) passing real automated tests |
+| **Tier 2: Cross-Part Milestone Projects** | Milestones across Parts 02, 04, 05, 08 | **8–20 hours** | Multi-tier system integration combining frontend UI, persistent relational database, server-side authentication, containerized cloud deployment, structured logging, and—by Part 08—grounded RAG/agents with golden eval suites |
+| **Tier 3: Integrated Capstone (`Ch 42`)** | Part 10 (`Chapter 42`) | **36 hours** | Complete cloud-deployed, problem-anchored AI-native software product built via the full **FDE Lifecycle** (`00.8`)—including CI checks, quantitative AI evaluations, security review, `.env.example`, and operator handover runbooks |
+
+## 2. How to Treat Every Lab Like Production Engineering (Never Throwaway Homework)
+
+Many self-taught developers sabotage their own growth by treating chapter projects like disposable school assignments: pasting keys directly into source files, ignoring loading and error states, dumping everything into one `"final commit"`, and abandoning the repo the instant one happy screenshot renders locally.
+
+Adopt five non-negotiable production habits on every single lab starting from **Part 02**:
+
+1. **Initialize Git & design notes before feature code (`00.4.1`):** Create a clean repo, commit a concise 10-line design note naming core tables, endpoints, and failure states, and make small readable commits (`feat: add invoice validation schema`, `test: verify duplicate upload rejection`).
+2. **Build in thin vertical slices (`00.8.4`):** Never design twelve disconnected frontend pages before wiring persistence. Build one complete thin path—*form submit → API validation → PostgreSQL row → UI render*—end to end on hour one, then expand slice by slice.
+3. **Maintain `.env.example` and repeatable seed scripts:** Anyone cloning your lab repository should copy `.env.example` to `.env`, run one migration/seed command, and see realistic test records without guessing undocumented setup tricks.
+4. **Verify failure paths explicitly:** Before considering a lab complete, manually trigger invalid payloads (`400`/`422`), unauthorized requests (`401`/`403`), missing records (`404`), and simulated upstream delays or rate limits (`429`/`503`).
+5. **Deploy live or package cleanly in Docker (`Part 05` onward):** Shipping even small Tier 1 and Tier 2 projects to a real cloud environment or reproducible Docker Compose stack immediately surfaces CORS rules, environment variable bugs, reverse-proxy timeouts, and build errors that `localhost` conceals indefinitely.
+
+## 3. Sample Escalation Path: How One Theme Grows Across Parts 02 → 10
+
+To see how layered project engineering builds mastery smoothly, observe how a **Knowledge & Issue Triage Portal** evolves naturally as your curriculum skills advance:
+
+- **Part 02 (`Frontend`):** Builds an interactive, keyboard-accessible issue list with URL filter state, validated creation modal, optimistic state handling, and clean empty/error banners using TypeScript, React, and Next.js.
+- **Parts 03–04 (`Python + SQL + Full-Stack`):** Replaces mock JSON state with **PostgreSQL** tables (`users`, `workspaces`, `issues`, `audit_events`), session authentication, role scoping, and parameterized Python/Node API routes backed by **Pytest/Vitest** integration tests.
+- **Parts 05–06 (`Docker + Cloud + Quality`):** Packages frontend, API, and PostgreSQL cleanly via **Docker Compose**, wires GitHub Actions CI build/test checks, adds `/health` probes + structured JSON logs, and eliminates slow queries via composite SQL indexes.
+- **Parts 07–08 (`AI + RAG + Agents + Evals`):** Adds permission-filtered hybrid RAG over workspace manuals, extracts structured triage categories cleanly via Pydantic schemas, executes bounded tool checks via **MCP**, and gates prompt tweaks against a **30-case golden eval suite**.
+- **Parts 09–10 (`FDE & Capstone`):** Wraps the deployed product in crisp architectural docs, cost/latency telemetry, and an operational handover runbook ready for interviews, client demos, or live users.
+
+## 4. Recovering Cleanly When a Multi-File Lab Breaks
+
+Complex multi-tier labs *will* break mid-build—a CORS header blocks Next.js from reaching FastAPI, a PostgreSQL migration collides with an existing constraint, or a Docker container fails DNS lookup by `localhost` instead of service hostname. Those moments are **high-yield learning wins**, not detours. Stop adding new features immediately, apply the five-step scientific debugging protocol (`00.6.6`), commit the fix with a note explaining root cause, and keep building cleanly.
+
+## 5. Mini Practice Exercise
+
+Audit one unfinished or half-working coding project currently sitting on your computer (or design your plan for your first **Part 02** lab):
+
+1. Write down the **thinnest single vertical slice** (one input, one persistence/processing action, one visible verified result) you can finish end to end in **2 hours**.
+2. List **three things you will intentionally omit** from Slice 1 (user avatar uploads, complex charts, email digests) so the core slice gets shipped, tested, and committed cleanly first.
+
+Use this lightweight 12-line lab scaffold before typing feature code inside any **Parts 02–08** assignment so scope never explodes midway through an evening session:
+
+```markdown
+# Lab Slice Plan: Issue Triage Slice 1 (Target: 2 Hours)
+- Flow: Submit issue title + category -> Zod validate -> INSERT Postgres -> Render sorted list
+- Tables touched: `issues(id, workspace_id, title, category, created_at)`
+- Explicit Non-Goals: File attachments, email alerts, pagination, role settings page
+- Verification Checks Before Commit:
+  1. Empty title rejects with HTTP 422 (UI shows inline error message)
+  2. Valid submit persists across full browser reload
+  3. Request from Workspace B cannot read Workspace A's issue ID (HTTP 403/404)
+```
+
+Finishing ten cleanly sliced labs backed by real automated assertions teaches far more architectural discipline than dragging one sprawling half-broken monster project across three months.
+
+Pair that two-hour slice plan with a quick 60-second exit script inside every lab folder before calling the milestone complete:
+
+```bash
+# Run cleanly from the project root after finishing any Tier 1 / Tier 2 lab
+npm run lint && npx tsc --noEmit    # Zero syntax or type drift (or ruff/mypy for Python)
+npm test                            # Automated unit + negative-path assertions green
+git status --short && git log -n 3 --oneline
+```
+
+Keeping your labs verifiable with three predictable commands guarantees that nothing breaks silently when you revisit or showcase those exact systems later inside your portfolio (`00.6.7`).
+
+## Key Takeaways
+
+- Real engineering judgment emerges when UI, APIs, databases, containers, security, and AI negotiate inside cohesive **chapter labs, cross-part milestones, and the 36-hour Capstone**.
+- Vertical slicing, clean Git commits, `.env.example` contracts, unhappy-path verification, and early cloud/Docker packaging elevate every build from "homework" to production practice.
+- Multi-tier debugging wins during hands-on builds anchor architectural intuition far deeper than passive reading ever can.
+
+## References and Further Reading
+
+- [Section 00.8.4 — Vertical Slicing Deliverables](/book/part-00-about-this-book/00-8-fde-mindset/00-8-4-slicing-deliverables)
+- [Part 10 Integrated Capstone Preview — Chapter 42](/book/part-10-integrated-capstone/42-from-real-problem-to-production-product)
+- [Next Topic — 00.6.6 Debugging and Problem Solving](/book/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-6-debugging-and-problem-solving)
+
+</BookNodePage>

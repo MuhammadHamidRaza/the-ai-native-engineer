@@ -1,0 +1,157 @@
+---
+id: "15-3-2-shop-ui-catalog-cart-and-checkout"
+title: "15.3.2 Shop UI: Catalog, Cart and Checkout"
+sidebar_label: "15.3.2 Shop UI & Checkout"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-3-frontend-build/15-3-2-shop-ui-catalog-cart-and-checkout"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s3-t2">
+
+Milestone 7: the store becomes a store — product cards, a working cart, checkout, and the one UX trick every real app uses: **optimistic updates** with instant rollback on server rejection.
+
+## 1. Product Card — `src/components/ProductCard.jsx`
+
+```jsx
+// Product shape is documented in src/api.js
+
+export default function ProductCard({ product, onAdd }) {
+  const out = product.stock_qty === 0;
+  return (
+    <article className="card">
+      <h3>{product.title}</h3>
+      <p className="sku">{product.sku}</p>
+      <p className="price">${(product.price_cents / 100).toFixed(2)}</p>
+      <button disabled={out} onClick={() => onAdd(product.id)}>
+        {out ? 'Out of stock' : 'Add to cart'}
+      </button>
+    </article>
+  );
+}
+```
+
+## 2. Cart Page — Server-Owned State
+
+```jsx
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import { useNavigate } from 'react-router-dom';
+
+export default function Cart() {
+  const [items, setItems] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  const refresh = () => api.cart().then((d) => setItems(d.items)).catch((e) => setError(e.message));
+  useEffect(() => { refresh(); }, []);
+
+  const setQty = async (productId, qty) => {
+    setBusy(true);
+    try {
+      await api.setCartItem(productId, qty);   // qty 0 removes server-side
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const total = items.reduce((s, i) => s + i.qty * i.price_cents, 0);
+
+  const checkout = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.checkout();                    // 15.2.3: one atomic transaction
+      navigate('/orders');
+    } catch (e) {
+      setError(e.message);                    // OUT_OF_STOCK surfaces here, cart intact
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (items.length === 0) return <p>Your cart is empty.</p>;
+  return (
+    <section>
+      {items.map((i) => (
+        <div key={i.product_id} className="row">
+          <span>{i.title}</span>
+          <button disabled={busy} onClick={() => setQty(i.product_id, i.qty - 1)}>−</button>
+          <span>{i.qty}</span>
+          <button disabled={busy} onClick={() => setQty(i.product_id, i.qty + 1)}>+</button>
+          <span>${((i.qty * i.price_cents) / 100).toFixed(2)}</span>
+        </div>
+      ))}
+      <p className="total">Total: ${(total / 100).toFixed(2)}</p>
+      {error && <p role="alert">{error}</p>}
+      <button disabled={busy} onClick={checkout}>{busy ? 'Placing order…' : 'Checkout'}</button>
+    </section>
+  );
+}
+```
+
+Failure semantics matter: if `checkout` 409s with OUT_OF_STOCK, the server transaction rolled back — stock untouched, order not created, cart intact. The UI shows the error and nothing was charged or shipped.
+
+## 3. Optimistic Updates — The Right Way
+
+Optimistic UI = render the expected result **before** the server answers, roll back instantly on rejection. Classic example: toggling cart quantity.
+
+```jsx
+const setQtyOptimistic = async (productId, nextQty) => {
+  const previous = items;                                   // 1. snapshot
+  const next = items
+    .map((i) => (i.product_id === productId ? { ...i, qty: nextQty } : i))
+    .filter((i) => i.qty > 0);                              // 2. compute locally - zero latency feel
+  setItems(next);
+  setBusy(true);
+  try {
+    await api.setCartItem(productId, nextQty);              // 3. confirm with server
+  } catch {
+    setItems(previous);                                     // 4. rollback on ANY failure
+    setError('Could not update cart — restored previous state.');
+  } finally {
+    setBusy(false);
+  }
+};
+```
+
+Rules for safe optimism:
+1. **Snapshot before mutation** — you need the old state for rollback.
+2. **Roll back on any error** — network, 400, 401, 500: revert and inform.
+3. **Reconcile on success if the server returns authoritative state** — replace local with server truth (our API re-reads the cart instead — simplest correct pattern).
+4. **Never optimistic for money** — order placement is pessimistic (confirm → success screen). Optimism is for idempotent, reversible UI actions.
+
+## 4. The Orders Page — Proof the Chain Worked
+
+```jsx
+// GET /api/v1/orders — the caller's own orders (15.2.3 challenge solution)
+// List: order id, date, status, total_cents, items count. Empty state: "No orders yet."
+```
+
+After checkout you land here: order visible, 15.2.3's transaction materialized, payment row exists (`provider: 'manual', status: 'succeeded'`). This page is your "it actually works" receipt — put it on a projector for the demo.
+
+## 5. Login and Register Pages
+
+Forms post to `api.login` / `api.register`; on success `navigate('/')` + refresh `me()`; on `400 VALIDATION_ERROR` show field issues inline; on `409 EMAIL_TAKEN` show "this email is already registered — sign in instead". Client-side validation is UX only — the server re-validates everything (15.2.2).
+
+## 6. Practice
+
+**Guided exercise.** Build Catalog, Cart and Orders pages. Execute one complete journey: browse → add KB-01 → checkout → Orders shows order #N.
+
+**Independent exercise.** Add the optimistic quantity toggle from section 3. Test by throttling network to "Slow 3G" — instant UI, then confirmation or rollback.
+
+**Challenge.** Make checkout optimistic-safe with an `Idempotency-Key`: client generates a UUID per checkout click, sends header, server (15.2.3 challenge) dedupes — no double order from a double-click.
+
+**Assessment checklist**
+
+- [ ] Cart state is server-owned; refresh keeps it.
+- [ ] Checkout is pessimistic with clear error surfacing (OUT_OF_STOCK).
+- [ ] Optimistic updates snapshot → apply → confirm → roll back on any error.
+- [ ] Money actions are never fire-and-forget.
+- [ ] I can explain the difference between optimistic and pessimistic UX for this app.
+
+</BookNodePage>

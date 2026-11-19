@@ -1,0 +1,19 @@
+---
+id: "index"
+title: "11.2 Storage Engines, ACID & Choosing Databases"
+sidebar_label: "11.2 Storage Engines, ACID & Choosing Databases"
+slug: "/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-11-s2">
+
+Knowing how to sketch tables is only half of database engineering. Two users clicking **"Buy Last Item"** at the exact same millisecond will oversell inventory unless you understand **transactions, locks, and ACID guarantees**—and pick the right storage engine for each workload.
+
+## Lessons in Subchapter 11.2
+
+1. **[11.2.1 Transactions and ACID Guarantees](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases/11-2-1-transactions-and-acid-guarantees):** Atomicity, Consistency, Isolation, Durability; preventing race conditions/lost updates with `BEGIN ... COMMIT` and atomic conditional SQL updates.
+2. **[11.2.2 Relational vs Document vs Vector Stores](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-2-storage-engines-acid-and-choosing-databases/11-2-2-relational-vs-document-vs-vector-stores):** Practical trade-offs between PostgreSQL (relational + JSONB + pgvector), MongoDB (document), Redis (in-memory cache), and vector databases.
+
+</BookNodePage>

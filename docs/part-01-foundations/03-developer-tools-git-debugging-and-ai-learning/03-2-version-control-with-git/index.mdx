@@ -1,0 +1,148 @@
+---
+id: "index"
+title: "03.2 Version Control with Git"
+sidebar_label: "03.2 Version Control with Git"
+slug: "/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-03-s2">
+
+Remember the pre-Git rookie habit every self-taught coder hits once before learning version control properly: duplicating project folders named `invoice-app-v1`, `invoice-app-v2-final`, `invoice-app-v2-FIXED-REAL`, `invoice-app-backup-before-ai-edit`—and still wiping out a working Friday implementation on Tuesday afternoon because an experimental edit went wrong across six files! Worse yet, once AI coding assistants enter your workflow (`Part 07`), a single over-eager refactoring prompt can modify eight modules simultaneously in three seconds. **Without Git, experimenting fearlessly feels dangerous; with Git, every commit becomes an instant, zero-cost safety harness.**
+
+**03.2 Version Control with Git (`~3.5 Focused Hours`)** teaches Git from **first-principles internal intuition** rather than brittle memorized cheat-sheet spells. Once you see clearly how Git stores **directory snapshots (`commits`), the Staging Index, lightweight branch pointers (`HEAD`, `main`, `feat/...`), merges, and remote syncs (`origin`)**, fear of merge conflicts or detached branches disappears permanently.
+
+## Why Modern Git Mastery Separates Professionals Immediately
+
+Notice four everyday situations across **Parts 02–10** where solid Git habits pay off instantly:
+
+1. **Fearless AI-Assisted Iteration (`00.7` & `Part 07`):** Commit cleanly *before* asking an AI assistant to refactor a module. If the AI edit mangles two interfaces, run **`git diff`** to inspect every changed line and **`git restore .`** to rewind to a pristine working baseline in 0.2 seconds!
+2. **Parallel Feature & Bugfix Isolation (`03.2.2`):** Work on an ambitious new feature inside branch `feat/pdf-export` while keeping `main` 100% deployable. If an urgent production fix lands mid-afternoon, switch cleanly (`git switch main`), fix & deploy on `fix/...`, and merge cleanly without mixing half-finished code!
+3. **Surgical Bug Hunting (`03.3.2`):** When a working feature quietly broke sometime over the past 20 commits, **`git bisect`** uses binary search over commit history to pinpoint the exact guilty commit in just `~4` checks!
+4. **Team Code Review & CI/CD Automation (`03.2.3` & `Part 05`):** GitHub Pull Requests (`PRs`) paired with GitHub Actions (`Ch 19`) validate lint, TypeScript types, and test suites automatically on isolated feature branches *before* code ever reaches `main`!
+
+## Subchapter 03.2 Structural Map (`3 Core Topics`)
+
+```text
++-----------------------------------------------------------------------------+
+|                    03.2 VERSION CONTROL WITH GIT                            |
++-----------------------------------------------------------------------------+
+|                                                                             |
+|  [03.2.1 Repositories, Commits and History]                                 |
+|   - Working Tree  --->  Staging Index (`git add`)  --->  `.git` Snapshots   |
+|   - Commit DAG graph, content-addressed hashes & inspecting `git diff/log`  |
+|   - Undoing safely with `git restore` without destroying good work          |
+|                                      |                                      |
+|                                      v                                      |
+|  [03.2.2 Branching and Merging]                                             |
+|   - Branches are tiny 41-byte pointers moving cleanly across commits         |
+|   - Modern `git switch` / `git switch -c` workflows (`git-scm.com/docs`)    |
+|   - Fast-Forward vs 3-Way Merge + resolving `<<<<<<<` conflicts calmly      |
+|                                      |                                      |
+|                                      v                                      |
+|  [03.2.3 Remote Repositories and GitHub Basics]                             |
+|   - Local vs Remote (`origin/main`), `fetch` vs `pull`, safe `push`         |
+|   - `.gitignore` secret protection + clean Pull Request (`PR`) workflows    |
++-----------------------------------------------------------------------------+
+```
+
+## Topic Overview & Verified Git Capabilities
+
+| Topic | Core Questions Answered | Live Sandbox Workflow Built |
+| :--- | :--- | :--- |
+| **[03.2.1 Repositories, Commits and History](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git/03-2-1-repositories-commits-and-history)** | How do Working Directory, Staging Index, and `.git` Commit History actually interact? How do I undo local mistakes safely using modern `git restore`? | Initialize a fresh Git repo, stage selective edits (`git add -p`), inspect diffs, commit cleanly, and rewind broken edits safely via `git restore` |
+| **[03.2.2 Branching and Merging](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git/03-2-2-branching-and-merging)** | Why are Git branches virtually instant (`41 bytes`), how do **Fast-Forward** and **3-Way Merges** differ, and how do you resolve merge conflicts without panic? | Create parallel branches via `git switch -c`, trigger an authentic line conflict on purpose, resolve conflict markers cleanly, and verify graph history |
+| **[03.2.3 Remote Repositories and GitHub Basics](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git/03-2-3-remote-repositories-and-github-basics)** | How do local branches track `origin`, why does `git fetch` + `git status` beat blind `git pull`, and how do clean PRs + `.gitignore` prevent leaked secrets? | Simulate/inspect remote tracking branches, enforce `.gitignore` rules before staging, and follow the clean Feature Branch → PR → Review workflow |
+
+## Modern Git Command Conventions Used Throughout This Book
+
+Official Git documentation (`git-scm.com/docs`) introduced dedicated, unambiguous commands replacing the confusing overloaded legacy `git checkout` spell (`which handled switching branches AND overwriting modified files silently!`):
+
+- Use **`git switch <branch>`** and **`git switch -c <new-branch>`** exclusively for moving between branches or creating branches.
+- Use **`git restore <file>`** (and `git restore --staged <file>`) exclusively for discarding working-tree changes or unstaging files.
+- Keep `main` as your clean default branch (`git config --global init.defaultBranch main`, configured in `00.11.2`).
+
+*(You will still see `git checkout` in older tutorials—understanding both lets you read legacy posts effortlessly while keeping your own fingers safe from accidental file overwrites!)*
+
+## Intuition First: Snapshots, Not Patch Diffs
+
+Many beginners assume Git stores *"Version 1: entire file; Version 2: line 4 deleted; Version 3: line 8 changed"* like sequential Word document track changes. **It does not!**
+
+Every time you run `git commit`, Git captures a **complete immutable snapshot** of your entire staged project directory tree—compressed and deduplicated efficiently so unchanged files simply point straight back to their existing stored object! Because each commit is a complete snapshot pointing back to its parent commit(s), switching branches (`git switch`) or comparing any two points across three years (`git diff v1.0 v2.5`) happens in milliseconds locally—completely offline!
+
+## The Clean Team & Solo Rhythm: `GitHub Flow` (`Parts 04–10 Standard`)
+
+Even when building solo portfolio projects (`Part 10`), follow **GitHub Flow** so production deployments, AI experiments, and code reviews stay crystal clean:
+
+```text
+  `main` (Always clean, tested & deployable!)
+    |
+    +--- `git switch -c feat/csv-export` ---> commit 1 ---> commit 2 ---> push & open PR
+                                                                              |
+                                                         CI lint/tests green + diff audit
+                                                                              |
+    `<--- merge PR & delete feature branch -----------------------------------+`
+```
+
+1. **`main` is sacred:** Never experiment blindly or leave broken commits sitting on `main`.
+2. **One cohesive slice per branch:** Keep branches focused (`feat/auth-middleware`, `fix/utc-date-bug`) and short-lived (`hours to 2 days`, never weeks!).
+3. **Commit *before* inviting major AI refactors:** Think of `git commit` as hitting **Save Game** outside a boss room—if an AI refactoring pass goes sideways, `git restore .` resets cleanly in 0.2 seconds with zero lost work!
+
+## Four Git Myths That Paralyze Beginners—Debunked Permanently
+
+- **Myth 1: *"Merge conflicts mean I broke Git and lost my files."*** False! Conflicts simply mean two branches edited the exact same lines—Git pauses politely and preserves *both* versions intact inside markers (`<<<<<<<`, `=======`, `>>>>>>>`) so you decide calmly (`03.2.2`).
+- **Myth 2: *"Deleting a branch erases history."*** Once a feature branch merges into `main`, all its snapshots already belong permanently to `main`'s commit ancestry—deleting the branch label (`git branch -d`) merely tidies up the sticky note!
+- **Myth 3: *"Once you run `git add`, it's locked permanently."*** Anything in Staging (`git add`) unstages harmlessly via **`git restore --staged <file>`** without touching one character of your edits (`03.2.1`).
+- **Myth 4: *"`git push --force` fixes rejected pushes cleanly."*** Never! Rejected pushes exist to stop you from erasing teammate commits (`03.2.3`). Fetch/pull & rebase or merge cleanly instead!
+
+## Why Git Mastery Multiplies AI Coding Velocity Safely (`Parts 07–10`)
+
+Watch what happens when developers pair AI coding tools (`Claude Code`, `Cursor`, `Copilot`) with weak Git habits versus disciplined Git habits:
+- **Without Git Hygiene:** You ask an AI agent to refactor authentication across 6 files while 4 unrelated edits already sit uncommitted in your Working Directory. Halfway through, two routes break—and now your unfinished manual work and broken AI refactor sit tangled together inside one dirty folder with zero clean undo!
+- **With `03.2` Git Discipline:** You stage and commit your working baseline *first* (`git commit -m "chore: working checkpoint before auth refactor"`), open a fresh short branch (`git switch -c refactor/auth-guards`), let AI modify files freely, inspect **`git diff`** line-by-line, and if anything feels messy you reset in 0.1 seconds (`git restore .`). **Clean Git turns AI experimentation from stressful high-wire walking into zero-risk engineering!**
+
+| Git Tree / Ref | What Lives Inside It | Safe Command to Inspect It |
+| :--- | :--- | :--- |
+| **Working Directory** | Live edited files on SSD (`tracked + untracked`) | `git status -sb` / `git diff` |
+| **Staging Index** | Exact curated snapshot queued for next commit | `git diff --staged` |
+| **Local Commits (`HEAD`)** | Cryptographically chained immutable snapshots in `.git` | `git log --oneline --graph -n 15` |
+| **Remote (`origin/main`)** | Last fetched mirror state of GitHub `origin` | `git fetch origin && git log HEAD..origin/main --oneline` |
+
+### The "20–40 Minute Verified Checkpoint" Habit
+Avoid hoarding 400 lines of uncommitted changes across seven files all afternoon—if a late bug appears, isolating which edit caused it feels miserable. Instead, build one tiny vertical slice (`one helper + one unit test` or `one schema field + migration`), run your quick checks (`02.3.3`), inspect **`git diff`**, and seal a clean local commit every 20–40 minutes! Small atomic commits make **`git log`** read like an engineering story, make Pull Request reviews effortless, and let **`git bisect`** pinpoint regressions in seconds (`03.3.2`).
+
+Before running `git push` at the end of a work block, verify three quick invariants every time: (1) `git status -sb` shows zero leftover temporary files or accidental `.env` edits, (2) lint/types/tests run green from clean disk state (`02.3.3`), and (3) commit messages state *what* and *why* clearly (`fix:` / `feat:` / `test:`) rather than vague `"wip"`.
+
+## Quick Git Identity Sanity Check Before Starting `03.2.1`
+
+Confirm your global Git identity and modern line-ending settings are configured cleanly (`00.11.2`):
+
+```bash
+git --version
+git config --get user.name
+git config --get user.email
+git config --get init.defaultBranch
+```
+
+If any line prints blank, configure cleanly right now (`git config --global user.name "Your Name"`, `git config --global user.email "you@example.com"`, `git config --global init.defaultBranch main`), then jump directly into **03.2.1 Repositories, Commits and History**.
+
+## Subchapter 03.2 Exit Checklist
+
+Before entering `03.3 Debugging & AI-Assisted Learning`, verify you can perform all five workflows smoothly without notes:
+- Audit `git status -sb`, `git diff`, and `git diff --staged`, selectively stage hunks (`git add -p`), and write crisp atomic commits (`03.2.1`).
+- Unstage mistakes safely (`git restore --staged`), discard bad working edits cleanly (`git restore`), and invert shared commits safely (`git revert`) (`03.2.1`).
+- Branch cleanly via `git switch -c`, understand Fast-Forward vs. 3-Way merges, and resolve intentional line conflicts manually with passing tests (`03.2.2`).
+- Sync cleanly via `git fetch` / `git pull` / `git push` over SSH or `gh`, enforce `.gitignore` *before* initial `git add`, and open clean Pull Requests (`03.2.3`).
+- Inspect `git log --oneline --graph -n 10` before pushing so every commit on your branch reads cleanly, passes tests independently, and contains zero untracked secrets or build artifacts (`03.2.1–03.2.3`).
+
+## Official Primary References
+
+- [Pro Git Book — Free Official Edition (`git-scm.com/book/en/v2`)](https://git-scm.com/book/en/v2)
+- [Git Official Reference Manual (`git-scm.com/docs`)](https://git-scm.com/docs)
+- [`git-switch` Official Documentation (`git-scm.com/docs/git-switch`)](https://git-scm.com/docs/git-switch)
+- [`git-restore` Official Documentation (`git-scm.com/docs/git-restore`)](https://git-scm.com/docs/git-restore)
+
+**Start Topic 03.2.1:** [03.2.1 Repositories, Commits and History](/book/part-01-foundations/03-developer-tools-git-debugging-and-ai-learning/03-2-version-control-with-git/03-2-1-repositories-commits-and-history)
+
+</BookNodePage>

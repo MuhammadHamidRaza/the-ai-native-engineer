@@ -1,0 +1,178 @@
+---
+id: "19-1-1-cloud-regions-networking-iam-and-billing-controls"
+title: "19.1.1 Cloud Regions, Networking, IAM and Billing Controls"
+sidebar_label: "19.1.1 Regions, Networking, IAM and Billing"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-1-cloud-fundamentals-and-aws-azure-google-cloud/19-1-1-cloud-regions-networking-iam-and-billing-controls"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s1-t1">
+
+Cloud bills, and cloud breaches, both come from the same root cause: clicking before understanding. This lesson gives you the four concepts every cloud teaches first — regions/zones, networking, identity and money — in that order, because the fourth is the one that ruins weekends.
+
+## 1. Regions and Availability Zones
+
+A **Region** is a geographic location (`us-east-1` N. Virginia, `eu-west-1` Ireland, `ap-southeast-1` Singapore). Each Region contains 2–6+ **Availability Zones** (AZs) — separate datacenters with independent power and networking, connected by low-latency links. Deploy across ≥2 AZs and a datacenter fire costs you nothing but a failover event.
+
+Choose a region near your users (latency), where the services you need exist, and where pricing is acceptable (they differ). **Resources live in exactly one region unless you explicitly replicate them** — an EC2 instance in `us-east-1` is invisible in `eu-west-1`. Default everything to one region for this book; multi-region is [Chapter 20](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud) territory.
+
+## 2. Networking — VPC, Subnets, Public vs Private
+
+A **VPC (Virtual Private Cloud)** is your private, logically isolated network inside the provider's cloud (default CIDR often `172.31.0.0/16` on AWS). Inside it:
+
+| Concept | What it is | Public? |
+| :-- | :-- | :-- |
+| Public subnet | Subnet with a route to an **Internet Gateway (IGW)** | Yes — resources get public IPs if enabled |
+| Private subnet | No IGW route; outbound via a NAT gateway/instance (NAT costs hourly + per-GB) | No |
+| Security group | Stateful firewall at the instance level (allow-list rules: port, protocol, source CIDR) | — |
+| Network ACL | Stateless firewall at the subnet level (rarely touched directly) | — |
+| Route table | Which subnet sends traffic where (IGW, NAT, local) | — |
+
+**Public-private IP split:** an instance can have a private IP (routable inside the VPC only) and a public IP (reachable from the internet). Databases belong in private subnets — they have no business holding a public IP. Security groups are the #1 thing beginners get wrong: inbound `22` from `0.0.0.0/0` is "the whole internet can SSH my box." Restrict source to `YOUR_IP/32` (or your office CIDR).
+
+## 2.2 Your First Console Walk (AWS) — Know Where Things Live
+
+Before any resource: note that the **region selector sits in the top-right of every AWS page**. Invite yourself to practice finding in under 10 seconds each:
+
+| What you need | Where |
+| :-- | :-- |
+| Current region + switch it | Top-right dropdown next to your account name |
+| Bill this month + forecast | Billing and Cost Management → Bills / Cost Explorer |
+| Your IAM identity and sign-in URL | IAM → Dashboard |
+| Free-tier hours used | Billing → Free Tier |
+| Contact/professional support | Top-right **?** menu → Support Center |
+
+Common first-day mistakes, in order of frequency seen: launching in the wrong region ("my instance is missing!"), inbound `0.0.0.0/0` on SSH, clicking **Launch** before creating a key pair, and "stopping" instead of terminating when done. The console will happily let you do all of them — the bill won't.
+
+## 3. IAM — Identities and Least Privilege
+
+Three nouns on AWS (Azure/GCP differ in name, not in concept):
+
+- **Users** — long-lived identities for humans (you). Enable MFA. Prefer **roles + SSO** over access keys.
+- **Groups** — attach policies to many users at once.
+- **Roles** — assumable identities for machines/services (EC2 instance profile, Lambda execution, GitHub Actions OIDC — see [19.2.2](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-2-devops-workflows-and-cicd-pipelines/19-2-2-testing-artifacts-ci-secrets-and-rollback-pipelines)).
+- **Policies** — JSON documents: `Effect: Allow`, `Action: s3:GetObject`, `Resource: arn:aws:s3:::my-bucket/*`.
+
+**Least privilege** means: whatever you are doing, grant exactly that and nothing more. An app that reads one bucket gets `s3:GetObject` on that bucket — not `s3:*` on `*`. AWS has managed policies (e.g., `AmazonS3ReadOnlyAccess`) as starting points; customer-managed policies for real systems.
+
+Never put root-account credentials in code, CI, or chat. The root user's only job is account setup, then it goes back in the drawer (with MFA).
+
+## 3.5 Quick Glossary You Must Know Cold
+
+| Term | One line |
+| :-- | :-- |
+| Availability Zone | Isolated datacenter within a region; spread instances to survive one |
+| VPC | Your private software-defined network inside the provider's one |
+| CIDR | `10.0.0.0/16` notation for IP ranges; smaller prefix = more addresses |
+| IGW / NAT | Doorway to/from the internet (in / out-only) |
+| Security group | Stateful instance-level firewall; return traffic auto-allowed |
+| IAM role | Assumable identity for services — no long-lived keys |
+| Free tier | Trial allowances; **types and limits differ per provider and drift — verify** |
+| Egress | Data leaving the cloud — usually the bill you didn't expect |
+
+Also internalize the **shared responsibility model**: the provider secures the datacenter and hypervisor; you secure everything you put in it — IAM policies, security groups, patched AMIs, encrypted volumes, no public databases. "The cloud provider handles security" is the #1 misconception auditors hear.
+
+## 3.6 Verify Your Identity from the CLI (Optional but Professional)
+
+**Where to run:** on any machine — install the AWS CLI v2 per [docs.aws.amazon.com/cli](https://docs.aws.amazon.com/cli), then:
+
+```bash
+aws configure                 # access key, secret, default region, output format (text)
+aws sts get-caller-identity   # proof: account id, user/role ARN
+aws ec2 describe-regions --query "Regions[].RegionName" --output text
+aws budgets describe-budgets --account-id YOUR_ACCOUNT_ID   # confirm your $5 budget exists
+```
+
+You should see your account id and an ARN — never share secrets, not even in tutorial screenshots. Delete programmatic keys you don't need (`aws iam delete-access-key`) — 19.2.2 teaches the OIDC pattern that removes them entirely.
+
+## 3.7 Anatomy of an IAM Policy — Read One Fluently
+
+You will write dozens of these. One annotated example covers 90%:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadShopCoreBucket",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::shopcore-assets",
+        "arn:aws:s3:::shopcore-assets/*"
+      ],
+      "Condition": { "IpAddress": { "aws:SourceIp": "203.0.113.0/24" } }
+    }
+  ]
+}
+```
+
+Reading it: allow two actions, on one bucket (note the paired ARNs — bucket and bucket/contents need both), only from one IP range. `Effect: Deny` always wins over `Allow`. Policy evaluation order: explicit deny → explicit allow → implicit deny. Start from AWS's managed policies, then attach narrower customer ones as the system grows — and review with **IAM Access Analyzer** (free) when in doubt about what a grant actually permits.
+
+## 4. Billing Controls — DO THIS FIRST, BEFORE ANY RESOURCE
+
+**This is the most important section in the chapter.** Cloud charges accrue per hour/GB/request whether you use the resource or not.
+
+**AWS (recommended for the labs):**
+
+1. Root account → **Billing and Cost Management → Budgets → Create budget** → template "Monthly cost budget", amount **$5**.
+2. Alert: when actual **or** forecasted cost exceeds 80% of $5 (~$4), send email (add SNS topic → your email). Confirm the subscription email.
+3. Also enable **Billing alarm** via CloudWatch (optional but loud) and keep **Free Tier usage alerts** on.
+4. Note: Budgets themselves are free (first 2 per AWS account are free; additional ones may incur small charges — verify current AWS Budgets pricing).
+
+**Free tier (approximate, as of Nov 2026 — verify each page):**
+
+- AWS Free Tier: many accounts created **after 15 July 2025** get a Free Plan with credits instead of the legacy 12-month product allowances; **t3.micro/t4g.micro** are Free Plan eligible. Legacy: 750 hrs/month t2/t3.micro for 12 months + 5 GB S3 + 750 hrs RDS db.t3.micro etc. — see [aws.amazon.com/free](https://aws.amazon.com/free).
+- Azure: $200 credit for 30 days (new accounts) + always-free quantities (e.g., 12 months selected B-series VMs) — [azure.microsoft.com/pricing](https://azure.microsoft.com/pricing).
+- Google Cloud: $300 credit for 90 days (new customers) + always-free tier — [cloud.google.com/free](https://cloud.google.com/free).
+
+**Limits move. All numbers above are approximate and time-sensitive — treat the provider's own pricing/free pages as the only source of truth.**
+
+**Defaults that quietly cost money (memorize these four):**
+
+1. **Elastic IPs** — ~$3.60/mo each whether attached or not (since Feb 2024), and you get one automatically when launching EC2 with a public IP unless you opt out. Release them; an attached-but-forgotten EIP still costs.
+2. **NAT gateways** — ~$32+/mo baseline each in many regions, plus per-GB. This book's labs avoid them; production needs them only if private resources truly require outbound internet.
+3. **Provisioned-IOPS / io2 volumes** — 10× the cost of gp3 for no benefit at lab scale; always pick gp3/SSD default.
+4. **Cross-AZ data transfer & unused snapshots** — free-tier traffic allowances don't cover cross-AZ chatter at scale; old snapshots accumulate silently forever.
+
+The unifying habit: log into **Billing → Cost Explorer** (AWS) / **Cost Management** (Azure) / **Billing → Reports** (GCP) once a week during any project, grouped by service. Surprises are cheapest when small.
+
+**GCP/Azure equivalents (do it there too if you use those clouds):**
+
+- **GCP:** Console → **Billing** → select billing account → **Budgets & alerts → Create budget** → scope (all projects), amount $5, thresholds at 50%/80%/100% of actual and forecasted → toggle "Email alerts to billing admins". Optionally route to a Pub/Sub topic for automation.
+- **Azure:** Portal → **Cost Management + Billing → Budgets → + Add** → scope subscription/resource group, $5 monthly, email recipients at 80% and 100% thresholds; Azure also supports action groups (email/webhook/logic app) for custom reactions.
+- AWS SNS detail: after creating the topic, **confirm the subscription email** — an unconfirmed SNS subscription silently sends nothing, which is the most common "the budget never alerted me" story.
+- All three let you alert on **forecasted** spend, not just actual — a forecast that says "you will exceed $5 this month" is worth more than a $5 charge arriving too late.
+
+Also useful and free: enable **AWS Cost Anomaly Detection** (alerts on unusual spend patterns) and **CloudWatch billing alarm** (`EstimatedCharges > $5` in `us-east-1`, email via SNS). Budgets and billing alarms overlap — belt and suspenders is correct here.
+
+## 4.5 Day-One Checklist — Print This
+
+1. Budget alert exists and the SNS/PubSub/email subscription is **confirmed**.
+2. Root MFA on; daily IAM user with MFA; root access keys deleted.
+3. Free-tier usage dashboard bookmarked; calendar reminder for credit expiry (Azure/GCP).
+4. One region chosen; console region selector set correctly.
+5. No security group anywhere has `0.0.0.0/0` on port 22.
+6. Cost Explorer / Cost Management checked; spend grouped by service.
+
+If any of these is false, fix it before the next resource you create.
+
+## 5. Practice — Set the Alert Before You Open EC2
+
+**Guided.** In your AWS account: create the $5 monthly budget with email/SNS notification at 80% actual. Screenshot the "Budget created" page. Do not create any other resource yet.
+
+**Independent.** Enable MFA on your root user and on your daily IAM user (if any). Find the "Free Tier" usage dashboard and note how many free hours of EC2 remain this month.
+
+**Challenge.** Write (don't deploy yet) an IAM policy granting read-only access to one S3 bucket only, in JSON. Validate it mentally against least privilege; bring it to 19.1.2 where you create the real user.
+
+**Assessment checklist**
+
+- [ ] I can explain Region vs AZ vs VPC vs subnet vs security group.
+- [ ] I know why databases live in private subnets and SSH is never `0.0.0.0/0`.
+- [ ] I can describe IAM users vs roles vs policies and the principle of least privilege.
+- [ ] I created a $5 budget with an email alert BEFORE creating any resource.
+- [ ] I know where AWS/Azure/GCP publish free-tier limits and that they drift.
+- [ ] I will never use root-account keys in code or CI.
+
+</BookNodePage>

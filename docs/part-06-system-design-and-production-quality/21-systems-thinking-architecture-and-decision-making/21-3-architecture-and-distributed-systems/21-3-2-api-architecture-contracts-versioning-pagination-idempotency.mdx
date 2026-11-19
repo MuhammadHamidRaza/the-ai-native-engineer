@@ -1,0 +1,142 @@
+---
+id: "21-3-2-api-architecture-contracts-versioning-pagination-idempotency"
+title: "21.3.2 API Architecture: Contracts, Versioning, Pagination and Idempotency"
+sidebar_label: "21.3.2 API Architecture: Contracts, Versioning, Pagination and Idempotency"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-2-api-architecture-contracts-versioning-pagination-idempotency"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s3-t2">
+
+Ask a room of engineers why their API integrations break and you will get one answer every time: the contract was implied, not specified. ShopCore's API is its public face — to the SPA, to Stripe's webhook, to future mobile apps. This lesson is the contract-first deep dive: resource design, HTTP semantics, the error envelope, versioning, pagination, idempotency and deprecation — with the exact shapes ShopCore commits to in its OpenAPI spec.
+
+## 1. Resource Design — Plural Nouns, Shallow Trees
+
+- Plural nouns for collections: `/orders`, `/products`, `/customers`. Singular for singletons: `/cart`, `/me`.
+- Nesting depth ≤ 2: `/orders/1234/items/9` is fine; `/customers/7/orders/1234/items/9/taxes` is a controller wearing a URL — use `?orderId=` filters instead.
+- No verbs in URLs; HTTP methods carry the verb. `POST /orders` creates, never `POST /createOrder`. Actions that don't map to CRUD become named sub-resources: `POST /orders/1234/cancel`, `POST /payments/1234/capture`.
+- Filtering, sorting, fields: query params (`?status=paid&sort=-placed_at&fields=id,total_cents`).
+
+## 2. HTTP Semantics (RFC 9110)
+
+| Method | Safe? | Idempotent? | Meaning |
+| :-- | :-- | :-- | :-- |
+| GET | yes | yes | Read; never mutate |
+| HEAD | yes | yes | GET without body (health checks, existence probes) |
+| OPTIONS | yes | yes | CORS preflight / capability discovery |
+| PUT | no | yes | Replace wholesale |
+| DELETE | no | yes | Delete (204; repeat = still 204/404 semantics chosen) |
+| POST | no | no | Create / non-idempotent action — needs `Idempotency-Key` (Section 6) |
+| PATCH | no | no | Partial update; ShopCore prefers PUT for full order replacement |
+
+Success codes: `200` read, `201` created (+ `Location` header), `202` accepted (async — e.g., refund queued), `204` no content (DELETE, PUT). Client errors: `400` malformed, `401` unauthenticated, `403` unauthorized, `404` missing, `409` conflict (version/etag or concurrent idempotency replay), `422` semantic validation (well-formed JSON, impossible state), `429` rate limited (+ `Retry-After`). Server errors: `500`, `503` (overloaded — pair with `Retry-After`). RFC 9457 gives you the machine-readable body:
+
+```http
+HTTP/1.1 422 Unprocessable Content
+Content-Type: application/problem+json
+
+{
+  "type": "https://shopcore.dev/probs/stock-insufficient",
+  "title": "Insufficient stock",
+  "status": 422,
+  "detail": "SKU-1001 requested 5, available 2.",
+  "instance": "/orders/req_01J.../problems/01J...",
+  "sku": "SKU-1001",
+  "available": 2
+}
+```
+
+`application/problem+json` with `type/title/status/detail/instance` is [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html) (obsoletes RFC 7807). Clients branch on `type`, humans read `detail`, and your log pipeline (22-3-1) indexes `instance`.
+
+## 3. Versioning — URI, Picked and Defended
+
+Three candidates, one verdict:
+
+- **URI versioning** — `/v1/orders`. Visible in every log, cache and error message; trivially documented; cache-keyable; breaks loudly (good). **This is the ShopCore choice.**
+- Header versioning (`Accept: application/vnd.shopcore.v2+json`) — purer HTTP semantics; invisible in URLs; tooling and caches treat it as opaque; teams forget to set it.
+- Content negotiation — same mechanism as header versioning without the media-type ceremony; equally invisible.
+
+Defense: ShopCore has exactly one public consumer we cannot force to send custom headers (browser bookmarks, curl by support staff, wget in runbooks). URI wins on discoverability and operational honesty. Breaking changes ship as `/v2/...` with the old version sunset via the `Sunset` header ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594.html)) plus a link relation to the migration guide; `/v1` serves for a published window (never less than one release cycle, never silently).
+
+## 4. Pagination — Cursor Wins Under Concurrent Insert
+
+Offset pagination: `?page=7&per_page=50 → OFFSET 300 LIMIT 50`. Two disqualifiers: (1) `OFFSET 300` makes Postgres walk and discard 300 rows — O(n) at depth; (2) **under concurrent inserts the world shifts** — a new order lands at the top between page 6 and 7, every item shifts one slot, and the client sees duplicates or skips rows.
+
+Cursor pagination:
+
+```http
+GET /v1/orders?limit=50&after=eyJpZCI6NDgxNX0
+200 OK
+Link: <.../orders?limit=50&after=eyJpZCI6NDg2NX0>; rel="next"
+```
+
+The cursor is an opaque, HMAC-signed base64 of the last-seen sort key (`{"id": 4815}`). SQL: `WHERE (placed_at, id) < ($1, $2) ORDER BY placed_at DESC, id DESC LIMIT 51` — stable under insert in either direction, O(log n) with the right composite index. Rule: if the table is append-only or high-write, offset is a bug report waiting to happen.
+
+## 5. Idempotency Keys for Payment POSTs
+
+`POST /v1/orders` creates a charge — a double-tap or a client retry after a timeout must not double-charge. The flow (an IETF Internet-Draft — `draft-ietf-httpapi-idempotency-key-header`, not yet an RFC — codifying the pattern Stripe popularized):
+
+```http
+POST /v1/orders HTTP/1.1
+Idempotency-Key: "6f1b9c3e-9d2a-4c7e-8a3f-0f4c5a1b2d99"
+```
+
+Server-side, in one transaction: (1) look up the key in an `idempotency_keys` table (`key`, `request_hash`, `order_id`, `status`); (2) seen + same payload → replay the stored response (`201` with the original order); (3) seen + different payload → `422`; (4) unseen → process, then store key→response atomically with the order insert. Concurrent duplicate while in-flight → `409` (or a short poll); clients generate UUIDv4 keys per user intent, not per HTTP attempt.
+
+## 6. Contract-First OpenAPI — Sketch and Generated Client
+
+The spec is the source of truth; code is generated from it. A taste of ShopCore's `orders` path:
+
+```yaml
+openapi: 3.1.0
+info: { title: ShopCore API, version: 1.0.0 }
+paths:
+  /v1/orders:
+    post:
+      operationId: createOrder
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Order created }
+        '409': { description: Idempotent request in flight }
+        '422': { description: Insufficient stock / validation }
+                  # content: application/problem+json
+```
+
+Generate TypeScript types + a typed client (`openapi-typescript`), run contract tests (22-2-1, Pact-style) in CI against the spec, and lint the spec itself (`spectral`). A handler that doesn't match its spec fails the build — the contract cannot drift silently.
+
+## 7. Rate Limiting, Deprecation, Error Envelope
+
+Rate limiting is covered hands-on in [13.4.2 Webhooks, Rate Limiting and File Uploads](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-2-webhooks-rate-limiting-and-file-uploads): token bucket in Redis, `X-RateLimit-*` headers, `429` + `Retry-After`. ShopCore's error envelope standard — every 4xx/5xx, always: `Content-Type: application/problem+json`, fields per RFC 9457, no stack traces, no `error: "Something went wrong"` strings. Deprecation policy: announce in a `Deprecation` response header alongside the hard `Sunset` date from RFC 8594, update the docs, and dual-serve for one full minor version before deletion.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Duplicate orders on mobile double-tap | No idempotency enforcement | Section 5 flow; load-test double-POST |
+| `OFFSET 200000` timeouts on admin list | Deep offset on hot table | Cursor pagination; composite index |
+| Client ignores deprecation warnings | No hard Sunset | Add `Sunset` header + calendar RFC 8594 date |
+| 500 with HTML error page from Express default | No error envelope middleware | Central `errorHandler` emitting problem+json |
+| Spec says 201, code returns 200 | Spec drifted | CI check: response validation against OpenAPI |
+
+## 9. Practice
+
+**Guided exercise.** Write the OpenAPI fragment for `POST /v1/orders/{orderId}/cancel`: path params, idempotency header, 202 response, problem+json for 409 (already fulfilled). Generate the client stub.
+
+**Independent exercise.** Convert ShopCore's existing `GET /orders` to cursor pagination in the spec and in SQL. Verify with 30 concurrent inserts that no page repeats or skips an order.
+
+**Challenge.** Design the v1→v2 migration for `POST /orders` (renamed field `placed_at` → `placedAt`, say): spec diff, Sunset date, dual-serve behavior, and the support-runbook wording for external integrators.
+
+**Assessment checklist**
+
+- [ ] I can recite RFC 9457's members and what `application/problem+json` buys the client.
+- [ ] I can defend URI versioning in three sentences against header versioning.
+- [ ] I can write the cursor-pagination query and explain stability under concurrent insert.
+- [ ] I can implement the idempotency-key flow including the 409/422 cases.
+- [ ] I know where Sunset (RFC 8594) fits and what my deprecation policy promises.
+
+</BookNodePage>

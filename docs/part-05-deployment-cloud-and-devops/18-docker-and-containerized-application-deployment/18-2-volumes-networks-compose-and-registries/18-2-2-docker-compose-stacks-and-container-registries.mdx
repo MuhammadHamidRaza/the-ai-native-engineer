@@ -1,0 +1,171 @@
+---
+id: "18-2-2-docker-compose-stacks-and-container-registries"
+title: "18.2.2 Docker Compose Stacks and Container Registries"
+sidebar_label: "18.2.2 Docker Compose Stacks and Container Registries"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s2-t2">
+
+Two services on one network with one command — that is Compose. This lesson builds the ShopCore stack (Node API + Postgres), learns the daily `docker compose` commands, then pushes the image to Docker Hub so any machine can pull it.
+
+## 1. Compose v2 — What It Is (and Is Not)
+
+Compose v2 is a Docker CLI plugin: the command is `docker compose` (space, not hyphen — the old standalone `docker-compose` is end-of-life). Verify:
+
+```bash
+docker compose version
+# Docker Compose version v2.x
+```
+
+It is not an orchestrator for multi-host clusters — that is Kubernetes ([Chapter 20](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud)). Compose replaces hand-typed `docker run` for **one-host, multi-service** apps.
+
+## 2. The ShopCore Stack — docker-compose.yml
+
+Place this next to `package.json` (services here are the API image you built in 18.1.2, and official Postgres):
+
+```yaml
+name: shopcore
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shopcore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: shopcore
+    volumes:
+      - shopdb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopcore -d shopcore"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    image: yourdockerhubuser/shopcore-api:1.0.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://shopcore:${POSTGRES_PASSWORD}@db:5432/shopcore
+    ports:
+      - "3000:3000"
+
+volumes:
+  shopdb_data:
+```
+
+Notes that matter:
+
+- `depends_on` with `condition: service_healthy` waits for Postgres to actually accept connections — plain `depends_on` does not.
+- `${POSTGRES_PASSWORD:?…}` fails fast if `.env` is missing instead of starting a broken stack.
+- `env_file: .env` injects the rest; `.env` holds secrets — never commit it.
+- Compose creates one user-defined bridge network for the project; services resolve by name (`db`, not `localhost`).
+
+`.env` example: `POSTGRES_PASSWORD=devpass-change-me` plus app keys (`JWT_SECRET`, …). Add `.env` to `.gitignore`/`.dockerignore`.
+
+## 3. Daily Workflow — Where to Run
+
+**Where to run:** the folder containing `docker-compose.yml` (PowerShell, bash, WSL2 all fine).
+
+```bash
+docker compose up -d --build     # build (if needed) and start detached
+docker compose ps                # service status + ports + health
+docker compose logs -f api       # follow one service
+docker compose exec api sh       # shell into the API container
+docker compose restart api
+docker compose down              # stop and remove containers + network
+docker compose down -v           # ALSO delete named volumes — data gone; use deliberately
+```
+
+Expected after `up`:
+
+```text
+✔ Container shopcore-db-1    Healthy
+✔ Container shopcore-api-1   Started
+```
+
+Verify end-to-end: `curl http://localhost:3000/api/health` → `{"status":"ok",…}`.
+
+Handy one-offs you will reach for daily:
+
+```bash
+docker compose run --rm api npm test    # one-off command in a new throwaway container
+docker compose cp api:/app/logs ./api-logs   # copy files out of a service
+docker compose logs --tail=100 -f       # follow all services, interleaved
+docker compose up -d --remove-orphans   # clean up services deleted from the YAML
+docker compose config                   # renders the fully-resolved file (check interpolation!)
+```
+
+YAML gotchas: indentation defines the tree (two spaces, no tabs); `ports: - "3000:3000"` — quote port mappings or `80:80` parses as a base-60-ish quirk in YAML 1.1; booleans like `on:`/`yes:` can surprise in keys but Compose tolerates them — still, quote to be safe. The `config` command shows exactly what Compose understood — run it before debugging ghosts.
+
+## 4. Restart Policies and Log Rotation — the Silent Disk Killer
+
+Unbounded container JSON logs will fill a small VPS disk in weeks. Cap them per service (or globally in `daemon.json`):
+
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-files: "3"
+```
+
+`restart: unless-stopped` covers crashes and reboots — but it is a seatbelt, not resuscitation: watch `docker compose ps` for a crash-looping service and read `logs` for the cause instead of trusting the restart counter.
+
+## 5. Registries and Docker Hub — Login, Tag, Push
+
+Docker Hub ([hub.docker.com](https://hub.docker.com/)) is the default registry (`registry-1.docker.io`). Professional flow uses a free account + private repo:
+
+1. Create an account at hub.docker.com; enable 2FA. (Docker Personal is free; check current limits — unauthenticated pulls are rate-limited hard, paid tiers higher; see [docs.docker.com/docker-hub/usage/pulls](https://docs.docker.com/docker-hub/usage/pulls).)
+2. Create a repository, e.g. `yourdockerhubuser/shopcore-api`.
+3. Authenticate:
+   ```bash
+   docker login        # prompts user + password (or access token — preferred)
+   ```
+   For CI, create an **access token** (Account Settings → Personal access tokens), never your password.
+4. Tag and push:
+   ```bash
+   docker tag shopcore-api:1.0.0 yourdockerhubuser/shopcore-api:1.0.0
+   docker push yourdockerhubuser/shopcore-api:1.0.0
+   docker pull yourdockerhubuser/shopcore-api:1.0.0   # verify on another machine
+   ```
+
+Alternatives (same `tag`/`push` shape): GitHub Container Registry (`ghcr.io`), Azure Container Registry, AWS ECR, Google Artifact Registry — useful when cloud-native auth matters (Chapter 19 uses ECR-style thinking with OIDC).
+
+## 6. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `service "api" depends on undefined service` | Typo in service name under `depends_on` | Match keys exactly (`db`) |
+| API boots before Postgres is ready | `depends_on` without `condition: service_healthy` | Add the healthcheck block + `condition` |
+| `no configuration file provided` | Wrong folder | Run where the file is, or `-f path/to/docker-compose.yml` |
+| `manifest unknown` on pull | Tag not pushed / typo | `docker push` first; tags are case-sensitive |
+| `denied: requested access to the resource is denied` | Not logged in / repo doesn't exist / wrong user | `docker login`; confirm repo path matches `user/repo` |
+| Compose warns `version is obsolete` | Old `version: "3"` key | Delete it — Compose v2 ignores it |
+| Changed `.env` ignored | Values baked at `up` time | `docker compose up -d` again; env is read on (re)create |
+
+## 7. Practice
+
+**Guided.** Bring the stack up with `up -d --build`, confirm `docker compose ps` shows `healthy`, curl the health endpoint, then `docker compose down` (not `-v` yet).
+
+**Independent.** Tear down with `down -v`, confirm the volume is gone (`docker volume ls`), bring it back up, re-seed, and prove `down -v` loses data but plain `down` keeps it.
+
+**Challenge.** Push `shopcore-api:1.0.0` to Docker Hub, then `docker compose pull` on a second machine (or a fresh WSL distro) and `up -d` — the stack must start from the registry with no source code present.
+
+**Assessment checklist**
+
+- [ ] I can write the YAML for two services with a healthcheck and `service_healthy`.
+- [ ] I know `up -d`, `ps`, `logs -f`, `exec`, `restart`, `down`, `down -v` cold — and the difference between the last two.
+- [ ] I created a Docker Hub repo, logged in, tagged and pushed an image.
+- [ ] I use an access token, not my password, and never commit `.env`.
+- [ ] I can explain why `depends_on` alone is not readiness.
+- [ ] I can name one non-Docker-Hub registry and when I'd pick it.
+
+</BookNodePage>

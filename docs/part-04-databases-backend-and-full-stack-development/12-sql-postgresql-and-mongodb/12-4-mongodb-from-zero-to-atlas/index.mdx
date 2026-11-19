@@ -1,0 +1,23 @@
+---
+id: "index"
+title: "12.4 MongoDB from Zero to Atlas"
+sidebar_label: "12.4 MongoDB from Zero to Atlas"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4">
+
+**Subchapter 12.4** builds your MongoDB competence from zero: install Community Server and verify it, run CRUD with mongosh and Compass, model documents with the embed/reference rule, tune with indexes and aggregation pipelines, provision a free Atlas cluster in the browser, and finish with an honest PostgreSQL-vs-MongoDB decision framework.
+
+## Lessons in Subchapter 12.4
+
+1. **[12.4.1 What MongoDB Is and Installing Community Server](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-1-what-mongodb-is-and-installing-community-server):** Official downloads, Windows/macOS/Linux installs, service verification, first Compass connection.
+2. **[12.4.2 Your First Database with Compass and mongosh](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-2-your-first-database-with-compass-and-mongosh):** Insert, find, project, sort, update, delete — in both tools.
+3. **[12.4.3 Modeling Documents: Embedded vs Referenced](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-3-modeling-documents-embedded-vs-referenced):** The 16 MB limit, the one modeling rule, and ShopCore's document design.
+4. **[12.4.4 Indexes, Aggregation Pipelines and Schema Validation](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-4-indexes-aggregation-pipelines-and-schema-validation):** ESR compound indexes, IXSCAN vs COLLSCAN, `$match → $unwind → $group → $sort`, `$jsonSchema` enforcement.
+5. **[12.4.5 MongoDB Atlas from Zero](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-5-mongodb-atlas-from-zero):** Account → M0 cluster → database user → IP allowlist → connection string → Compass/mongosh/Node — plus auth errors vs network errors and free-tier billing risks.
+6. **[12.4.6 PostgreSQL vs MongoDB](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-6-postgresql-vs-mongodb-choosing-for-real-projects):** The decision framework for real projects — and why this book defaults to PostgreSQL for ShopCore.
+
+</BookNodePage>

@@ -1,0 +1,165 @@
+---
+id: "36-2-1-safety-compliance-privacy-and-pii-redaction"
+title: "36.2.1 Safety Compliance, Privacy and PII Redaction"
+sidebar_label: "36.2.1 Safety, Compliance & PII"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-2-governance-and-continuous-improvement/36-2-1-safety-compliance-privacy-and-pii-redaction"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-36-s2-t1">
+
+HelpBot's launch review is in thirty minutes. Someone on the compliance team asks the question that ends careers: "When a customer types their card number into the chat, where does it go?" This lesson is the answer — built before you need it. **PII handling is a launch blocker, not a documentation task, and the model provider is never your data-protection layer.**
+
+## 1. PII — Detect Before the Model, Never Log Raw
+
+Two rules that cover 90% of the risk:
+
+1. **Redact before the model call.** The prompt leaving your process contains tokens like `[CREDIT_CARD]`, never the card. The model cannot leak what it never saw.
+2. **Never log raw prompts** — logs go to observability tools, backups and (eventually) a subpoena. Log hashes, IDs and the redacted text. If you must keep context for debugging, hash the user identifier and keep raw text for under 30 days, deletable on request.
+
+**Microsoft Presidio** (verified November 2026: `presidio-analyzer` 2.2.366 and `presidio-anonymizer` 2.2.366, both uploaded 2026-10-27, require Python 3.11+ and under 3.15) is the open-source standard for this. Install and verify:
+
+```bash
+pip install "presidio-analyzer==2.2.366" "presidio-anonymizer==2.2.366"
+python -m spacy download en_core_web_lg
+```
+
+Minimal redactor (Python):
+
+```python
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer import AnonymizerEngine
+
+analyzer, anonymizer = AnalyzerEngine(), AnonymizerEngine()
+text = "Hi, I'm Dana from 555-0134. My card 4111 1111 1111 1111 was charged."
+results = analyzer.analyze(text=text, language="en")
+print(anonymizer.anonymize(text=text, analyzer_results=results).text)
+```
+
+Expected shape:
+
+```text
+Hi, I'm <PERSON> from <PHONE_NUMBER>. My card <CREDIT_CARD> was charged.
+```
+
+Wrap it as middleware: user input -> Presidio -> redacted prompt -> model -> response -> Presidio again (output can echo PII the user typed) -> log. Tune the recognizer list to your domain (add IBAN/SWIFT if ShopCore ships to EU). Deploy the analyzer in-process or as a sidecar — check Presidio's docs for the current container story before self-hosting.
+
+| Retention tier | Content | Lifetime |
+| :-- | :-- | :-- |
+| Raw | Original text, redacted form only in models; original kept only under legal hold | Under 30 days, erasable on request |
+| Hashed | `sha256(user_id)`, token counts, model string, scores | 13 months (trend analysis) |
+| Never stored | Card numbers, passwords, full auth tokens (Presidio catches these — belt and braces: strip at the edge too) | |
+
+## 2. GDPR/CCPA Posture for LLM Apps
+
+You are a **data controller** (or joint controller with your customer). The essentials, in practitioner terms — not legal advice:
+
+- **DPAs (Data Processing Agreements):** you need one with every processor that touches personal data — the model provider, your observability vendor, anyone who reads a trace. Providers publish them; if you cannot find yours, stop and ask. Enterprise tiers usually include them by default.
+- **Data residency:** EU customers increasingly require EU processing. All three major providers offer regional endpoints/data-residency options now — verify which of your models stay in-region (some features, e.g. certain tools or batch modes, may process elsewhere).
+- **Right to erasure (GDPR Art. 17) / CCPA deletion:** deleting "a user's data" must cover your traces, logs, eval datasets (golden sets are sanitized — keep them that way), feedback rows and vector memory. That is why `x-request-id` + `user_id` columns from 36.1.2 matter here: one `DELETE ... WHERE user_id_hash = ...` across systems, with a deletion receipt.
+- **Minimization:** collect the least data the agent needs; retention SLAs beat privacy theater.
+
+**SOC 2 Type II** pointer: not a certification of "AI safety" — it is an audit of your controls over time (access, change management, monitoring). A Type II report from your observability/logging vendors plus your own access controls is what enterprise buyers will ask for; start the audit clock early. Verify scope with your auditor.
+
+## 3. Retention and Deletion SLAs for Logs
+
+Write them down, then automate: 30-day raw prompt retention (auto-purge job, logged deletion), 13-month hashed aggregates, 90-day security audit logs, indefinite for billing. Every deletion runs in CI-tested batches; quarterly, restore-test your deletion job on a sample — silent failure of a purge job is a finding waiting to happen in an audit.
+
+## 4. Customer Contract Clauses — the Four to Settle Before Launch
+
+1. **No-training-on-my-data:** enterprise API tiers at OpenAI, Anthropic and Google advertise this by default for API traffic (consumer free tiers may differ — never mix). **Verify the exact current terms for your account type and region with counsel**; they change, and "we assumed API = no training" is not a clause you want tested.
+2. **Data residency and subprocessors:** which entities in which countries; notification on subprocessor changes.
+3. **Breach notification SLA:** how fast, through what channel, what you owe the customer.
+4. **Liability and IP:** who owns the outputs; cap/carve-outs for agent actions (an agent that emails the wrong customer is a real liability line).
+
+Mark every one of these in your launch checklist as **verify with counsel** — this page is engineering guidance, not legal advice.
+
+## 5. Abuse Prevention — Jailbreaks, Tool Misuse, Cost-DoS
+
+OWASP Top 10 for LLM Applications 2025 (verified at genai.owasp.org, November 2026): the three that hit HelpBot directly.
+
+| Tier | Control | OWASP ref |
+| :-- | :-- | :-- |
+| **Jailbreak / prompt injection** | Instructions sandwich, tool-output-as-data ([31.2.1](/book/part-08-ai-applications-agents-mcp-and-automation/31-agent-tools-state-memory-and-guardrails/31-2-input-and-output-guardrails/31-2-1-policy-checks-and-prompt-injection-defense)), judge screen on suspicious outputs | LLM01:2025 Prompt Injection (verified) |
+| **Tool misuse / excessive agency** | Tool scopes, `$500` refund cap, approval tiers, kill switch, idempotent tools (Ch 31) | LLM06:2025 Excessive Agency (verified) |
+| **Cost denial of service** | Per-user/tenant token budgets, queue ceilings, 429 handling (36.1.2), max turns per run | LLM10:2025 Unbounded Consumption (verified) |
+
+Also relevant: LLM02 Sensitive Information Disclosure (§1 mitigates), LLM05 Improper Output Handling (never render model output as raw HTML/markdown-unsanitized), LLM07 System Prompt Leakage (don't put secrets in the system prompt; assume it leaks).
+
+## 6. Content Policy Tiers
+
+HelpBot's output policy, three tiers plus one:
+
+- **Allow:** order status, policy answers, tracking, frustration de-escalation.
+- **Warn + ground:** borderline refunds ("we're reviewing, here's the policy") — every answer carries the policy cite.
+- **Block + escalate:** legal threats, self-harm, CSAM, injection attempts — refuse, flag, route to the human queue with the red-flag marker.
+- **Silent-log:** repeated jailbreak attempts from one user — no tip-off reply like "nice try"; log and rate-limit.
+
+## 7. Audit Trails — Who Approved What, When
+
+Every consequential agent action writes a `worker_runs` row ([34.2.2 Audit Trails and Escalation Queues](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers/34-2-2-audit-trails-and-escalation-queues)): worker/version/model/prompt version, the structured `decision` jsonb, the `gate_result`, `approved_by`/`approved_at` (NULL = auto), `status`, and a `correlation_id` back to the ticket. "Who approved the $499 refund at 02:14?" must answer in one query:
+
+```sql
+SELECT worker_id, gate_result, approved_by, approved_at, occurred_at
+FROM worker_runs
+WHERE decision->>'action' = 'issue_refund' AND occurred_at::date = '2026-11-17'
+ORDER BY occurred_at;
+```
+
+Keep these rows append-only (no UPDATE/DELETE grants), reconcile weekly, and show them to auditors before they ask. Approvals without a person's name are not approvals.
+
+## 8. Incident Postmortem Template — Prompt-Injection Breach
+
+Fill within 48h, blameless, published internally per your policy (redact customer data):
+
+```text
+1. Summary (2 sentences). 2. Detection (who/what tripped first, how long to notice).
+3. Impact (customers, dollars, data classes, regulatory exposure).
+4. Timeline (injection lands -> agent acts -> detection -> kill switch -> recovery).
+5. Root cause (NOT "user bad" — which layer failed: detection, scope, approval, logging).
+6. What worked. 7. What failed. 8. Action items with owner + date (incl. golden-set additions).
+9. Regulatory assessment: GDPR notif? EU AI Act transparency? Contract breach notice? (counsel sign-off)
+```
+
+## 9. Regulatory Panorama — EU AI Act as of November 2026
+
+Not legal advice; dates verified November 2026 and post-AI-Omnibus (regulation in force 2026-07-27):
+
+- **Prohibited practices + AI-literacy:** applicable since 2025-02-02.
+- **GPAI obligations:** applicable since 2025-08-02; enforcement powers (fines) from 2026-08-02. Providers of GPAI models placed on the market before 2025-08-02 have until 2027-08-02.
+- **Transparency (Art. 50)** — e.g. telling users they are talking to AI: applicable and enforceable since 2026-08-02; content-marking transition deadlines land 2026-12-02.
+- **High-risk (Annex III, e.g. employment, credit, biometrics):** now applies from **2027-12-02** (extended by the AI Omnibus from 2026-08-02).
+- **High-risk in regulated products (Annex I):** 2028-08-02.
+
+ShopCore's HelpBot: likely **limited-risk/transparency** today (tell users it's AI; label AI-generated content where required). **If** it ever gates credit, hiring or biometric access for EU citizens, you are in Annex III territory — get counsel before that ships. Prohibited practices (social scoring, manipulative subliminal techniques) are banned, full stop. US: no federal AI law as of writing; state-level (e.g. Colorado, Utah) and sector rules evolve — again, counsel.
+
+## 10. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Card number visible in staging logs | Edge strip missing | Strip PAN/CVV at edge before app sees them; re-audit Presidio recognizers |
+| Erasure request can't find user's traces | Logs keyed on email, not user_id_hash | Migrate keys; test the deletion query monthly |
+| Provider DPA says 30-day retention, your logs say 13 months | Policy drift | Align SLAs or get customer consent; shorten to the stricter |
+| Agent issued refund after injection | Guardrail tripped post-action | 31.2.1 controls must gate the tool call pre-action; add the case to golden set |
+| Audit asks for AI-decision log, you have chat transcripts only | Wrong artifact | `worker_runs` append-only export; reconcile approver names weekly |
+
+## 11. Practice
+
+**Guided exercise.** Run the Presidio snippet on five synthetic tickets containing one PII item each; confirm redaction; check what happens with all recognizers disabled.
+
+**Independent exercise.** Write your retention & deletion SLA table (30/13/90-day tiers) and the one-query erasure procedure for your stack.
+
+**Challenge.** Draft the four contract-clause questions from §4 as an email to counsel. Draft the §8 postmortem for a fictional incident where an injected email won a $200 refund.
+
+**Assessment checklist**
+
+- [ ] PII is redacted before every model call; output is re-scanned; logs carry no raw prompts.
+- [ ] I can explain controller vs processor and what a DPA is for.
+- [ ] I know my erasure path covers traces, logs, golden sets, feedback and vector memory.
+- [ ] I can map jailbreak/tool-misuse/cost-DoS to the OWASP LLM Top 10 2025.
+- [ ] My consequential actions write append-only `worker_runs` rows with a named approver.
+- [ ] I have the postmortem template ready and know EU AI Act's current dates (2026 transparency enforcement; 2027 Annex III).
+- [ ] I treat every contract and jurisdiction claim as verify-with-counsel.
+
+</BookNodePage>

@@ -1,0 +1,61 @@
+---
+id: "14-3-2-constructive-code-review-standards"
+title: "14.3.2 Constructive Code Review Standards"
+sidebar_label: "Constructive Code Review Standards"
+slug: "/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-3-automated-testing-and-code-review/14-3-2-constructive-code-review-standards"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-14-s3-t2">
+
+Code review exists to **improve system reliability, catch blind spots, and spread architectural context across the team** — never to prove who is smartest or nitpick bracket styles that a formatter should handle automatically.
+
+## 1. Before You Request Review (Author Responsibilities)
+
+Great reviews start with great Pull Requests:
+
+1. **Self-review your own diff first:** Open the *Files changed* tab on GitHub before assigning reviewers. You will immediately catch leftover `console.log`s, dead imports, missing `.env.example` entries, and unguarded error paths.
+2. **Automate formatting and style:** Never waste human reviewer time on semicolons or quote styles. Let Prettier, ESLint, and Ruff fail CI automatically.
+3. **Keep PRs focused (~200–400 lines):** A 2,000-line PR gets rubber-stamped (`"LGTM"`) because nobody can hold 40 files in working memory. Split schema migrations, backend APIs, and frontend views into stacked or sequential PRs when large.
+
+## 2. What Reviewers Actually Look For (The 5-Layer Checklist)
+
+Inspect every PR in priority order — **correctness and security always beat style preferences**:
+
+1. **Correctness & Edge Cases:** What happens on empty arrays, `null` DB fields, duplicate clicks, concurrent requests, or `0` amounts?
+2. **Security & Privacy:** Are inputs validated with Zod/Pydantic? Are queries parameterized? Does the route check **both** authentication (`401`) and resource ownership (`WHERE user_id = $2`, preventing IDOR)? Are secrets or PII logged?
+3. **Data & Migrations:** Does a migration lock a massive production table? Can the code deploy without breaking older in-flight containers during rollout?
+4. **Tests & Observability:** Do new tests assert meaningful behavior? Are errors logged with structured context (`requestId`, `userId`) rather than swallowed silently (`catch {}`)?
+5. **Maintainability:** Are names clear? Will a teammate understand this control flow six months from now?
+
+## 3. Giving Constructive, Kind, Unambiguous Feedback
+
+Prefix comments with severity so authors know immediately what blocks merge vs. what is optional:
+
+| Prefix | Meaning | Example |
+| :--- | :--- | :--- |
+| **`[blocker]`** | Security flaw, data loss risk, or failing logic — must fix before merge | `"[blocker] This DELETE filters only by id, allowing any signed-in user to delete another customer's order. Add AND user_id = $2."` |
+| **`[suggestion]`** | Cleaner design or edge-case hardening — open to discussion | `"[suggestion] Extracting parseDueDate() would let us unit-test timezone boundaries without booting Express."` |
+| **`[question]`** | Seeking context on an architectural trade-off | `"[question] Why did we pick offset pagination here instead of keyset cursor?"` |
+| **`[nit]`** | Tiny non-blocking polish | `"[nit] Typo in variable name: taslId -> taskId (non-blocking)."` |
+
+### Rules for Healthy Review Culture
+
+- **Critique the code, never the person:** Say *"This loop runs an extra query per item (N+1)"*, never *"Why did you write such slow code?"*
+- **Explain *why*:** Backing feedback with a reason (*"Using `timingSafeEqual` avoids timing side-channels"*) teaches teammates instead of creating resentment.
+- **Approve with minor nits:** If only `[nit]` comments remain, click **Approve** so the author can fix the typo and merge without waiting another 24-hour review cycle.
+- **Move 5-round comment threads to a 5-minute call:** Written disagreement escalates fast; talk live, decide together, and summarize the decision on the PR.
+
+## Practice Exercises
+
+1. **Audit a Sample Diff:** Review one of your own past commits using the 5-Layer Checklist above and write three labeled review comments (`[blocker]`, `[suggestion]`, `[nit]`) explaining the *why* behind each.
+2. **Create a `.github/pull_request_template.md`:** Draft a concise 4-section PR template (Summary, Linked Issue, Testing Performed, Security/Migration Check) ready for Chapter 15.
+
+## Mastery Checklist
+
+- [ ] Self-reviews every PR diff and offloads formatting/linting to automated CI tools.
+- [ ] Audits PRs systematically for correctness, security/IDOR, migration safety, tests, and clarity.
+- [ ] Labels review feedback clearly (`[blocker]`, `[suggestion]`, `[question]`, `[nit]`) and explains *why* respectfully.
+
+</BookNodePage>

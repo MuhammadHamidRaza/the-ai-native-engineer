@@ -1,0 +1,34 @@
+---
+id: "index"
+title: "26.1 System Instructions & Prompt Architecture"
+sidebar_label: "26.1 System Instructions & Prompt Architecture"
+slug: "/part-07-ai-native-software-development/26-prompt-and-context-engineering/26-1-system-instructions-and-prompt-architecture"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-26-s1">
+
+Section 26.1 is the prompt itself, engineered: the parts that make a model work *before* any retrieval, tooling or orchestration is involved. Get these two lessons right and most "the model is being weird" mysteries become boring, fixable defects.
+
+## Section Map (≈3.5 focused hours)
+
+- **26.1.1 Role, Constraints and Output Contracts** — role as a constraint fence, system vs user division, most-restrictive-first ordering, enforceable contracts (exact JSON fields, word counts, forbidden phrases), the ShopCore refund-policy before/after, a taped-to-your-monitor checklist.
+- **26.1.2 Few-Shot Examples and Reasoning Scaffolds** — when 0/1/3/5+ shots, ordering and recency bias, distribution matching with edge cases, label leakage, chain-of-thought / plan-then-answer / self-consistency, when CoT hurts, and the ShopCore refund-classifier worked example (0-shot vs 5-shot vs CoT-5).
+
+## How to Work Through It
+
+Read 26.1.1 first — every later prompt in this book assumes you can write a contract and divide system from user. Then do 26.1.2 with your own hands on a real classification task; do not read it like an essay. Budget ~1.5h per lesson including the exercises. Keep a scratch file of prompts that failed and why — it becomes your personal intuition base.
+
+## Honest Prerequisites
+
+Chapter 25 (especially 25.2: tokens, context windows, structured outputs). No ML background. You need access to at least one chat model (free tiers are fine) and — for the exercises — an API key is helpful but not required.
+
+## Exit Criteria
+
+- [ ] You can turn a vague ask into a contract a program can check, and show the before/after.
+- [ ] You can explain why few-shot examples beat adjectives, and when they do not.
+- [ ] You know the lost-in-the-middle ordering implication and apply it (details in 26.2.1).
+- [ ] You can say when chain-of-thought is wrong for the job — and why.
+
+</BookNodePage>

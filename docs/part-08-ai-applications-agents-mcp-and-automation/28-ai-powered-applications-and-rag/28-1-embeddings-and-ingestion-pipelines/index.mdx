@@ -1,0 +1,38 @@
+---
+id: "index"
+title: "28.1 Embeddings & Ingestion Pipelines"
+sidebar_label: "28.1 Embeddings & Ingestion Pipelines"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28-s1">
+
+Before HelpBot can answer anything, ShopCore's six policy PDFs must pass through an **ingestion pipeline**: a repeatable, re-runnable job that parses documents into clean text, splits them into chunks, embeds each chunk, and stores vectors plus metadata where a retriever can filter them in milliseconds. This section is where most RAG projects quietly succeed or fail — no model can recover a fact that never survived parsing.
+
+## Pipeline Stages
+
+1. **Parse** — PDF/DOCX/HTML/Markdown to text, preserving headings, page numbers, tables (28.1.1).
+2. **Chunk** — split text into embedding-sized units with overlap and structure metadata (28.1.1).
+3. **Embed** — call `text-embedding-3-small` (1536 dims) or `text-embedding-3-large` (3072 dims), verified Nov 2026 (28.1.2).
+4. **Index & Filter** — store vectors in Postgres + pgvector (default) or a dedicated vector DB, with metadata for `doc_type`, `effective_date`, `access_tier` (28.1.2).
+
+```text
+returns.pdf ─► parser ─► [{text, page, heading_path}] ─► chunker
+                                                            │
+              vector index ◄── upsert ◄── embedder ◄── chunks
+                    │
+              filtered similarity search (doc_type, effective_date >= today-2y)
+```
+
+## The Two Topics in This Section
+
+- **[28.1.1 Document Parsing and Chunking Strategies](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines/28-1-1-document-parsing-and-chunking-strategies)** — extraction libraries (`pdf-parse`, `unstructured`, PyMuPDF), chunk sizing math on the ShopCore returns policy, overlap, structure metadata, and the parsing mistakes that cause "empty retrieval."
+- **[28.1.2 Vector Indexing and Metadata Filtering](/book/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines/28-1-2-vector-indexing-and-metadata-filtering)** — cosine vs dot product, 1536 vs 3072 dimensions, pgvector vs Qdrant vs Pinecone, HNSW vs IVFFlat, and the lab where you embed all 6 policy docs and verify top-3 retrieval by hand.
+
+## What You Should Bring
+
+A working Part 04 checkout: Postgres running, `psql` on PATH, Node 22+, and the ShopCore policy PDFs from `apps/api/docs/policies/` (or your own equivalents — six documents is enough to learn on). Verified Nov 2026: embedding dimensions and pgvector 0.8.x behavior cited here match current official docs; re-check both before production since both evolve.
+
+</BookNodePage>

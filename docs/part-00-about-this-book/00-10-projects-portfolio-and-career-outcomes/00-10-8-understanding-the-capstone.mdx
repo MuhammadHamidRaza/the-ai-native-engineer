@@ -1,0 +1,201 @@
+---
+id: "00-10-8-understanding-the-capstone"
+title: "00.10.8 Understanding the Capstone"
+sidebar_label: "00.10.8 Understanding the Capstone"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-8-understanding-the-capstone"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-8">
+
+Everything trained across **Parts 01 through 09** (`602 focused hours`) converges inside **Part 10 — Chapter 42: From Real Problem to Production Product (`36 focused hours`)**. Rather than concluding a 638-hour technical education with passive recall quizzes or an isolated script, Chapter 42 requires you to scope, architect, build, test, deploy, evaluate, document, and present **one complete, production-grade AI-native system** uniting every engineering layer in the curriculum.
+
+Because **36 focused hours** equal roughly a disciplined multi-week evening/weekend studio sprint (or one intensive focused workweek), the Integrated Capstone is substantial enough to require authentic architectural trade-offs and non-trivial integration work—yet intentionally bounded via vertical slicing ([00.8.4](/book/part-00-about-this-book/00-8-fde-mindset/00-8-4-slicing-deliverables)) so you finish and ship cleanly rather than abandoning an over-ambitious monolith halfway through.
+
+## The Six Mandatory Engineering Pillars of Chapter 42
+
+Regardless of which operational domain you choose—healthcare intake verification, logistics discrepancy triage, engineering incident runbook retrieval, vendor contract review, customer support workbench, or B2B workflow automation—every Chapter 42 Capstone must demonstrate **all six architectural pillars**:
+
+| Capstone Pillar | Upstream Curriculum Roots | Concrete Verification Requirement |
+| :--- | :--- | :--- |
+| **1. FDE Problem Framing & Slice Spec** | **Section 00.8** & **Part 09** (`Ch 37–41`) | Written Problem Brief, As-Is / To-Be workflow map, clear target metrics, explicit Slice 1 scope, and documented non-goals |
+| **2. Interactive Typed Frontend UI** | [Part 02](/book/part-02-javascript-and-frontend-development) (`Ch 04–08`) | Accessible, responsive TypeScript + React / Next.js workbench with streaming feedback, clean empty/error states, and human review/approval controls |
+| **3. Persistent Backend, Auth & PostgreSQL** | [Parts 03–04](/book/part-04-databases-backend-and-full-stack-development) (`Ch 09–15`) | Authenticated FastAPI or Node API, Zod/Pydantic boundary checks, normalized PostgreSQL schema + migrations, `workspace_id` tenant scoping, and async/idempotent execution where needed |
+| **4. Grounded AI / RAG / Bounded Agent Core** | [Part 08](/book/part-08-ai-applications-agents-mcp-and-automation) (`Ch 28–36`) | Genuine operational AI layer (citation-grounded `pgvector` hybrid RAG, structured extraction with deterministic checks, or bounded MCP/tool workflow) with server-only keys and token/step guards |
+| **5. Automated Tests, CI & Golden Eval Suite** | **Part 06** & **Ch 36** | Passing unit/integration tests verifying security + core invariants, GitHub Actions CI workflow, and a golden evaluation suite measuring accuracy/format reliability across realistic edge cases |
+| **6. Live Cloud Deployment & Handover Pack** | [Part 05](/book/part-05-deployment-cloud-and-devops) (`Ch 16–22`) & **Part 09** | Working public URL (with instant sandbox demo access!), `Docker Compose` parity, `.env.example`, ADRs, structured request/cost logs, and an operator runbook |
+
+```text
++-----------------------------------------------------------------------------+
+|  CHAPTER 42 CAPSTONE REFERENCE BLUEPRINT (36 FOCUSED HOURS)                 |
++-----------------------------------------------------------------------------+
+|  Hour 01–04  | Listen & Map -> Problem Brief + As-Is/To-Be + Slice 1 Spec   |
+|  Hour 05–10  | Deterministic Spine -> Postgres Schema + Auth + Seed Data    |
+|  Hour 11–18  | Core Workflow Slice -> API + Interactive Review UI           |
+|  Hour 19–26  | AI Integration -> RAG / Extraction / MCP + Token/Step Guards |
+|  Hour 27–31  | Verify & Eval -> Tests + CI + >=20-Case Golden Eval Baseline |
+|  Hour 32–36  | Deploy & Handover -> Docker + Live HTTPS + ADRs + Runbook    |
++-----------------------------------------------------------------------------+
+```
+
+## Choosing a High-Value Capstone Scope (And Filtering Bad Ideas Early)
+
+The most dangerous capstone failure happens in **Hour 1**: choosing a scope meant for a 15-person company across six months (*"Build a multi-tenant AI ERP replacing Salesforce, Jira, and QuickBooks"*) or choosing a thin toy (*"Build a single-page chatbot that summarizes pasted paragraphs"*).
+
+Evaluate your candidate Capstone idea against three sanity gates before writing your first migration:
+1. **Does it have non-trivial deterministic state?** If removing the AI model leaves *nothing* except a blank screen, the project lacks genuine backend and relational rigor. Strong capstones enforce user roles, documents, runs, approvals, and audit trails in PostgreSQL cleanly.
+2. **Does AI add clear leverage while staying verifiable?** Can an operator inspect *why* the AI proposed an output (clickable source chunks, highlighted invoice rows, traceable tool call traces) and approve/correct it cleanly?
+3. **Can Slice 1 ship completely in 36 hours?** If the system needs four third-party OAuth integrations, mobile native apps, and custom Stripe billing webhooks just to demonstrate the core workflow, trim aggressively until the **single core operational loop** fits comfortably inside 36 hours with time left for evaluation and deployment polish.
+
+## How Chapter 42 Anchors Your Post-Book Trajectory
+
+When complete, your **Chapter 42 Integrated Capstone** sits cleanly at **Slot #1** of your developer portfolio (`00.10.3`) and powers your technical deep-dive conversations (`00.10.5`):
+- Instead of showing vague toy clones, you share one live URL, a crisp 90-second video walkthrough, a reproducible `README.md`, written ADRs explaining *why* you chose `pgvector` or human-approval gates, and an empirical evaluation report showing how your system behaves on messy inputs.
+- For learners targeting **FDE, Applied AI, or Founding Engineer** tracks (`00.3`), Chapter 42 rehearses the exact **Listen → Map → Measure → Slice → Build → Verify → Handover** muscle expected on day one of real work.
+
+Start collecting realistic workflow friction ideas in a small notes file as you progress from **Part 02** onward—when you arrive at hour **603**, your Capstone domain, edge cases, and design clarity will already be sharp.
+
+## Concrete Capstone Blueprints Across High-Signal Domains
+
+Notice how strong Chapter 42 projects deliberately avoid generic *"chat with PDF"* wrappers and instead couple deterministic workflow state with verifiable AI intelligence:
+
+| Capstone Domain | Deterministic Core (`Parts 02–06`) | Bounded AI + Eval Layer (`Parts 07–08`) | Verifiable Real-World Metric |
+| :--- | :--- | :--- | :--- |
+| **Vendor Invoice & PO Discrepancy Workbench** | Multi-tenant workspaces, vendor catalogs, cent-integer Postgres ledgers, approval audit logs | Multimodal line-item JSON extraction + Zod/SQL catalog cross-check + citation-linked contract check | Turnaround cut from `15 min → <3 min`; math audit catches 100% of unit-price mismatches |
+| **Engineering Incident & Runbook Triage Console** | Git webhook signature verify, idempotency keys, service catalog, team RBAC escalation routing | Permission-filtered hybrid `pgvector` RAG over active runbooks + read-only log inspection agent | Zero citation hallucinations across `30+` synthetic & messy outage tickets |
+| **Clinic Referral & Pre-Check Coordinator** | Patient-safe pseudonymized queue, payer rule matrix in Postgres, human coordinator sign-off UI | Structured attachment parsing + policy gap checklist + missing-doc draft generator | Catches missing prior-authorization fields pre-submission cleanly |
+
+## Inside the Chapter 42 Code & Evaluation Standard
+
+Your final capstone repository demonstrates engineering rigor cleanly inside the codebase itself—not inside slide decks alone. At minimum, reviewers look for disciplined data integrity, bounded AI invocation, and reproducible evaluation proof:
+
+```sql
+-- Representative Capstone Spine: Auditable Workflow Runs + Human Feedback Ledger
+CREATE TABLE capstone_runs (
+  id              UUID PRIMARY KEY,
+  workspace_id    UUID NOT NULL,
+  input_hash      TEXT NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('QUEUED','NEEDS_REVIEW','APPROVED','FAILED')),
+  ai_output_json  JSONB NOT NULL,
+  human_edit_json JSONB,
+  prompt_tokens   INTEGER NOT NULL DEFAULT 0,
+  output_tokens   INTEGER NOT NULL DEFAULT 0,
+  latency_ms      INTEGER NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (workspace_id, input_hash)
+);
+```
+
+Notice four production signals packed into just one table: tenant isolation (`workspace_id`), webhook/upload duplicate protection (`UNIQUE (workspace_id, input_hash)`), explicit finite state machine (`CHECK status`), and side-by-side FinOps + accuracy learning telemetry (`human_edit_json`, tokens, latency).
+
+Pair that schema with a runnable **Golden Evaluation Runner (`Ch 36`)** checked right into `evals/` that asserts schema validity, forbidden hallucination patterns, expected citations, and token ceiling compliance before any release ships:
+
+```typescript
+// Minimal Golden Eval Assertion Pattern Expected in Chapter 42
+for (const testCase of goldenDataset) {
+  const result = await runWorkflowPipeline(testCase.input, { dryRunNoWrites: true });
+  assertSchemaValid(result.output);
+  assertExpectedCitationPresent(result.citations, testCase.requiredClauseId);
+  assertWithinLatencyAndTokenCap(result.telemetry, { maxMs: 5000, maxTokens: 6000 });
+}
+```
+
+## Capstone Readiness Gate: Hour-36 Ship-Day Checklist
+
+Before calling Chapter 42 complete and presenting your flagship project inside your portfolio:
+1. **Clean Fresh-Clone Boot:** A reviewer cloning the repo, copying `.env.example`, and following `README.md` boots database, backend, and frontend smoothly in under 5 minutes.
+2. **Negative-Path Proof:** Unauthenticated requests return `401`, cross-workspace reads return `403/404`, malformed payloads fail with explicit validation messages, and upstream AI timeouts surface recoverable operator states.
+3. **Live Demo Safety:** Seeded anonymized fixtures allow instant exploration without requiring visitors to create external accounts or upload private production data.
+4. **Honest Trade-Off Docs (`ADRs`):** Written documentation states clearly what was intentionally kept deterministic vs. AI-assisted, known failure boundaries from your eval report, and concrete Slice 2 next steps.
+
+## Capstone Verification Rubric: Deterministic vs. AI Boundaries
+
+Before you mark any **Chapter 42** build ready for review, verify how responsibilities cleanly split across deterministic engineering and probabilistic AI components inside your codebase:
+
+| Failure Scenario | Incorrect Toy Handling | Chapter 42 Production Handling |
+| :--- | :--- | :--- |
+| **LLM invents an invalid price or unknown SKU** | Silently stores hallucinated numbers in Postgres and displays `$NaN` | Zod/Pydantic schema rejects malformed shape; deterministic SQL lookup flags unknown SKU as `NEEDS_REVIEW` cleanly |
+| **Duplicate webhook or user double-click arrives** | Triggers two expensive LLM runs and creates duplicate invoice records | PostgreSQL `UNIQUE (workspace_id, input_hash)` returns existing `run_id` idempotently without re-billing tokens |
+| **Cross-tenant record ID passed in URL or API body** | Queries `WHERE id = $1` only, leaking another organization's documents | Every SQL `SELECT`/`UPDATE` and `pgvector` query binds `WHERE workspace_id = $1 AND id = $2` server-side |
+| **Upstream model API returns `429` or stalls 20s** | Unhandled promise rejection returns HTTP `500` HTML stack trace to UI | Bounded timeout (`AbortSignal.timeout`) transitions row to `FAILED` with operator retry button and preserved input |
+| **Unbounded agent tool loop burns quota** | Recursive `while(true)` loop calls tools 40 times on an ambiguous ticket | Server enforces `maxSteps = 5` and daily workspace token ceiling (`ai_usage_events`), failing safely into human review |
+
+## Sample Runnable Golden Evaluation Script (`evals/run_evals.ts`)
+
+Instead of eyeballing three prompts in Swagger, Chapter 42 requires a scripted evaluation harness that runs cleanly in CI or before every release—reporting concrete pass counts rather than guesswork:
+
+```typescript
+// evals/run_evals.ts — deterministic + AI quality regression gate for Chapter 42
+import { readFileSync } from "node:fs";
+import { runWorkflowPipeline } from "../src/services/pipeline";
+
+interface GoldenCase {
+  id: string;
+  inputText: string;
+  expectedStatus: "APPROVED" | "NEEDS_REVIEW";
+  requiredCitationId: string | null;
+  maxAllowedTokens: number;
+}
+
+const dataset: GoldenCase[] = JSON.parse(
+  readFileSync("evals/golden_cases.json", "utf8")
+);
+
+async function main() {
+  let passed = 0;
+  for (const tc of dataset) {
+    const start = performance.now();
+    const out = await runWorkflowPipeline(tc.inputText, { dryRun: true });
+    const elapsedMs = Math.round(performance.now() - start);
+
+    const statusOk = out.status === tc.expectedStatus;
+    const citationOk =
+      tc.requiredCitationId === null ||
+      out.citations.some((c) => c.id === tc.requiredCitationId);
+    const budgetOk = out.totalTokens <= tc.maxAllowedTokens;
+
+    if (statusOk && citationOk && budgetOk) {
+      passed += 1;
+    } else {
+      console.error(
+        `[FAIL] ${tc.id} status=${out.status} (expected ${tc.expectedStatus}) ` +
+        `tokens=${out.totalTokens} elapsed=${elapsedMs}ms`
+      );
+    }
+  }
+
+  console.log(`Golden Eval Summary: ${passed}/${dataset.length} passed`);
+  if (passed < Math.floor(dataset.length * 0.9)) {
+    process.exitCode = 1; // Block release if accuracy drops below 90% threshold
+  }
+}
+
+main();
+```
+
+Notice why an automated evaluation harness like this transforms how senior engineers evaluate your Capstone:
+1. Every regression caused by an edited system prompt, model upgrade, or chunk-size change is exposed numerically in seconds (`18/20 passed`) instead of sneaking silently into production.
+2. Putting `dryRun: true` inside the harness keeps automated evaluations strictly isolated from live side-effect tables and customer webhooks.
+3. Recording `evals/baseline_report.md` inside your repository—explicitly noting which 2 cases out of 20 still require human review and why—proves authentic engineering honesty (`00.4.6`).
+
+## Structuring Your 90-Second Demo & Handover Walkthrough
+
+Even a clean full-stack architecture loses impact if a hiring manager or stakeholder cannot grasp its value inside two minutes. Pair your deployed URL and GitHub repo with a crisp, unhurried 90-second video walkthrough following this exact beat sheet:
+- **0:00–0:15 (Operational Context):** State the manual workflow bottleneck directly (*"Warranty coordinators spent 18 minutes cross-checking messy PDFs against ERP contracts; Slice 1 cuts review to under 3 minutes"*).
+- **0:15–0:45 (Happy Path + Discrepancy Catch):** Upload a realistic messy invoice fixture, show streaming progress, and point out how deterministic code caught a unit-price mismatch beside clickable `pgvector` contract citations.
+- **0:45–1:05 (Approval Gate & Audit Log):** Click **Approve with Correction**, refresh the browser cleanly to prove PostgreSQL persistence, and inspect the audit ledger.
+- **1:05–1:30 (Tests, Evals & Known Bounds):** Show `npm test` + `evals/run_evals.ts` passing in terminal, highlight one ADR (`docs/adr/001-*.md`), and close calmly.
+
+## Practical Exercise: Run the 3-Gate Filter on a Capstone Idea
+
+Sketch one concrete candidate domain for your future **Chapter 42** system in six lines: (1) target operator role and daily pain, (2) core deterministic database tables (`>= 3` entities), (3) specific AI task + deterministic guardrail, (4) twenty realistic messy test inputs you will put inside your golden evaluation set, and (5) one major non-goal explicitly excluded from Slice 1 so all six pillars finish cleanly within 36 hours.
+
+## Official Primary References
+
+- [PostgreSQL JSONB & Constraint Documentation](https://www.postgresql.org/docs/current/datatype-json.html)
+- [Architecture Decision Records (ADR Guide)](https://adr.github.io/)
+- [OpenAI Evaluation Best Practices](https://platform.openai.com/docs/guides/evals)
+- [Google Gemini Structured Outputs Documentation](https://ai.google.dev/gemini-api/docs/structured-output)
+
+</BookNodePage>

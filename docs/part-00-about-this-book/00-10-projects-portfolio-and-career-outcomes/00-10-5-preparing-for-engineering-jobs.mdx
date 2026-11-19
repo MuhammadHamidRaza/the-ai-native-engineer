@@ -1,0 +1,112 @@
+---
+id: "00-10-5-preparing-for-engineering-jobs"
+title: "00.10.5 Preparing for Engineering Jobs"
+sidebar_label: "00.10.5 Preparing for Engineering Jobs"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-5-preparing-for-engineering-jobs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-5">
+
+Technical interviews for full-stack, **Applied AI**, **Agentic AI**, and **Forward Deployed Engineer** roles have shifted markedly beyond disconnected whiteboard trivia alone. While core data structures, clean coding clarity, and logical problem decomposition remain essential screening layers, hiring teams increasingly examine whether you can **read unfamiliar codebases calmly, debug realistic backend/frontend failures, design reliable AI + PostgreSQL architectures, and reason through ambiguous user constraints live.**
+
+`Chapter 38 (Jobs & Career Development)` inside `Part 09` and `Appendix D` cover resume positioning, technical screening loops, and job-search strategy in full detail. Here in **Part 00**, see clearly how every hour of your **638-hour** training maps directly onto modern technical interview rounds—so preparation compounds daily rather than turning into late cramming.
+
+## Mapping Modern Interview Rounds to Curriculum Mastery
+
+| Common Interview Round | What Hiring Teams Actually Test | How This Curriculum Trains You Continuously |
+| :--- | :--- | :--- |
+| **1. Unassisted Coding & Problem Decomposition** | Reading edge cases carefully, handling `null`/empty inputs, writing readable TypeScript or Python logic without chat crutches | **Manual Practice (`00.6.3`)** + **Ch 02 Critical Thinking** keeps array/map/string transforms and edge guards sharp |
+| **2. Live Debugging & Code Review** | Tracing why a React render loops, an async route returns stale state, a SQL query stalls, or an AI JSON parser crashes | **Scientific Debugging (`00.6.6`, Ch 03, 22)** + reviewing diffs cleanly (`00.7.3`) |
+| **3. Full-Stack & AI System Design** | Structuring real systems: auth/RBAC, normalized SQL schemas, async ingestion queues, hybrid `pgvector` RAG, evals, security, and token cost trade-offs | **Part 04 (Data)** + **Part 06 (System Design)** + **Part 08 (`Ch 28–36`)** + ADR habits (`00.10.4`) |
+| **4. Customer / FDE Scenario Walkthrough** | Converting messy stakeholder pain into workflow maps, baseline metrics, thin Slice 1 scoping, and calm trade-off communication | **Section 00.8 (FDE Mindset)** + **Chapters 37 & 39** |
+| **5. Portfolio & Architecture Deep Dive** | Defending your flagship repo (`Ch 42` or `Part 08`): schema keys, eval dataset misses, security boundaries, and failure recovery | **00.10.2–00.10.4** case studies + authentic ownership (`00.7.5`) |
+
+## How Interviewers Spot Authentic Depth vs. AI-Generated Fluff
+
+Experienced technical interviewers calibrate candidates within five minutes using simple **why-and-failure follow-ups**:
+
+```text
+Shallow Candidate:  "I built an AI RAG platform with LangChain, Next.js, and Vector DB!"
+Interviewer Follow: "What failed when two workspaces uploaded files with identical names,
+                     and how did you verify chunk retrieval didn't leak across tenants?"
+
+Authentic Engineer: "We keyed uploads by (workspace_id, sha256_hash) with a unique SQL
+                     constraint, filtered workspace_id inside PostgreSQL before ranking
+                     pgvector cosine distance, and proved isolation using an integration
+                     test plus a 30-query eval set checking citation IDs."
+```
+
+Notice the difference: **authentic engineers remember specific bugs they diagnosed, invariants they enforced, and trade-offs they chose**, because they genuinely wrote and debugged the system instead of letting an AI tool assemble mystery folders untouched.
+
+## Four Honest Realities About Technical Hiring
+
+1. **No curriculum or certificate guarantees a job offer:** Technical competence is foundational, not magic on its own. Applying thoughtfully to roles aligned with your target engineering track (`00.3`), demonstrating clear proof via live repositories (`00.10.3`), iterating calmly after rejections, and communicating honestly in interviews all shape real outcomes.
+2. **Shallow AI buzzwords fail screens immediately:** Putting `"Agentic RAG MCP Orchestrator"` at the top of a resume while failing basic HTTP `401` vs. `403`, SQL `JOIN`, or TypeScript async debugging questions destroys credibility quickly. Sequencing **Parts 01–06 before Part 08** insulates you completely from that mismatch.
+3. **Calm failure narration beats fake perfection:** Interviewers trust candidates who openly explain *"here is where our initial naive extraction failed on scanned invoices, how we isolated five failing cases in an eval harness, and why adding deterministic total checks fixed silent math slips."*
+4. **Consistency outlasts intensity:** Practicing clean manual coding (`00.6.3`), writing crisp commit/ADR notes, and finishing two or three solid end-to-end systems prepares you far more reliably than rushing through fifty half-understood LeetCode solutions alongside unverified repos.
+
+## Practical Exercise: Rehearse One "Why & Failure" Defense
+
+Choose one technical decision from a project you have built—or pick a future architecture choice such as storing embeddings in `pgvector` or wrapping side-effecting agent calls in approval gates—and rehearse answering three follow-up questions **out loud in 90 seconds each**:
+1. *What alternative did you reject, and why?*
+2. *What specific input or scale boundary breaks this design first?*
+3. *How do you verify automatically in CI or evals that it still works after a code edit?*
+
+## What Live Coding & Debugging Evaluators Actually Score
+
+Contrary to rumor, most pragmatic full-stack and AI engineering interviews do **not** fail candidates over forgetting a minor array method name—they filter candidates out over chaotic engineering habits during a 45-minute pairing session:
+
+| Observed Behavior During Pairing | Negative Signal (`Pass Risk`) | Positive Signal (`Strong Hire Signal`) |
+| :--- | :--- | :--- |
+| **First 3 minutes on an unfamiliar bug** | Randomly edits three files at once and re-runs tests blindly hoping it goes green | Reads full stack trace, states one crisp hypothesis, inspects failing inputs & DB rows systematically (`00.6.6`) |
+| **Handling ambiguous requirements** | Starts typing boilerplate immediately before confirming edge cases or auth rules | Asks two sharp clarifying questions (`"What happens on empty CSV?"`, `"Should duplicate webhooks upsert or return 200?"`) |
+| **SQL & API boundary reasoning** | Suggests checking permissions inside React state or trusting client-passed `userId` | Enforces session lookup server-side, parameterizes SQL queries, and handles `401`/`403`/`422` explicitly |
+| **Evaluating AI workflow trade-offs** | Says *"We'll let the agent retry until it works"* without bounding cost or validation | Proposes Pydantic/Zod schema checks, deterministic fallback rules, `MAX_STEPS`, and a 30-case golden evaluation baseline |
+
+## Translating Your Weekly Study Habit Into Continuous Interview Readiness
+
+Notice how practicing honestly across **Parts 01–10** builds interview fluency passively without needing separate six-month cram bootcamps afterward:
+- During **Parts 02–04**, narrate aloud *why* you structured a state reducer or foreign key constraint (`rubber-ducking` builds clear verbal explanations under pressure).
+- During **Part 06 (`Ch 22–24`)**, practice reading slow query plans (`EXPLAIN ANALYZE`) and writing defensive negative tests before touching UI polish.
+- During **Part 08 (`Ch 28–36`)**, keep a one-page log of every subtle AI failure mode you fixed (e.g., stale chunk ranking, unguarded agent loops, malformed JSON) so you answer *"Tell me about a tough bug in an AI system you built"* with authentic technical precision.
+
+## Practical Check: Can You Pass Three Baseline Screening Prompts Unassisted?
+
+Without opening an AI assistant, test yourself once you complete **Part 04**:
+1. Write an idempotent function grouping invoice items by `vendorId` and summing integer cents safely while ignoring corrupt zero-quantity rows.
+2. Write a SQL query joining `workspaces` and `documents` returning recent failed jobs for one tenant sorted by timestamp descending.
+3. Sketch on paper how browser -> API -> PostgreSQL -> `pgvector` -> LLM -> Zod validation protects user privacy and prevents hallucinated IDs.
+
+## Worked Solution Sketch for Screening Prompt #1 (No AI Needed)
+
+Notice how interviewers look for calm data modeling, integer money arithmetic, and defensive edge handling even inside tiny 20-line exercises:
+
+```typescript
+interface InvoiceLine {
+  vendorId: string;
+  unitPriceCents: number;
+  qty: number;
+}
+
+export function sumVendorTotalsCents(lines: readonly InvoiceLine[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const line of lines) {
+    if (!line.vendorId || !Number.isInteger(line.qty) || line.qty <= 0) continue;
+    if (!Number.isInteger(line.unitPriceCents) || line.unitPriceCents < 0) continue;
+    totals[line.vendorId] = (totals[line.vendorId] ?? 0) + line.unitPriceCents * line.qty;
+  }
+  return totals;
+}
+```
+
+Speaking cleanly aloud about *why* you guarded negative integers, avoided floating-point dollars (`0.1 + 0.2`), and verified non-positive quantities during a live screen communicates production engineering maturity immediately—whether interviewing for a backend, full-stack, Applied AI, or Forward Deployed Engineer position.
+
+## Official Primary References
+
+- [Martin Fowler — Software Architecture Guide (`martinfowler.com`)](https://martinfowler.com/architecture/)
+- [PostgreSQL EXPLAIN Documentation](https://www.postgresql.org/docs/current/using-explain.html)
+- [Google SRE Book — Effective Troubleshooting Principles](https://sre.google/sre-book/effective-troubleshooting/)
+
+</BookNodePage>

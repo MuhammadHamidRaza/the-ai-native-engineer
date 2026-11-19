@@ -1,0 +1,166 @@
+---
+id: "21-2-2-engineering-decisions-adrs-trade-offs-technical-debt-build-vs-buy"
+title: "21.2.2 Engineering Decisions: ADRs, Trade-offs, Technical Debt and Build vs Buy"
+sidebar_label: "21.2.2 Engineering Decisions: ADRs, Trade-offs, Technical Debt and Build vs Buy"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-2-requirements-decisions-and-domain-modeling/21-2-2-engineering-decisions-adrs-trade-offs-technical-debt-build-vs-buy"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s2-t2">
+
+Engineering is a sequence of decisions you cannot take back cleanly: the ID in the payment table, the retry policy, the monolith boundary. Slack threads remember none of them. Six months later the question "why did we do this?" has no answer, and the team either repeats the decision badly or is afraid to touch it. The Antidote is boring and cheap — a one-page ADR written in 30 minutes. This lesson gives you the format, two real ShopCore examples, and the surrounding machinery: trade-off tables, risk math, debt classes and the build-vs-buy gate.
+
+## 1. The ADR Format
+
+One file per decision, `docs/adr/NNNN-title.md`, five fields:
+
+- **Status** — proposed / accepted / superseded by ADR-00X / deprecated.
+- **Context** — the forces in play *at the time*. What was true (traffic, team size, budget, incidents) when this was written.
+- **Decision** — the choice, in one or two sentences.
+- **Consequences** — both kinds, honestly: what gets easier, what gets locked out, what you now must watch.
+
+ADRs are immutable once accepted; you supersede, you don't edit. The git history is the audit trail.
+
+## 2. ADR-001: Monolith vs Services (Worked Example)
+
+```text
+ADR-001  Monolith-first architecture for ShopCore                  2026-09-18
+Status: accepted
+
+Context: ShopCore is one Rails-era Express API serving catalog, cart,
+ordering, payments, auth. Team is 3 engineers. 400 orders/day peak.
+Payments go through Stripe; we never hold card data. An incident last
+quarter: a N+1 in the catalog endpoint timed out checkout AND product
+pages. We considered extracting payments into a service.
+
+Decision: Stay a single deployable (modular monolith, bounded contexts
+per 21.2.3). Extract Payments FIRST when team >= 2 squads on payments,
+or when payment SLOs (99.95% availability) diverge from shop SLOs,
+whichever comes first. No other extraction without a new ADR.
+
+Consequences: + One migration, one deploy, one log stream, one rollback.
++ Atomic order+inventory transaction stays trivial (single PG).
+- One bad deploy can still take down catalog and checkout together.
+- Must enforce module boundaries by convention + 21.2.3's rules, or the
+  monolith rots into a big ball of mud. Mitigation: dependency-cruiser
+  rules in CI; review checklist item.
+```
+
+## 3. ADR-002: Redis vs In-Memory Session/Cart Cache
+
+```text
+ADR-002  Redis for cache + rate limiting, Postgres remains source of truth 2026-10-02
+Status: accepted
+
+Context: Sessions live in Postgres (15.2.2). Cart reads are 60% of DB
+load at peak. An in-memory Map cache prototyped in a branch cut p95
+cart latency from 180 ms to 40 ms — on one instance. We run 2 API
+instances on the PaaS; an in-memory cache would halve hit rate and
+diverge carts across instances.
+
+Decision: Redis 7 (managed) for: product cache (TTL 60 s), rate-limit
+counters (sliding window), job queue. NOT for sessions (stay in PG,
+ADR continuity) and NOT for inventory truth (Postgres only, 21.4.1).
+
+Consequences: + Shared state across instances; hit rate ~85% at peak.
++ Rate limiting survives deploys and restarts.
+- New failure mode: Redis down. Rule: cache miss => query PG (slow but
+  correct); rate limiter fails OPEN for reads, fails CLOSED for payment
+  endpoints. Rehearsed in 21.4.2 drill.
+- Memory-bounded eviction (allkeys-lru) acceptable for catalog cache;
+  never eviction-tolerant for rate-limit counters => separate logical DBs.
+```
+
+## 4. Trade-Off Tables
+
+Every ADR should contain the table it lost to. Three tables ShopCore faces repeatedly:
+
+| Trade-off | Stronger side | Weakest link | ShopCore ruling |
+| :-- | :-- | :-- | :-- |
+| Consistency vs Latency | Latency wins for catalog reads | Oversell risk on stock | Catalog: eventual (60 s TTL); Stock: strong (row lock) |
+| Cost vs Speed | Cost wins at v1 ($0 target) | Outage hours cost more | Managed free tiers now; budget trigger: 500 orders/day → paid |
+| Simplicity vs Scale | Simplicity until pain is proven | Premature scale costs real money | Monolith until team/SLO triggers (ADR-001) |
+
+If a table row surprises you, the ADR is wrong — you have not yet found the real constraint.
+
+## 5. Risk Analysis — Probability × Impact
+
+Score 1–5 each; risk = P × I. Anything ≥ 12 gets a mitigation *in the ADR*, not in a later ticket:
+
+| Risk | P | I | Score | Mitigation |
+| :-- | --: | --: | --: | :-- |
+| Stripe webhook lost / replayed | 3 | 4 | 12 | Idempotent handler + daily reconciliation report (Finance) |
+| Stock oversell on last unit | 4 | 3 | 12 | Atomic decrement + `stock >= 0` CHECK (21.4.1) |
+| Secret (Stripe key) leaks via git | 2 | 5 | 10 | gitleaks in CI + pre-commit hook (22-1-2); rotation drill quarterly |
+| Neon outage mid-peak | 2 | 4 | 8 | PITR restore runbook; checkout fails safe (retry later) — accept |
+| Support agent joins `orders` directly | 5 | 2 | 10 | 21.2.3 read-model; revoke direct table perms from support role |
+
+## 6. Technical Debt — the Quadrant
+
+Fowler's quadrant — deliberate/inadvertent × reckless/prudent:
+
+```text
+                RECKLESS                     PRUDENT
+DELIBERATE  "We don't have time for     "Ship now, refactor after
+             tests — ship it."            ADR-001 triggers."  <- ADR-001
+INADVERTENT "What's a connection pool?"  "Didn't know PG rolled back
+                                            DDL in txn — learned, now we
+                                            lint migrations."
+```
+
+- Reckless-deliberate: forbidden by review; named and blocked in checklist.
+- Prudent-deliberate: written in the ADR with a payoff date and owner ("after launch, split checkout modules — 2 days").
+- Inadvertent: blameless postmortems (20.2.4) convert these into guards (lint, tests).
+
+Debt service rule: if debt interest (repeated workarounds, redeploy fear) exceeds payoff interest, it is not debt — it is the architecture, and the ADR must say so.
+
+## 7. Build vs Buy — the Decision Tree
+
+```text
+Is the capability core to our differentiation?
+   | YES                                        | NO
+   v                                            v
+Do we have (or can we hire) 2+ people      Is it regulated/compliance-heavy
+to own it for 3+ years?                    or security-critical?
+   | YES          | NO                       | YES              | NO
+   v              v                          v                 v
+BUILD          BUY (SaaS/API)            BUY + audit        BUY vs RENT on
+                                          (Stripe, Neon)     T-shirt cost:
+                                                              <1 eng-month
+                                                              and <$X/mo -> buy
+```
+
+ShopCore rulings: payments → **buy** (Stripe; PCI scope control; core to trust, not differentiation). Search → buy at this scale (Postgres FTS; see [12.3.3](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-3-jsonb-full-text-search-and-pgvector)) — building relevance is a team, not a sprint. Order state machine → **build** — it *is* the business. Analytics → defer; Stripe + Postgres reports until volume justifies a warehouse.
+
+## 8. Architecture Reviews — What, When
+
+Review **boundaries, data ownership, NFRs, failure modes, rollback** — never style. When: (1) before ADR acceptance; (2) pre-merge of any PR crossing a context boundary; (3) quarterly, 60 minutes, on the top-3 risk scores. Exit output is always one of: accepted, accepted with named changes, or rejected with the reason in one sentence. No "looks good" sign-offs without a replay of the failure tree.
+
+## 9. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| "Why did we choose this?" unanswerable | Missing/skipped ADR | Retroactive ADR from git archaeology; adopt going forward |
+| ADR graveyard (all "proposed") | No owner, no date | Status column has owner + date; stale proposals auto-closed at 30 days |
+| Trade-off table has one column | Motivated reasoning | Reviewer asks "what did this lose?" — mandatory answer |
+| Debt inventory empty | Prudent debt unnamed | Standing agenda item at architecture review |
+| "Buy" decision undone by vendor price hike | No exit criteria | ADR consequences must include exit cost and data export plan |
+
+## 10. Practice
+
+**Guided exercise.** Write ADR-003 for the gift-wrapping feature from 21.2.1: status, context, decision, consequences, the trade-off table it lost to, and one risk with P × I ≥ 12 plus its mitigation.
+
+**Independent exercise.** Convert one past ShopCore incident into a risk row: P, I, score, mitigation, and which ADR would have prevented it. Commit both files to `docs/adr/` and `docs/risks.md` in the repo.
+
+**Challenge.** Apply the build-vs-buy tree to "fraud scoring" and defend your ruling in five sentences, naming what you would buy, what you would build, and the exit criteria.
+
+**Assessment checklist**
+
+- [ ] I can write an ADR that survives hostile review without face-to-face explanation.
+- [ ] I have two accepted ADRs for ShopCore and know why each consequence matters.
+- [ ] I can produce a probability × impact grid for the top five ShopCore risks.
+- [ ] I can classify any debt item into the Fowler quadrant and say what to do with it.
+- [ ] I can run a 30-minute architecture review with the five questions in Section 8.
+
+</BookNodePage>

@@ -1,0 +1,191 @@
+---
+id: "13-3-3-oauth-2-0-sign-in-with-github"
+title: "13.3.3 OAuth 2.0: Sign in with GitHub"
+sidebar_label: "13.3.3 OAuth with GitHub"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-3-authentication-and-authorization/13-3-3-oauth-2-0-sign-in-with-github"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s3-t3">
+
+"Sign in with GitHub" feels like one button. Behind it is a precise dance: your app redirects the user to GitHub, the user consents, GitHub calls you back with a temporary code, your server exchanges it for tokens over HTTPS, and **your app then creates its own session** — GitHub never becomes your session store. This lesson walks the full flow with real, working code.
+
+## 1. Why OAuth Exists (and What It Is Not)
+
+**Your app wants a verified identity without owning the password.** OAuth 2.0 delegates authentication to the provider — the user sees GitHub's consent screen, your app gets a proof of identity, and the user never types their GitHub password into your app.
+
+- **OAuth is for authentication (login) here.** OpenID Connect layers identity on top; GitHub's OAuth can serve as OIDC-ish identity for practical purposes.
+- **OAuth is NOT authorization.** After login, *your* RBAC decides what the user can do (13.3.2).
+- **OAuth is NOT your session.** After callback, you mint **your own** `HttpOnly` session — same as 13.3.1 — so logout, roles and revocation are yours to control.
+
+## 2. The Authorization Code Flow (Diagram First)
+
+```text
+You        Browser                  GitHub              Your server
+|                          |                     |                   |
+|-- click "Sign in" ------>|                     |                   |
+|                          |--- redirect ------->|  GET /login/oauth/authorize?
+|                          |   (client_id,       |  client_id=…&redirect_uri=…&scope=read:user
+|                          |    redirect_uri,    |  &state=RANDOM&code_challenge=…)
+|                          |    scope, state)    |
+|                          |<--- consent screen---|                   |
+|                          |  user clicks Authorize                 |
+|                          |                     |                   |
+|                          |--- redirect -------->|  GET /callback?code=ABC&state=RANDOM
+|                          |                     |                   |
+|                          |                     |                   |-- POST https://github.com/login/oauth/access_token
+|                          |                     |                   |   (code, client_secret, code_verifier)
+|                          |                     |                   |<-- access_token -------------------
+|                          |                     |                   |-- GET /user (Bearer access_token)
+|                          |                     |                   |<-- { login: "hamidr", id: ... } ----
+|                          |                     |                   |-- upsert user + create SESSION (your own!)
+|  <---- redirect to /app (cookie set) -----------                   |
+```
+
+Key defenses baked in:
+
+- **`state`** — a random nonce your server stores in a short-lived cookie and compares on callback. Stops CSRF login forgery.
+- **PKCE** — a `code_challenge` derived from a `code_verifier`; even an attacker intercepting the `code` cannot redeem it without the verifier. Recommended for all public clients; GitHub supports it.
+- **`redirect_uri`** — must exactly match the one registered on your OAuth app; GitHub rejects everything else.
+
+## 3. Create Your GitHub OAuth App (Exact Clicks)
+
+1. GitHub → **Settings** (your avatar menu) → **Developer settings** (left sidebar, bottom).
+2. **OAuth Apps** → **New OAuth App**.
+3. Fill in:
+   - **Application name:** `ShopCore Dev`
+   - **Homepage URL:** `http://localhost:4000`
+   - **Authorization callback URL:** `http://localhost:4000/auth/github/callback`
+4. **Register application** → you land on the app page. Note the **Client ID** (public) — copy it to `.env` as `GITHUB_CLIENT_ID`.
+5. **Generate a new client secret** — copy it **immediately** (shown once) → `GITHUB_CLIENT_SECRET` in `.env`.
+6. `.env` additions:
+
+   ```text
+   GITHUB_CLIENT_ID=Iv1.abc123...
+   GITHUB_CLIENT_SECRET=secret_xyz...
+   GITHUB_REDIRECT_URI=http://localhost:4000/auth/github/callback
+   SESSION_SECRET=some-long-random-string
+   ```
+
+## 4. Working Implementation (Express, `src/routes/auth.js`)
+
+```javascript
+import { Router } from 'express';
+import crypto from 'node:crypto';
+import { pool } from '../db/pool.js';
+
+export const authRouter = Router();
+
+const { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI } = process.env;
+
+// Step 1 — kick off the flow
+authRouter.get('/auth/github', (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex');
+  const codeVerifier = crypto.randomBytes(32).toString('base64url');
+  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+  res.cookie('oauth_state', state, { httpOnly: true, sameSite: 'lax', maxAge: 10 * 60 * 1000 });
+  res.cookie('code_verifier', codeVerifier, { httpOnly: true, sameSite: 'lax', maxAge: 10 * 60 * 1000 });
+
+  const params = new URLSearchParams({
+    client_id: GITHUB_CLIENT_ID,
+    redirect_uri: GITHUB_REDIRECT_URI,
+    scope: 'read:user user:email',
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+  });
+  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+});
+
+// Step 2 — callback: exchange code for token, fetch identity, own session
+authRouter.get('/auth/github/callback', async (req, res, next) => {
+  try {
+    const { code, state } = req.query;
+    const cookieState = req.cookies?.oauth_state;
+    if (!code || !state || state !== cookieState) {
+      return res.status(400).json({ error: 'BAD_STATE', message: 'state mismatch or missing code' });
+    }
+
+    // 2a. exchange
+    const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        client_secret: GITHUB_CLIENT_SECRET,
+        redirect_uri: GITHUB_REDIRECT_URI,
+        code,
+        code_verifier: req.cookies?.code_verifier,
+      }),
+    });
+    const tokens = await tokenRes.json();               // { access_token, token_type, scope }
+    if (!tokens.access_token) return res.status(400).json({ error: 'TOKEN_EXCHANGE_FAILED', tokens });
+
+    // 2b. fetch identity
+    const ghRes = await fetch('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${tokens.access_token}`, 'User-Agent': 'shopcore-dev' },
+    });
+    const ghUser = await ghRes.json();                  // { id, login, name, email(maybe null) }
+
+    const ghEmail = (ghUser.email ?? `${ghUser.id}@users.noreply.github.com`).toLowerCase();
+
+    // 2c. upsert user (your own users table!)
+    const { rows } = await pool.query(
+      `INSERT INTO users (email, full_name, role)
+       VALUES ($1, $2, 'customer')
+       ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name
+       RETURNING id, email, role`,
+      [ghEmail, ghUser.name ?? ghUser.login]
+    );
+    const user = rows[0];
+
+    // 2d. mint YOUR session (reuse 13.3.1's createSession())
+    const sessionToken = await createSession(user.id);   // your own helper
+    res.cookie('session', sessionToken, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 3600 * 1000 });
+    res.clearCookie('oauth_state');
+    res.clearCookie('code_verifier');
+    res.redirect('/');
+  } catch (err) { next(err); }
+});
+```
+
+Requires `app.use(require('cookie-parser')())`-equivalent: `npm install cookie-parser` + `app.use(cookieParser())`. The `createSession` helper is the same one from 13.3.1 (insert `sessions` row with SHA-256 of a random token; cookie stores the token).
+
+## 5. Test It — Exactly What Happens
+
+1. `npm run dev`
+2. Browser: `http://localhost:4000/auth/github` → redirected to GitHub consent → **Authorize**
+3. Callback: browser lands on `/` with a `session` cookie set (`Application → Cookies` in devtools: `httpOnly ✓`, `SameSite=Lax ✓`)
+4. `curl -c - http://localhost:4000/auth/github/callback ...` is how you'd script it (harder — browser is the natural client here)
+5. Your Postgres now has the user: `psql -U postgres -d shopcore -c "SELECT email, role FROM users WHERE email LIKE '%users.noreply.github.com' OR email = 'your-email';"`
+
+## 6. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `redirect_uri_mismatch` | Callback URL in GitHub app settings must equal `GITHUB_REDIRECT_URI` **exactly** — trailing slash included |
+| `bad_verification_code` / empty `access_token` | Code expires fast (10 min) — you took too long, or `code_verifier` mismatch. Start over at `/auth/github` |
+| 400 BAD_STATE | `oauth_state` cookie missing on callback — sameSite=Lax blocked? You probably arrived via cross-site POST; use top-level GET navigation |
+| `email` is null from GitHub | Private email hides it — we fall back to `id@users.noreply.github.com` (works, unique) |
+| Redirected to GitHub homepage instead of app | Code/state handling crashed silently — check server console and browser Network tab for the callback response |
+| Works locally, fails on deploy | Callback URL still localhost — update the GitHub app's callback to production domain and `GITHUB_REDIRECT_URI` |
+
+## 7. Practice
+
+**Guided exercise.** Create the GitHub OAuth app, wire `/auth/github` + `/callback`, log in with your own GitHub, and screenshot the session cookie in devtools.
+
+**Independent exercise.** After OAuth login, add `GET /api/v1/me` returning `{ email, role }` from your session — prove the full chain identity→session→JSON works.
+
+**Challenge.** Add "link GitHub to existing password account": if a user is logged in with password and visits the OAuth callback, attach the GitHub identity instead of creating a new account (store `github_id` on the user).
+
+**Assessment checklist**
+
+- [ ] I created a GitHub OAuth app and understand Client ID vs Secret vs callback URL.
+- [ ] I can trace the authorization-code + state + PKCE flow step by step.
+- [ ] My app mints its OWN `HttpOnly` session after OAuth — never delegates session storage to GitHub.
+- [ ] I know how to recover from the four classic OAuth failure modes.
+- [ ] OAuth logs me in; my RBAC (13.3.2) still decides what I may do.
+
+</BookNodePage>

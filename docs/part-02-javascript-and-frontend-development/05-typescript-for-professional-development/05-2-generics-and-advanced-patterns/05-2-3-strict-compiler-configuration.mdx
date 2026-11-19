@@ -1,0 +1,57 @@
+---
+id: "05-2-3-strict-compiler-configuration"
+title: "05.2.3 Strict Compiler Configuration"
+sidebar_label: "05.2.3 Strict Compiler Configuration"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-2-generics-and-advanced-patterns/05-2-3-strict-compiler-configuration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s2-t3">
+
+A lenient `tsconfig.json` gives teams a false sense of security while allowing implicit `any`, unchecked `null` reads, and out-of-bounds array indexing straight into production. Configuring TypeScript strictly from day one catches the most common JavaScript runtime crashes automatically inside your editor.
+
+## 1. Recommended Baseline `tsconfig.json` for Modern Node & Web Projects
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+## 2. What Each Critical Flag Protects Against
+
+- **`strict: true`:** Enables `strictNullChecks` (`null`/`undefined` cannot sneak into `string`), `noImplicitAny` (parameters without types fail), `strictFunctionTypes`, and `useUnknownInCatchVariables` (`catch (err)` defaults to `unknown`, not `any`).
+- **`noUncheckedIndexedAccess: true`:** One of TypeScript's highest-ROI flags! Normally `const items = ["a", "b"]; const third = items[2];` is typed as `string`—even though `items[2]` is `undefined` at runtime! With `noUncheckedIndexedAccess`, `items[2]` becomes `string | undefined`, forcing a boundary check before calling `.toUpperCase()`.
+- **`exactOptionalPropertyTypes: true`:** Distinguishes an omitted property (`{}`) from explicitly passing `{ title: undefined }`.
+- **`isolatedModules: true`:** Guarantees every file compiles cleanly one file at a time (required by Vite, Next.js SWC, and `esbuild`).
+
+## 3. Running Type-Checks in Scripts and CI
+
+In frameworks like Vite or Next.js, the dev bundler transforms TypeScript for speed *without running full type checking*. Always keep `"typecheck": "tsc --noEmit"` in `package.json` and run it before commits and in CI!
+
+## 4. Practice Exercises
+
+1. Enable `"noUncheckedIndexedAccess": true` in a starter project, access `args[0].toUpperCase()` on `const args: string[] = []`, observe the compiler error, and guard it cleanly with `const first = args[0]; if (first) ...`.
+2. Add `"typecheck": "tsc --noEmit"` to `package.json` and verify `npm run typecheck` exits with code `0` cleanly.
+
+## Mastery Checklist
+
+- [ ] Keeps `"strict": true` and `"noUncheckedIndexedAccess": true` enabled on new projects.
+- [ ] Knows why Vite/esbuild transpilation does not replace `tsc --noEmit`.
+
+</BookNodePage>

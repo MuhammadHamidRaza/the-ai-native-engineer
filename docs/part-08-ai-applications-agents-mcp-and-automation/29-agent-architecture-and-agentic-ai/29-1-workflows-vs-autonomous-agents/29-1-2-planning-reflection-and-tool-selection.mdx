@@ -1,0 +1,161 @@
+---
+id: "29-1-2-planning-reflection-and-tool-selection"
+title: "29.1.2 Planning, Reflection and Tool Selection"
+sidebar_label: "29.1.2 Planning, Reflection and Tool Selection"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai/29-1-workflows-vs-autonomous-agents/29-1-2-planning-reflection-and-tool-selection"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-29-s1-t2">
+
+Inside a bounded agent there are three design levers you control: how it plans, whether it second-guesses itself, and how it finds the right tool. Get these right and a small model does reliable work; get them wrong and a frontier model produces expensive theater.
+
+## 1. Planning Strategies — Plan-Then-Act vs Interleaved
+
+**ReAct (interleaved).** The model reasons, acts, observes the result, and reasons again — inline, one step at a time (Yao et al., 2022). Step n's observation feeds step n+1's reasoning. This is what every tool-using LLM loop actually does — including the OpenAI Agents SDK's loop in Chapter 30 — and it needs no special machinery:
+
+```text
+Thought: ticket 4471 disputes charge ORD-2026-004417; check order first
+Action:  lookup_order(order_id="ORD-2026-004417")
+Obs:     {status: "delivered", paid_cents: 8999, ...}
+Thought: delivered 2026-11-02, inside 30-day window; check tier for goodwill
+Action:  get_customer_tier(customer_id="cus_8x2")
+Obs:     {tier: "gold", ...}
+Thought: gold-tier + in-policy → propose refund of items in dispute only
+Action:  open_dispute_ticket(...)
+```
+
+**Plan-and-Execute (plan-then-act).** A planner produces the full step list up front; an executor walks it; a replanner revises on failure. Better when steps are well-understood and independent (batch address-change verification), wasteful when step 2 depends on step 1's surprise.
+
+| | Interleaved (ReAct) | Plan-and-Execute |
+| :-- | :-- | :-- |
+| Best when | Each step informs the next; high uncertainty | Steps known up front; long horizons |
+| Failure mode | Wanders without a plan | Plan is fiction by step 3 |
+| Token cost | Pays per step, no waste | Plan + execute + replan tokens |
+| Progress visibility | Step-at-a-time | Upfront plan is human-reviewable |
+| ShopCore fit | Refund dispute adjudication | Morning batch: verify all dispatched orders |
+
+**Rule of thumb:** default to interleaved. Add an explicit plan step only when a human should approve the *shape* of the work before it starts — e.g. the Postmaster's nightly shortfall sweep, where "here is the 14-item restock plan" deserves one approval instead of 14.
+
+## 2. Reflection — A Critique Loop With an Expiry Date
+
+Reflection = the agent (or a second pass) critiques its own output before committing: *"Check: does the proposed refund respect the $50 auto limit? Is the address change pre-dispatch? Cite the rule."* In Agents-SDK terms this is a second agent with no tools that reviews the first agent's proposed action, or an `output_guardrail` (Chapter 30).
+
+**When it helps:** the critique checks output against *something external* — a policy clause, a schema, an invariant, a test. "Does refund_cents ≤ 5000?" is decidable. "Is this email tone appropriate?" is barely. Reflection with an oracle catches real errors: policy-window math, line-item mismatch, wrong customer.
+
+**When it is noise:** open-ended self-critique with no external reference ("reconsider your answer") measurably drifts toward hedging and token spend with no accuracy gain — classic result territory from the chain-of-thought literature; do not pay 2x tokens for "I guess I was right the first time." If you cannot write the check in code, reflection is vibes.
+
+**Postmaster policy:** reflection step required only on `issue_refund` proposals (checker validates the amount against the verified order total and the tier matrix — deterministic code, not model opinion). Nowhere else.
+
+**Reflection with a budget — worked example.** The refund specialist emits `proposed_refund`; a deterministic checker (not a model) validates: (a) amount ≤ verified line-item sum, (b) ≤ remaining un-refunded balance, (c) reason vocabulary matches the enum, (d) `lookup_shipment_status` evidence consistent with `not_received`. Cost of the check: zero tokens (it is code). The failure it catches is worth ~$90 average; it runs on 100% of refund proposals. That is a reflection step worth having. Contrast: a second LLM re-reading the whole thread "to double-check tone" — 2,000 tokens for zero measurable quality gain — that one is noise, cut it.
+
+## 3. Tool Selection — How a Model Chooses Among Hundreds
+
+Each tool you register costs **schema tokens** on every call (name, description, parameter schema). At 5 tools this is noise; at 300 it is most of your context window and most of your error rate. In the Agents SDK (verified Nov 2026), the official guidance:
+
+- Group related tools under **namespaces** (`tool_namespace(name="crm", ...)`) and use **deferred loading** (`@function_tool(defer_loading=True)` + `ToolSearchTool()`) so the model loads only what it needs; keep each namespace small — **fewer than 10 functions** per namespace is the documented rule of thumb.
+- For 50+ unrelated tools, use **retrieval-augmented tool selection**: index tool descriptions (embeddings), retrieve the top-k by ticket text, register only those. (Design pointer — hosted tool search in the SDK covers the OpenAI Responses path; your own retrieval layer covers everything else.)
+- **Naming and descriptions are the selection interface.** The model picks the tool whose description most resembles the task, so disambiguation belongs in the catalog, not in hope:
+  - `lookup_order` (exact ID) vs `search_orders` (query) — say which is which.
+  - `issue_refund` (money moves) vs `draft_refund` (proposal only) — irreversibility in the verb.
+  - Never ship two tools whose descriptions are near-synonyms; merge them.
+
+## 3.5 Disambiguation Patterns That Survive 200 Tool Calls
+
+Description-writing is selection engineering. The patterns that work:
+
+| Pattern | Weak (the model guesses) | Strong (the model selects) |
+| :-- | :-- | :-- |
+| Exact-match vs search | `lookup_order(id)` vs `search_orders(query)` | `lookup_order`: "Use ONLY when the ticket contains an exact ID like ORD-2026-004417" / `search_orders`: "Use when you have a customer and must find their orders; never for an exact ID" |
+| Proposal vs effect | `draft_refund` vs `issue_refund` | "`issue_refund` MOVES MONEY. For any doubt, call `open_dispute_ticket` and let a human decide" |
+| Singular vs bulk | `get_order` vs `get_orders` | "singular: one order_id; plural: list for a customer, `limit` required" |
+| Fresh vs cached | `get_inventory` | "returns `as_of` timestamp; if as_of > 6h old, say so in your decision note" |
+| Safe vs dangerous | `update_address` | "only pre-dispatch AND identity_verified; otherwise return error for escalation" |
+
+The meta-rule: **say when to use the tool AND when not to.** The "do not use" clause does more selection work than the "use" clause, because exclusion is cheaper for the model to check than inclusion.
+
+## 4. The Postmaster Tool Sets — Full Signatures
+
+**Triager agent** (read-only by construction):
+
+```python
+def lookup_order(order_id: str) -> OrderSummary:
+    """Fetch one order by exact ID (format ORD-YYYY-NNNNNN). Read-only."""
+
+def search_orders(customer_id: str, status: Literal["open", "shipped", "delivered", "cancelled"] | None = None, limit: int = 5) -> list[OrderSummary]:
+    """List recent orders for a customer, optionally filtered by status. limit max 10. Read-only."""
+
+def get_customer_tier(customer_id: str) -> CustomerTier:
+    """Return loyalty tier and goodwill balance (bronze|silver|gold). Read-only."""
+
+def get_inventory(sku: str) -> InventorySnapshot:
+    """Return on-hand, reserved, reorder-point, and last-movement date for one SKU. Read-only."""
+
+def get_ticket_history(customer_id: str, lookback_days: int = 90) -> list[TicketSummary]:
+    """Prior tickets for the customer. lookback_days max 365. Read-only."""
+```
+
+**Refund specialist** (the only agent that can move money):
+
+```python
+def issue_refund(order_id: str, line_item_ids: list[str], amount_cents: int,
+                 reason: Literal["damaged", "not_received", "wrong_item", "duplicate", "other"],
+                 idempotency_key: str) -> RefundResult:
+    """Issue a refund up to the auto limit enforced in code (5000 cents).
+    Above the limit the call pauses for human approval. NEVER call with a
+    guessed amount_cents — derive it from the verified order line items."""
+
+def open_dispute_ticket(order_id: str, amount_cents: int, evidence: str) -> DisputeTicket:
+    """Open a formal dispute for amounts needing evidence review. No money moves."""
+```
+
+**Escalation agent** (human-facing, no money):
+
+```python
+def escalate_to_human(ticket_id: str, queue: Literal["refunds", "ops", "fraud", "save_desk"],
+                      summary: str, priority: Literal["p1", "p2", "p3"]) -> EscalationReceipt:
+    """Route to a human queue with a structured summary. Always safe."""
+```
+
+Notice what is absent: no `set_address` on the triager (it lives on address-change flow, gated), no `place_purchase_order` anywhere (procurement owns that), no `delete_*` anywhere. **The tool list is your safety policy** — prompts express intent, tools enforce it.
+
+## 5. Common Mistakes
+
+- Ten tools named `get_*` with one-line descriptions differing by a word. The model will pick randomly; you will call it nondeterminism.
+- Reflection on tasks with no oracle — double tokens, same answer.
+- Plan-and-Execute for everything because "agents should be organized." Organization you cannot verify is bureaucracy.
+- Letting the model see a `run_sql` escape hatch "just for debugging." There is no just-for-debugging in an operations mailbox.
+- Descriptions written for humans, not for the model's selection step. The description *is* the retrieval query.
+
+## 5.5 Tool Inventory Review — the 15-Minute Audit
+
+Before enabling any Postmaster tool, ask in review:
+
+1. Is this tool **read** or **write**? If write: what is the idempotency story?
+2. Can the model's worst plausible mistake with this tool cost money, leak data, or corrupt state? If yes — does the **code** (not the prompt) bound it?
+3. Is there an existing tool with an overlapping description? Merge or differentiate.
+4. Is the description written for the model's selection step (see 3.5)?
+5. What does this tool cost per call, and is it called in a loop?
+6. If this tool is down, what does the agent do? (Answer must name the recovery rung from 29.2.2 — page someone or a structured error the model can escalate from.)
+7. Is this tool needed at all — would a `RunContext` flag make it unnecessary?
+
+If question 2's answer is "yes, in the prompt," reject the PR. Prompt-enforced safety is a code smell this book refuses to merge.
+
+## 6. Practice
+
+**Guided exercise.** For the five Postmaster tools above, write the JSON-schema-style descriptions you would ship — 1–2 sentences each, disambiguated. Compare with a colleague (or your past self) and spot the collisions.
+
+**Independent exercise.** Design the tool catalog for `address_change`: at least 3 read tools, 1 gated write tool, 1 escalation tool. Full signatures as in Section 4.
+
+**Challenge.** Write a retrieval-augmented tool-selection stub in Python: given a ticket text and 50 tool descriptions, return the top 5 by cosine similarity. (Any embedding provider; 30 lines.)
+
+**Assessment checklist**
+
+- [ ] I can explain interleaved vs plan-then-act in two sentences and name one failure mode of each.
+- [ ] I can state when reflection helps (external oracle) and when it is noise.
+- [ ] I can name the SDK's namespace + deferred-loading mechanism and the sub-10-per-namespace rule of thumb.
+- [ ] I wrote Postmaster tool descriptions that disambiguate `lookup_order` vs `search_orders`.
+- [ ] I can explain why the tool list — not the prompt — is the real safety policy.
+
+</BookNodePage>

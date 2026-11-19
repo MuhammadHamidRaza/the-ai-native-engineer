@@ -1,0 +1,56 @@
+---
+id: "index"
+title: "Chapter 09: Python Fundamentals (Deep)"
+sidebar_label: "Chapter 09: Python Fundamentals (Deep)"
+slug: "/part-03-python-development/09-python-fundamentals-deep"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09">
+
+Python's syntax looks deceptively friendly at first glance—yet without understanding Python's **object-reference model**, **virtual environments**, **four OOP pillars**, and **static vs. runtime validation**, beginners quickly hit `ModuleNotFoundError`, corrupted shared lists, and dependency conflicts between projects.
+
+**Chapter 09 (`26 Focused Hours`)** starts with installing Python properly on Windows, macOS, and Linux, setting up VS Code + Pylance, running your first script, and building deep professional mastery of modern Python.
+
+## Setup: Installing Python, VS Code Support & Running Your First Script
+
+### Windows 10 / 11 (Primary Beginner Environment)
+
+1. Download the latest stable **Python 3 (`3.12+` / `3.13+` / `3.14+`)** Windows Installer (64-bit) from `https://www.python.org/downloads/`.
+2. **CRITICAL:** On the very first installer screen, check **"Add python.exe to PATH"** at the bottom before clicking *Install Now*.
+3. Close any open terminals, open a fresh **PowerShell**, and verify:
+
+```powershell
+py --version
+python --version
+pip --version
+```
+
+*(Note: On Windows, `python.org` installs the `py` launcher alongside `python`. If typing `python` opens the Microsoft Store instead of printing a version, search Windows Settings for **"Manage app execution aliases"** and turn OFF the two `App Installer` aliases for `python.exe` and `python3.exe`, or use `py` directly.)*
+
+### macOS & Linux / WSL 2
+
+- **macOS:** Download the `.pkg` installer from `python.org` or run `brew install python` (`python3 --version`).
+- **Ubuntu / WSL 2:** Run `sudo apt update && sudo apt install -y python3 python3-pip python3-venv` (or manage standalone Python versions cleanly with **`uv`** in `09.3.1`). Note on Linux/macOS the command is usually `python3`, while inside an activated `.venv` both `python` and `python3` work!
+
+### Configuring VS Code for Python
+
+1. Open VS Code Extensions (`Ctrl+Shift+X`), install **Python** (Microsoft) and **Pylance**.
+2. Create a file `hello.py`:
+   ```python
+   import sys
+
+   name = "Engineer"
+   print(f"Python {sys.version.split()[0]} ready for {name}!")
+   ```
+3. Run it in the terminal (`python hello.py` on Windows or `python3 hello.py` on macOS/Linux).
+4. Press `Ctrl+Shift+P` -> **Python: Select Interpreter** to ensure VS Code's editor diagnostics match your terminal's Python or `.venv`.
+
+## Chapter 09 Roadmap
+
+- **09.1 Core Syntax & Data Model:** Variables as name-to-object bindings, mutability, lists/tuples/dicts/sets, control flow, comprehensions, generators, and file I/O.
+- **09.2 Functions, OOP & Type Hints:** `*args`/`**kwargs`, closures, decorators, context managers, all four OOP pillars + dataclasses, and type hints + Pydantic v2.
+- **09.3 Packaging, Virtual Environments & Async:** `venv`, `pip`, `pyproject.toml`, `uv`, structured exceptions + `logging`, `pytest`, and `asyncio`.
+
+</BookNodePage>

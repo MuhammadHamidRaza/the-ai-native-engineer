@@ -1,0 +1,171 @@
+---
+id: "00-11-6-starting-your-journey"
+title: "00.11.6 Starting Your Journey"
+sidebar_label: "00.11.6 Starting Your Journey"
+slug: "/part-00-about-this-book/00-11-before-you-begin/00-11-6-starting-your-journey"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-11-6">
+
+You have now completed the complete orientation of **Part 00 — About This Book**.
+
+Across these eleven sections, you did not merely skim an informal preface—you mapped the architecture of modern software and AI engineering (`00.1`–`00.2`), compared **15 real industry engineering roles** (`00.3`), absorbed the eight foundational principles of durable engineering (`00.4`), inspected the full **10-part, 42-chapter, 638-hour** curriculum dependency graph (`00.5`), established concrete rules for manual mastery before AI speed (`00.6`–`00.7`), internalized the **Listen → Map → Measure → Slice → Build → Verify → Handover** FDE lifecycle (`00.8`), audited the free-first technology stack and cost boundaries (`00.9`–`00.10`), and verified your computer and local toolchain (`00.11.1`–`00.11.5`).
+
+One final trap catches well-prepared beginners right at this threshold: **eternal preparation.** Do not spend another week shopping for desk lamps, rearranging markdown note plugins, or collecting extra playlists. Real engineering begins the instant your hands hit the terminal, execute a verified setup check, and record your first real commit.
+
+## 5-Minute Pre-Flight Smoke Test Before Chapter 01
+
+Run this short end-to-end verification sequence inside your working POSIX shell (**Windows 11 WSL 2 Ubuntu**, **macOS Terminal**, or **Ubuntu Linux**) to prove your workspace, filesystem permissions, and Git setup work cleanly together:
+
+```bash
+mkdir -p ~/code/ai-native-engineer
+cd ~/code/ai-native-engineer
+git init journal && cd journal
+git checkout -b main
+
+cat << EOF > PROGRESS.md
+# The AI-Native Engineer — Mastery Ledger
+
+- **Started:** $(date +%F)
+- **Weekly Focused Target:** ___ hours / week
+- **First Milestone:** Part 01 — Foundations (Ch 01–03, 26h)
+- **Next Step:** Open Chapter 01.1 Computer Fundamentals and trace CPU/RAM/IO flow
+EOF
+
+cat << 'EOF' > .gitignore
+.env
+.env.*
+!.env.example
+node_modules/
+.venv/
+__pycache__/
+EOF
+
+git add PROGRESS.md .gitignore
+git commit -m "chore: initialize engineering mastery ledger"
+git status && git log -n 1 --oneline
+```
+
+Expected clean result: `nothing to commit, working tree clean` and a crisp single initial commit showing your configured author name (`00.11.2`). If `git commit` prompts *"Author identity unknown"*, set `git config --global user.name` and `user.email` as shown in [00.11.2 Setting Up Your Development Environment](/book/part-00-about-this-book/00-11-before-you-begin/00-11-2-setting-up-your-development-environment) and re-run cleanly.
+
+### Your First 2-Minute Programming Exercise (`hello.js` & `hello.py`)
+
+Before moving to Part 01, prove you can create, run, and verify a tiny real program in both runtimes right inside `~/code/ai-native-engineer/journal`:
+
+```bash
+cat << 'EOF' > hello.js
+const engineer = process.argv[2] || "AI-Native Builder";
+console.log(`Hello, ${engineer}! Node.js ${process.version} is ready.`);
+EOF
+
+cat << 'EOF' > hello.py
+import sys
+engineer = sys.argv[1] if len(sys.argv) > 1 else "AI-Native Builder"
+print(f"Hello, {engineer}! Python {sys.version.split()[0]} is ready.")
+EOF
+
+node hello.js "Alex"
+python3 hello.py "Alex"
+```
+
+Expected output:
+
+```text
+Hello, Alex! Node.js v26.x.x is ready.
+Hello, Alex! Python 3.14.x is ready.
+```
+
+Try changing `"Alex"` to your own name and observe how command-line arguments (`process.argv[2]` in Node.js and `sys.argv[1]` in Python) pass input directly into a running program.
+
+## Your Immediate Roadmap Into Part 01 — Foundations (`26 Hours`)
+
+Stepping straight into [Part 01 — Foundations](/book/part-01-foundations) locks in the mental and operational bedrock supporting every line of TypeScript, Python, SQL, Docker, and AI orchestration that follows:
+
+| Chapter | Canonical Scope | Core Capability Unlocked |
+| :--- | :--- | :--- |
+| **[Ch 01 — How Computers, Software, and the Internet Work](/book/part-01-foundations/01-how-computers-software-and-the-internet-work)** | `8 hours` | Understand hardware execution (`CPU`, `RAM`, binary representation), operating system processes/shells, and trace `DNS → IP → TLS → HTTP` requests end-to-end |
+| **Ch 02 — Critical Thinking and Problem Solving** | `8 hours` | Decompose ambiguous problems from first principles, reason cleanly about state/control-flow/edge cases, read specs before coding, and catch subtle AI assumptions |
+| **Ch 03 — Developer Tools, Git, Debugging, and AI Learning** | `10 hours` | Operate VS Code, POSIX CLI pipelines, Git branching/merging/GitHub remotes, scientific stack-trace debugging, and ethical tutor-mode AI learning |
+
+```text
+[ YOU ARE HERE: Part 00 Complete ]
+        |
+        v
+[ Part 01: Foundations (26h) ] ---> Systems + Logic + Git + Debugging
+        |
+        v
+[ Parts 02–04: Full-Stack Core (256h) ] ---> JS/TS + React/Next + Python + Postgres
+        |
+        v
+[ Parts 05–06: Production Infrastructure (112h) ] ---> Cloud + Docker + CI + System Design
+        |
+        v
+[ Parts 07–08: AI-Native & Agentic Systems (168h) ] ---> Context + RAG + Agents + MCP + Evals
+        |
+        v
+[ Parts 09–10: Career, Products & Capstone (76h) ] ---> Jobs/Clients/Startups + Flagship Ch 42
+```
+
+## Five Grounding Commitments to Carry Forward
+
+Before clicking into Chapter 01, lock these five simple habits in place:
+1. **Manual reps first ([00.6.3](/book/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-3-manual-practice)):** Never let an AI prompt solve a foundational exercise you have not wrestled with cleanly on your own.
+2. **Trace reality before guessing:** Open browser DevTools, read server logs, inspect `git diff`, and verify version outputs rather than swapping random lines hoping errors vanish.
+3. **Protect small vertical slices:** Build tiny working flows completely (data → logic → validation → UI → test) rather than sprawling broken half-skeletons.
+4. **Stay curious beneath abstractions:** When `React`, `FastAPI`, `PostgreSQL`, or an AI agent surprises you, look one layer deeper instead of blindly pasting fixes.
+5. **Measure progress in verified systems built:** Keep `PROGRESS.md` honest (`00.11.5`) and ship everything cleanly (`Think. Build. Solve. Ship.`).
+
+## Quick Recovery Checks If the Smoke Test Fails
+
+Should your initial `git init` / `git commit` command sequence stumble on day one, diagnose calmly instead of uninstalling everything:
+- **If `git: command not found` appears:** Install Git directly per [00.11.2](/book/part-00-about-this-book/00-11-before-you-begin/00-11-2-setting-up-your-development-environment) and restart your shell terminal completely so updated `PATH` directories reload cleanly.
+- **If `git commit` refuses with `Please tell me who you are`:** Configure `git config --global user.name` and `git config --global user.email`, verify via `git config --list`, and re-run only the commit command.
+- **If permissions fail inside Windows WSL 2:** Confirm `pwd` prints `/home/<username>/code/ai-native-engineer/journal`, **not** `/mnt/c/Windows/System32`. Running Linux tooling inside Windows system directories produces permission failures immediately.
+
+## Transitioning Cleanly Into Chapter 01
+
+Notice the mindset shift happening as **Part 00** closes and **Part 01** opens: Part 00 gave you orientation, tools, and mental clarity; **Part 01** moves straight into how real hardware, memory, operating systems, packets, DNS, TLS, and developer workflows operate under the hood. Keep a blank paper notebook or clean Markdown scratch file open alongside Chapter 01 so you can sketch every CPU cycle, packet route, and Git commit tree actively rather than reading passively.
+
+## First Step Action Check
+
+Confirm four physical actions right now before leaving Part 00:
+1. Your `journal` Git repository above initialized cleanly on branch `main`, committed `PROGRESS.md` and `.gitignore`, and printed `nothing to commit, working tree clean`.
+2. Your first four study sessions sit blocked cleanly on an actual weekly calendar (`00.11.4`).
+3. Browser primary-documentation bookmarks (`00.9.9`) sit ready in your bookmarks bar alongside your primary terminal and VS Code window.
+4. You are ready to click **Next** below directly into [Part 01 — Foundations](/book/part-01-foundations).
+
+## Expected Smoke-Test Terminal Output Reference
+
+When your terminal commands from the smoke test execute cleanly, expect terminal verification output matching this exact shape (your OS kernel string and patch numbers will vary naturally):
+
+```text
+$ git status && git log -n 1 --oneline
+On branch main
+nothing to commit, working tree clean
+a1b2c3d chore: initialize engineering mastery ledger
+
+$ node -v && python3 --version
+v26.1.0
+Python 3.14.2
+```
+
+Notice what those ten lines confirm permanently before Chapter 01 starts: your shell resolves current runtimes cleanly on `PATH`, Git signs commits cleanly on `main`, and `.gitignore` sits ready to block future secrets automatically. Do not tweak themes, search for extra VS Code font packs, or second-guess your hardware now—open your paper notebook, run your very first 90-minute focus block, and cross cleanly into **Part 01 — Foundations (`26h`)**.
+
+## Your Immediate First Chapter 01 Focus Block (`90 Minutes`)
+
+Now make the transition concrete rather than abstract. Immediately after finishing that workspace smoke test above, open [Chapter 01 — How Computers, Software, and the Internet Work](/book/part-01-foundations/01-how-computers-software-and-the-internet-work) and complete these three concrete actions inside your first 90-minute block:
+1. Read **01.1.1 What Is a Computer?** and trace the CPU-RAM-Storage execution path on paper before copying a single command.
+2. Execute the live Node/Python inspection commands inside your `~/code/ai-native-engineer` workspace so binary numbers, memory addresses, and process PIDs become observable system behavior.
+3. Log your opening session duration, clearest takeaway, and one next step inside `PROGRESS.md` (`git commit -m "chore(ch01): log opening Part 01 study session"`).
+
+## Official Primary References
+
+- [Launch Point: Part 01 — Foundations (26 Hours)](/book/part-01-foundations)
+- [Chapter 01 Landing — How Computers, Software, and the Internet Work (8 Hours)](/book/part-01-foundations/01-how-computers-software-and-the-internet-work)
+- [Visual Studio Code Tips and Tricks (`code.visualstudio.com/docs`)](https://code.visualstudio.com/docs/getstarted/tips-and-tricks)
+
+Let's begin building.
+
+</BookNodePage>

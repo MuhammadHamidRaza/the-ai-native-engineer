@@ -1,0 +1,198 @@
+---
+id: "29-2-1-stopping-criteria-budgets-and-human-approvals"
+title: "29.2.1 Stopping Criteria, Budgets and Human Approvals"
+sidebar_label: "29.2.1 Stopping Criteria, Budgets and Human Approvals"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai/29-2-reliability-boundaries-for-agents/29-2-1-stopping-criteria-budgets-and-human-approvals"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-29-s2-t1">
+
+Every agent you ship must answer three questions before its first run: **when does it stop, what does it cost, and who says yes?** If any answer is "it depends," the agent is not ready. This lesson makes the answers explicit — and mechanical.
+
+## 1. The Stopping-Criteria Taxonomy
+
+| Criterion | Enforced by | Fires when | Example |
+| :-- | :-- | :-- | :-- |
+| **Max iterations** | Framework loop | Turn count hits cap | SDK `max_turns=8` (default is 10 — verified Nov 2026) |
+| **Max token budget** | Framework or app wrapper | Cumulative tokens exceed cap | 40k tokens per ticket, hard stop |
+| **Wall-clock** | Watchdog process | Run exceeds age limit | 120s per ticket; kill + requeue |
+| **Human input** | Approval gate | Action requires a person | Refund $250 → pause, wait for reviewer |
+| **Success predicate** | App code on tool output | Verifiable goal met | Refund row exists + ticket closed → stop |
+
+You want **at least three** of these live at once: max iterations (primary), wall-clock (backstop if the model stalls on a slow tool), and success predicate (so the common case stops early and cheap). Token budgets are your finance guardrail. Human input is your liability guardrail.
+
+## 2. Budget Derivation — Worked Math
+
+ShopCore mailbox: **400 tickets/day**. Postmaster design: deterministic pipeline handles ~60% (no model calls). Agent handles ~160/day (refund disputes + ambiguous). Per agent ticket:
+
+```text
+System+context:        1,400 tokens in
+Tool definitions:        900 tokens in   (5 read tools + 2 write tools)
+5 tool calls avg:      5 x (200 out + 600 in)  ≈ 4,000 tokens
+Final answer:            250 tokens out
+-------------------------------------------------
+≈ 6,550 tokens per ticket
+```
+
+Daily agent cost ≈ 160 × 6,550 ≈ **1.05M tokens/day**. The KPI that matters: cost per resolved ticket vs human time (~6 min × $25/hr ≈ $2.50 of labor avoided per resolved ticket). Even at premium model pricing (illustrative: $1.00/1M input + $4.00/1M output — **check platform.openai.com for current model prices; they change monthly**), the agent tranche costs cents per ticket, not dollars. The failure that ruins the math is not price — it is the 1% of tickets where the agent loops to max_turns every day; one daily $5 runaway × 30 days is $150 for nothing. **That is what budgets are for.**
+
+Practical caps: `max_turns=8` per ticket; 40k token cap per ticket (app-enforced); $25/day circuit breaker (app-enforced, trips the pipeline-only fallback); 5 seconds average tool timeout; 120s wall clock.
+
+## 3. Approval Gates — Tier by Blast Radius
+
+Auto-approve what cannot hurt; gate what cannot be undone. The Postmaster tiers:
+
+| Tier | Actions | Gate |
+| :-- | :-- | :-- |
+| 0 — Read | All read-only tools (`lookup_order`, `get_*`) | Auto, no approval |
+| 1 — Reversible write | `open_dispute_ticket`, `escalate_to_human`, draft notes | Auto |
+| 2 — Bounded money | `issue_refund` ≤ $50 and within policy window | Auto with full trace; daily sample review |
+| 3 — Human money | Refund $50.01–$500; address change off-dispatch | One-tap human approval; agent waits (RunState interruption) |
+| 4 — Never | Refund > $500; address change post-dispatch; PO placement; price overrides | Blocked in **code**; agent may only escalate |
+
+Approvals pause the run — in the SDK, a tool with `needs_approval=True` interrupts the run; you persist `RunState`, a human decides, and the run resumes (Chapter 30.2.2). Until then, the money does not move. If your app lets the model "approve on behalf," you have a chatbot with a payments API, not an approval gate.
+
+**The approval sequence, end to end (what your reviewer will ask about):**
+
+```text
+Agent proposes issue_refund(amount_cents=25000)      # $250 > $50 tier boundary
+        |
+        v
+SDK evaluates needs_approval(ctx, params, call_id) → True
+        |
+        v
+Runner pauses; RunResult.interruptions = [ToolApprovalItem]
+        |
+        v
+App persists RunState (DB) → ticket tk_2291 shows "awaiting refund approval"
+        |
+        v
+Human (Slack/queue UI) sees: order total, agent note, evidence link, [approve] [reject]
+        |
+        v
+state.approve(item) or state.reject(item, rejection_message="exceeds goodwill")
+        |
+        v
+Runner.run(agent, state) resumes; tool executes (or returns rejection to the model)
+        |
+        v
+Decision + snapshot logged to agent_action_snapshots; trace closes
+```
+
+**What $/day breaker math looks like at three model tiers (illustrative prices — re-check platform.openai.com monthly):**
+
+| Tier | In $/1M | Out $/1M | Cost / ticket (≈6.6k tok) | Tickets/day at $25 cap |
+| :-- | :-- | :-- | :-- | :-- |
+| nano/mini-class | ~0.05–0.20 | ~0.40–1.25 | ~$0.003 | breaker never trips; loop risk is the real cost |
+| Luna-class (SDK default) | ~0.60 | ~2.40 | ~$0.015 | ~1,600 fully-agentic tickets (not your case) |
+| Sol-class frontier | ~$15 | ~$60 | ~$0.30 | ~80 — you would notice |
+
+Realistic Postmaster spend is under $1/day at 400 tickets; the breaker exists for the day a prompt bug starts looping frontier tokens through every ambiguous ticket.
+
+**Tier 4 is structurally unofferable — do not "just gate it harder."** A tool that can be approved can be rubber-stamped at 09:00 on a Monday. Tier 4 actions are absent from the tool menu or refuse unconditionally in code; there is no `ToolApprovalItem` to approve.
+
+## 4. The Dormant-Agent Risk
+
+Agents rot quietly. Four dormancy patterns, all seen in production systems:
+
+1. **Forgotten schedules** — a nightly agent with no owner keeps calling a deprecated tool that now returns wrong-but-shaped data. Everything looks green. Data is garbage.
+2. **Pending-approval pileup** — 340 approvals awaiting humans who got a Slack message six months ago; customers wait; business calls it "the tool doesn't work."
+3. **Budget drift** — model provider raises prices or a prompt grows 20%; nobody notices until the invoice.
+4. **Eval decay** — the model silently changed behavior (provider upgrade); your prompt's rare path now misfires. Nothing alerts because nothing pages on quality.
+
+Defense: a **watchdog process** separate from the agent — a cron/Task Scheduler job that (a) sweeps runs older than 120s and kills/requeues them, (b) counts open approvals and pages when > 20, (c) reads daily cost and trips at the breaker, (d) samples 20 decisions/week for human audit. The agent must never be its own supervisor.
+
+## 5. Implementing in the SDK — Max-Iter + Watchdog
+
+In code (verified Nov 2026 — full treatment in Chapter 30):
+
+```python
+from agents import Runner, RunConfig, RunErrorHandlerResult
+from agents.exceptions import MaxTurnsExceeded
+
+try:
+    result = await Runner.run(
+        postmaster_triager, ticket_text,
+        context=ctx,
+        max_turns=8,                      # hard iteration cap; default is 10
+        run_config=RunConfig(workflow_name="postmaster-triage",
+                             group_id=ctx.correlation_id),
+        error_handlers={                  # turn the crash into a safe outcome
+            "max_turns": lambda _e: RunErrorHandlerResult(
+                final_output="ESCALATE: turn limit hit", include_in_history=False),
+        },
+    )
+except MaxTurnsExceeded:
+    escalate_to_human(ticket_id=ctx.ticket_id, queue="ops",
+                      summary="Agent exhausted turns", priority="p2")
+```
+
+The watchdog is ordinary infrastructure, not agent code: a 60-second-interval job that queries `agent_runs WHERE finished_at IS NULL AND started_at < now() - interval '2 minutes'` (or your metrics backend), marks them `stalled`, and pages the on-call if the count is non-zero twice in a row. Wall-clock enforcement lives here, not in the prompt. Sketch:
+
+```python
+# watchdog.py — run under cron / Task Scheduler, NOT inside the agent process
+import psycopg, sys
+STALLED = """UPDATE agent_runs SET state='stalled'
+               WHERE finished_at IS NULL AND started_at < now() - interval '2 minutes'
+               RETURNING run_id, last_step, correlation_id, started_at"""
+with psycopg.connect(DSN) as c:
+    rows = c.execute(STALLED).fetchall()
+    if len(rows) >= 2:
+        page_oncall(f"postmaster stalled runs: {[r.correlation_id for r in rows]}")
+    # never auto-kill a run holding an open approval without reconciling tool side effects
+    sys.exit(0)
+```
+
+Note the refusal to blindly kill: a stalled run may be mid-Stripe-call. The watchdog marks and pages; the on-call (or a reconciler) closes the loop — the same reasoning as 29.2.2 on retries of non-idempotent writes.
+
+## 6. The Forbidden-Actions Checklist (Prompt AND Code)
+
+The prompt promises; the code enforces. Both, always. Paste this into the Postmaster system prompt *and* assert it in `issue_refund`/`update_address` code paths:
+
+- [ ] NEVER issue a refund > $500. Tier 4 — code rejects, period; the prompt says so too.
+- [ ] NEVER issue any refund without a verified order (order exists, paid, within policy window).
+- [ ] NEVER refund more than `paid_cents` across cumulative refunds on the order.
+- [ ] NEVER change an address on an order in `shipped`/`delivered` status.
+- [ ] NEVER change an address without `identity_verified=true` in context.
+- [ ] NEVER close a ticket with an open dispute attached.
+- [ ] NEVER include card numbers, full addresses, or tokens in logs/traces — correlation IDs only.
+- [ ] NEVER call `issue_refund` more times than the dispute line items; one call per item.
+- [ ] NEVER proceed past an approval gate — a paused run stays paused until a human acts.
+- [ ] When in doubt: `escalate_to_human(queue="ops", priority="p2")`. Silence is never an outcome.
+
+Each rule, with its enforcement layer — this table is the artifact your security review asks for:
+
+| # | Rule | Prompt | Code | Tool |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | Refund > $500 | ✓ | unconditional refuse | `issue_refund` cap |
+| 2 | Refund only vs verified order | ✓ | query + window check | `issue_refund` |
+| 3 | Cumulative refunds ≤ paid | ✓ | `SUM(refunds)` invariant | `issue_refund` |
+| 4 | No shipped/delivered address change | ✓ | status check | `update_address` |
+| 5 | Identity check before address | ✓ | `identity_verified` flag | `update_address` |
+| 6 | No close with open dispute | ✓ | FK check | `close_ticket` |
+| 7 | No PII in traces/logs | ✓ | `trace_include_sensitive_data=False` | RunConfig |
+| 8 | One refund call per line item | ✓ | idempotency key per item | `issue_refund` |
+| 9 | Paused stays paused | ✓ | interruption machinery | SDK `needs_approval` |
+| 10 | Doubt → escalate | ✓ | default branch | `escalate_to_human` |
+
+A prompt-only version of this list is a suggestion. A code check without the prompt produces a model that "tries harder." You need both, tested adversarially (29.1.1).
+
+## 7. Practice
+
+**Guided exercise.** Take your Stage-2 spec from 29.1.2. Add numbers: max_turns, token cap, wall clock, $/day breaker, approval tiers 0–4 for your five tools. Argue each number out loud.
+
+**Independent exercise.** Write the watchdog's SQL (or metrics query) and the four alert conditions from Section 4. 
+
+**Challenge.** Simulate a stuck run: `while True: await asyncio.sleep(1)` as a fake tool. Verify max_turns fires, `error_handlers` converts it, and the watchdog query would have caught it even without the in-process cap.
+
+**Assessment checklist**
+
+- [ ] I can name the five stopping criteria and which three I ship by default.
+- [ ] I derived a per-ticket token budget on paper and named the runaway case it kills.
+- [ ] I can tier approvals 0–4 for Postmaster actions from memory.
+- [ ] I can explain why the watchdog is separate from the agent.
+- [ ] I can list the forbidden actions and name the enforcement layer for each.
+
+</BookNodePage>

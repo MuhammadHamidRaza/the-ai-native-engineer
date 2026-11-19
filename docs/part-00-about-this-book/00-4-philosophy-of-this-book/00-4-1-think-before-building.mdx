@@ -1,0 +1,87 @@
+---
+id: "00-4-1-think-before-building"
+title: "00.4.1 Think Before Building"
+sidebar_label: "00.4.1 Think Before Building"
+slug: "/part-00-about-this-book/00-4-philosophy-of-this-book/00-4-1-think-before-building"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-4-1">
+
+Modern code editors and AI coding agents make it remarkably easy to generate five files, three API routes, a database schema, and a sprawling React component tree within thirty seconds of reading a prompt. For newcomers and experienced developers alike, that instant velocity creates a subtle trap: **generating code fast feels identical to making progress, even when the underlying architecture is pointed in the wrong direction.**
+
+When typing syntax ceases to be the primary bottleneck, **clarity of engineering thought becomes the true constraint**. **Think Before Building** does not mean returning to slow, bureaucratic forty-page waterfall specifications written months before writing a single line of code. It means investing ten to twenty focused minutes structuring domain boundaries, state transitions, invariants, and verification criteria *before* opening files—and especially before delegating scaffolding to an AI coding partner.
+
+## 1. Why Unstructured Speed Compounds Rework
+
+Consider what happens when an engineer rushes straight into file creation on a moderately complex feature—such as adding multi-tenant document sharing or background invoice processing:
+
+1. **Implicit assumptions harden into schemas:** You create a table missing an ownership foreign key or unique idempotency constraint. Two days later, fixing that assumption requires rewriting migrations, backend validators, API responses, and UI state hooks across twelve files.
+2. **AI tools amplify ambiguity cleanly:** Language models do not pause to ask whether floating-point dollars will drift by pennies, whether webhooks can arrive out of order, or whether a user session requires workspace role checks. If your prompt leaves those decisions unstated, the model picks plausible-looking guesses—and hides risky bugs beneath clean TypeScript syntax.
+3. **Scope balloons silently:** Without explicit boundaries upfront, every corner case encountered mid-implementation triggers ad-hoc helper utilities and tangled conditional branches instead of a coherent architectural seam.
+
+Spending fifteen deliberate minutes thinking *before* coding eliminates days of downstream refactoring.
+
+## 2. The Five Questions Resolved Before Touching Code
+
+Before starting any new chapter lab, backend service, frontend feature, or AI pipeline in this book, work through five concrete design checks on paper or in a markdown scratchpad:
+
+| Design Check | Core Question Answered | Example Concrete Output |
+| :--- | :--- | :--- |
+| **1. System Boundaries & I/O** | What exact inputs enter, from whom, in what format, and what verified state or output leaves? | Authenticated `POST /api/invoices` accepting PDF `multipart/form-data` (max 10 MB) → returns `202 Accepted` with `job_id` |
+| **2. Core Entities & State** | What are the 3–5 essential nouns and their legal state transitions? | `Workspace -> Document -> Chunk -> ExtractionJob` (`queued → processing → needs_review → approved`) |
+| **3. Deterministic vs. AI Split** | Which rules *must* obey strict code/SQL logic vs. which narrow step needs probabilistic model synthesis? | Integer-cent math, RBAC tenant check, and PO matching in SQL/Python; messy line-item text extraction via structured LLM JSON |
+| **4. Failure & Concurrency Map** | What breaks when a user double-clicks, a network request drops, an attachment is corrupt, or upstream APIs return `429`? | `file_sha256` unique index prevents duplicate processing; exponential backoff on `429`; unreadable PDF routes to `failed_unreadable` |
+| **5. Thinnest Vertical Slice** | What minimal end-to-end path proves our architecture on real data within a few hours? | Upload 1 real sample invoice → extract typed JSON → store PostgreSQL row → render review diff screen |
+
+## 3. Concrete Comparison: Building Expense Receipt Extraction Two Ways
+
+Imagine implementing *"add AI receipt extraction to our team expense tracker"* across a React/Next.js frontend, Python/Node API, and PostgreSQL database. Compare the downstream trajectory of two workflows:
+
+| Workflow Dimension | Code-First Rush (Zero Pre-Design) | Think-Before-Building Workflow (15-Minute Architecture Note) |
+| :--- | :--- | :--- |
+| **First 20 minutes** | Prompts AI: *"Build a Next.js receipt scanner with file upload and database save."* Creates five files immediately. | Maps schema (`receipt_id`, `workspace_id`, `file_hash`, `amount_cents`, `currency`, `status`), storage bucket flow, and Zod/Pydantic validation contract. |
+| **Money & math handling** | Uses JavaScript `Number` (`float`) for totals (`19.99 + 0.01`); rounding mismatches appear during accounting export. | Stores all monetary values in integer minor units (`amount_cents BIGINT`) and verifies `subtotal + tax == total` deterministically in backend code. |
+| **Duplicate protection** | User submits twice on slow Wi-Fi; two identical expense rows appear in PostgreSQL. | Enforces unique `(workspace_id, idempotency_key)` constraint and content hash check cleanly on first migration. |
+| **AI boundary safety** | Exposes model logic weakly in one giant handler; prompt injection or malformed JSON triggers raw HTTP 500 crashes. | Isolates extraction inside a typed service returning validated `ExtractedReceipt` or clean fallback `needs_manual_entry` state. |
+| **Net delivery time** | Fast initial UI demo in 1 hour, followed by 8 hours of painful schema rewrites and debugging. | Slightly slower first 20 minutes, followed by smooth implementation, clean tests, and confident launch. |
+
+## 4. The 10-Minute Pre-Build Scratchpad Habit
+
+Across **Parts 02–10** of *The AI-Native Engineer*, treat a plain-text or markdown design note as part of your development environment right beside your terminal and editor. Keep it concise—never an essay—covering four headings:
+
+1. **One-Sentence Goal & Non-Goal:** State clearly what problem this slice solves today and two appealing distractions explicitly deferred.
+2. **Data & Interface Contract:** Write the SQL table columns (or Prisma/migration fields) and exact TypeScript/Pydantic request/response types.
+3. **Happy Path + Three Failure Cases:** Write down one normal run plus three messy realities (unauthorized request, empty/malformed payload, upstream timeout).
+4. **Verification Plan:** List the exact curl command, unit/integration assertion, or evaluation check you will run to prove completion.
+
+Notice how transformative this habit becomes when working with AI coding partners (**Section 00.7** & **Part 07**). When you hand an AI assistant your clear 15-line contract, schema, and failure checklist, generated code becomes dramatically cleaner, narrower, and easier to inspect line by line.
+
+## 5. Common Anti-Patterns to Watch For
+
+- **Analysis paralysis ("Thinking forever without slicing"):** Spending three days perfecting speculative abstractions for a 10,000-user scale problem before proving one 5-record vertical slice runs cleanly. Think for 15–30 minutes, then slice and verify.
+- **Designing exclusively in UI mockups:** Picking colors and layout buttons before modeling data relationships and state transitions—forcing awkward backend contortions afterward.
+- **Letting prompt trial-and-error substitute for design:** Repeatedly regenerating entire modules hoping the AI guesses your unwritten business constraints.
+
+## 6. Mini Practice Exercise
+
+Before reading the next chapter, pick a tiny feature you already understand—such as a **URL shortener** or a **bookmark manager with AI tag suggestions**—and complete a strict **10-minute scratchpad**:
+
+1. Write the exact **PostgreSQL columns** and constraints for the primary table (`id`, unique keys, timestamps).
+2. Separate **two strictly deterministic behaviors** from **one optional AI enhancement**.
+3. List **three invalid or adversarial inputs** (for instance: invalid URL protocol `javascript:alert(1)`, duplicate slug collision, or timeout from the tag-suggestion model) and state how the backend responds cleanly to each.
+
+## Key Takeaways
+
+- Speed of code generation is abundant; **clarity of boundaries, invariants, and failure handling** is what separates durable engineering from rapid technical debt.
+- Fifteen minutes spent mapping data contracts, deterministic vs. AI boundaries, and unhappy paths prevents hours of cascading rewrites.
+- A crisp pre-build scratchpad makes both human implementation and AI-assisted development dramatically cleaner and safer.
+
+## References and Further Reading
+
+- [Architecture Decision Records (ADR) — Lightweight Design Documentation](https://adr.github.io/)
+- [Martin Fowler — Design Stamina Hypothesis](https://martinfowler.com/bliki/DesignStaminaHypothesis.html)
+- [PostgreSQL Documentation — Data Modeling & Constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
+
+</BookNodePage>

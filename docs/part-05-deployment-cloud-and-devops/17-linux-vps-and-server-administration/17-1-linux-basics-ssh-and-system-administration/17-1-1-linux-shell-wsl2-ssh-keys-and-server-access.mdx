@@ -1,0 +1,148 @@
+---
+id: "17-1-1-linux-shell-wsl2-ssh-keys-and-server-access"
+title: "17.1.1 Linux Shell, WSL2, SSH Keys and Server Access"
+sidebar_label: "17.1.1 Linux Shell, WSL2, SSH Keys and Server Access"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration/17-1-1-linux-shell-wsl2-ssh-keys-and-server-access"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s1-t1">
+
+Linux is the operating system of servers. Windows is the operating system of many desks. **WSL2** is the bridge — a real Linux kernel running as a lightweight VM on your Windows machine, indistinguishable from a remote server for our purposes. Then we make SSH boring: keys, agent, aliases, and no passwords typed again.
+
+## 1. Install WSL2 (Windows 10 2004+ / Windows 11)
+
+Open **PowerShell as Administrator**:
+
+```powershell
+wsl --install
+```
+
+Expected (abbreviated):
+
+```text
+Downloading: Windows Subsystem for Linux 2.x.x
+Installing: Windows Subsystem for Linux 2.x.x
+Windows Subsystem for Linux has been installed.
+Ubuntu has been installed.
+```
+
+`wsl --install` installs WSL2 + the default Ubuntu distro. **Reboot when prompted.** After reboot, Ubuntu opens (or run `wsl` from PowerShell) and asks you to create a UNIX username and password — these are local to the WSL distro, unrelated to your Windows account, and independent of any server later. If you ever forget the UNIX password: `wsl -d Ubuntu -u root` then `passwd <user>`.
+
+Useful commands:
+
+```powershell
+wsl --list --verbose    # shows distros and WSL version (should say 2)
+wsl --update            # update the WSL platform itself
+```
+
+If `wsl --install` fails on older Windows: enable "Virtual Machine Platform" and "Windows Subsystem for Linux" features in `optionalfeatures.exe`, reboot, retry. macOS/Linux readers: you already have a shell — this section is Windows-specific.
+
+## 2. First Login and the Lay of the Shell
+
+```bash
+whoami          # your UNIX username
+uname -a        # Linux ... Microsoft-standard-WSL2 ... x86_64 GNU/Linux
+ls -la ~        # your home directory
+pwd             # /home/<user>
+```
+
+Update the distro before anything else (this is also the ritual on every fresh server):
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+Windows Terminal is the recommended host (tabs for PowerShell + Ubuntu). Keep two tabs open throughout this chapter: one PowerShell, one Ubuntu — the lessons say which to use.
+
+## 3. SSH Keys — ed25519, Not RSA-1024
+
+SSH authenticates servers by their host key, and users by key pair. Generate an **ed25519** pair (small, fast, current standard; RSA-3072+ is the acceptable fallback):
+
+```bash
+ssh-keygen -t ed25519 -C "you@example.com"
+```
+
+Accept the default path (`~/.ssh/id_ed25519`) and set a passphrase. You now have:
+
+```text
+~/.ssh/id_ed25519      # PRIVATE — never leaves this machine, chmod 600
+~/.ssh/id_ed25519.pub  # public — safe to copy onto servers/GitHub
+```
+
+**Permissions are checked by sshd** — the key is silently ignored if permissions are loose:
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519
+chmod 644 ~/.ssh/id_ed25519.pub
+```
+
+Load the key into the agent so you type the passphrase once per session:
+
+```bash
+eval "$(ssh-agent -s)"       # starts agent, sets env vars
+ssh-add ~/.ssh/id_ed25519
+ssh-add -l                    # lists loaded keys
+```
+
+On Windows (native), `ssh-agent` is a service: `Get-Service ssh-agent` → `Start-Service ssh-agent` (as admin), then `ssh-add $env:USERPROFILE\.ssh\id_ed25519`. WSL2 keeps its own, separate agent — keys load independently per side.
+
+## 4. Publishing the Public Key
+
+**To GitHub:** copy `cat ~/.ssh/id_ed25519.pub` → GitHub → **Settings → SSH and GPG keys → New SSH key** → paste. Test: `ssh -T git@github.com` → `Hi <you>! You've successfully authenticated...`
+
+**To a fresh VPS** (from Chapter 17 onward): the provider shows you the root password *or* asks for a pubkey at creation — **choose the pubkey flow**. Paste the output of `cat ~/.ssh/id_ed25519.pub` into the provider's "SSH key" box before/at creation, then:
+
+```bash
+ssh root@203.0.113.10        # or ssh ubuntu@... depending on image
+```
+
+First connection asks you to verify the host fingerprint — compare the `SHA256:...` against the provider's console "Console → Fingerprints" panel if offered. Answer `yes`; the host key lands in `~/.ssh/known_hosts`.
+
+## 5. `~/.ssh/config` — Stop Typing Flags
+
+```sshconfig
+Host shopcore-vps
+    HostName 203.0.113.10
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 60
+
+Host github.com
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+Now `ssh shopcore-vps` is the whole command. `scp`/`rsync`/`sftp` honor the same alias. `chmod 600 ~/.ssh/config`.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `Permission denied (publickey)` | Wrong/missing key loaded, or perms too open | `ssh-add -l`; `chmod 600` private key, `700 ~/.ssh`; confirm pubkey actually on server in `~/.ssh/authorized_keys` |
+| `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED` | Server rebuilt/reused IP (or MITM) | Verify out-of-band with provider console; if legit: `ssh-keygen -R 203.0.113.10` |
+| WSL2 has no network / DNS fails | Stale WSL networking | `wsl --shutdown` (PowerShell), reopen; check VPN interference; `wsl --update` |
+| `sudo` asks password, forgot UNIX pw | — | `wsl -u root` from PowerShell → `passwd <you>` |
+| `UNPROTECTED PRIVATE KEY FILE` | Perms on private key | `chmod 600 ~/.ssh/id_ed25519` — non-negotiable |
+| Agent forgets keys after reboot | Agent not persisted | WSL: add `eval "$(ssh-agent -s)"` + `ssh-add` to `~/.bashrc`; Windows: set ssh-agent service to Automatic |
+
+Bots will scan your VPS's port 22 within minutes of it going live — most unauthorized-entry attempts are automated password guessing. Key-only auth makes those attacks statistically irrelevant; **fail2ban** (background: bans IPs after N failed attempts) is covered in [17.2.1](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-1-ports-ufw-firewalls-and-ssh-hardening).
+
+## 7. Practice
+
+**Guided exercise.** Install WSL2, create your UNIX user, and run the "first login" block until `uname -a` shows `Microsoft-standard-WSL2`. Generate the ed25519 pair, fix permissions, and load it into `ssh-agent`.
+
+**Independent exercise.** Add the pubkey to your GitHub account and prove it with `ssh -T git@github.com`. Add a `Host github.com` block to `~/.ssh/config` and confirm the same.
+
+**Challenge.** Create `shopcore-vps` as a config alias pointing at `192.0.2.1` (nothing listens there) and observe the timeout; then delete the alias. Write two sentences on when aliases save real deployments.
+
+**Assessment checklist**
+
+- [ ] `wsl --list --verbose` shows my Ubuntu on WSL 2.
+- [ ] I generated an ed25519 key, it is `chmod 600`, and the agent holds it (`ssh-add -l`).
+- [ ] My GitHub accepts my key (`ssh -T` succeeded).
+- [ ] I can explain what `ssh-agent` does and what `known_hosts` protects.
+- [ ] I know the console path to regain access if SSH breaks.
+
+</BookNodePage>

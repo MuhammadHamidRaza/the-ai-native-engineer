@@ -1,0 +1,151 @@
+---
+id: "36-2-2-feedback-loops-and-model-upgrades"
+title: "36.2.2 Feedback Loops and Model Upgrades"
+sidebar_label: "36.2.2 Feedback Loops & Upgrades"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/36-production-ai-systems/36-2-governance-and-continuous-improvement/36-2-2-feedback-loops-and-model-upgrades"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-36-s2-t2">
+
+Three months after launch, the provider ships a quiet model update. HelpBot still returns 200s, thumbs drift down 4 points, refunds slow by a day — and nothing in your dashboards says why. **Model upgrades are deploys you did not schedule.** This lesson is the machinery: detect drift early, roll out gradually, roll back instantly, and build the loop that makes the agent better every week instead of merely newer every quarter.
+
+## 1. The Continuous-Improvement Loop — Signals to Shipped, Closed
+
+```text
+  production signals (thumbs, escalation, re-contact, CSAT, cost)
+        |
+        v
+  weekly 30-min review (named owner reads worst 20 down-voted traces)
+        |
+        v
+  change: prompt | tool schema | router threshold | model string
+        |
+        v
+  offline eval gate (golden set; LLM-judge recalibrated quarterly)
+        |
+        v
+  deploy: canary 5% -> 25% -> 100% (feature-flagged, auto-reversible)
+        |
+        v
+  monitor: SLO dashboards + guardrail metric  --> back to signals
+```
+
+The loop is the product. A model upgrade is one iteration; the discipline around it is the rest. If the arrow from "monitor" back to "signals" ever breaks, you are running a static artifact on shifting ground.
+
+## 2. Provider Changelog Monitoring — Put It on the Calendar
+
+Providers deprecate, re-point and "improve" aliases constantly (GPT-5's deprecation path toward GPT-6 happened inside 2026). Make monitoring mechanical:
+
+- Subscribe to the provider changelog/release-notes RSS or email; nominate a human (you) who triages it every Monday into one of: **action / watch / ignore**.
+- Pin full model strings in config (`gpt-6-sol-2026-09-15`, not bare `gpt-6-sol`) when the provider offers dated/snapshot IDs — aliases are promises, not guarantees. **Rollback plan starts here: pinning is the first stage of a rollback.**
+- Track three trackers: API changelogs (per provider), deprecation notices, and the eval-relevant behavior reports (community + your own weekly drift numbers from §4).
+
+A Monday triage that takes under ten minutes, written down so it happens even when nobody feels like it:
+
+```text
+changelog item                       ->  action?  model pinned?  eval rerun due?  owner
+"gpt-6-sol alias re-pointed 2026-10-30" -> ACTION  yes (09-15)   yes, today     you
+"batch API price change"                -> WATCH   n/a            no             you
+"new realtime voice endpoint"           -> IGNORE  n/a            no             —
+```
+
+Anything marked ACTION gets the §3 procedure started within the week. Silence in the changelog is data too — if your pinned snapshot stops appearing in release notes, assume end of life is approaching and ask support directly.
+- When a deprecation touches your pinned string, start the §3 procedure immediately — the notice period is your canary window, not a countdown to panic.
+
+## 3. Staged Rollout of a Model Upgrade — Canary, 10%, 100%
+
+```yaml
+# feature flag fragment — one flag owns the upgrade
+helpbot.model_route:
+  stickiness: tenant
+  canary: { model: "gpt-6-sol-2026-09-15", percent: 5 }   # stage 1
+  widen:  { percent: 10, until: "p95 regression < 5% and escalation delta < +10% relative" }   # stage 2
+  full:   { percent: 100, after: "14 days stable on 10%" }
+rollback: "set helpbot.model_route.canary.model to previous pinned string; flag flip is the rollback"
+```
+
+Rules that make this safe:
+
+1. **Regression suite is the gate**, not the canary's good mood: run the 36.1.1 golden set against the new model before any traffic moves. Drop above 2% -> do not start the canary.
+2. **Auto-reversible:** guardrail metric (escalation rate or override rate) breaches its threshold for two consecutive hours -> flag flips to previous pinned string automatically; human is paged after, not before.
+3. Every stage has an explicit exit criterion and a named owner. "We'll watch it" is not a stage.
+4. Rollback in under five minutes or it is not a rollback; rehearse the flag flip in staging before first use.
+
+## 4. Silent Behavior-Change Detection — Golden-Set Drift Checks
+
+Aliases drift even without deprecation notices. Run the golden set on the **pinned** model weekly even when nothing else changed; score it against the stored baseline:
+
+```bash
+curl -s https://internal.helpbot/api/eval/run \
+  -H "Authorization: Bearer $EVAL_TOKEN" \
+  -d '{"suite":"golden-v3","model":"gpt-6-sol","baseline":"baseline-2026-11-01.json"}'
+```
+
+Expected shape:
+
+```text
+{ "score": 0.91, "baseline": 0.93, "delta": -0.02, "verdict": "WATCH", "failed_cases": ["sc-017","sc-042"] }
+```
+
+Thresholds: drift above 1 percentage point -> investigate same week; above 2% -> treat as a regression (rollback or prompt adapt). A drift with no failing cases and stable online signals may be judge-noise; re-calibrate the judge (36.1.1 §3) before burning a week. Log drift history — a slow 0.5%/month bleed is how you get a quietly terrible agent nobody notices.
+
+## 5. A/B Measurement Across Upgrades — Don't Fool Yourself Twice
+
+When you ship the new model to 10%, compare arms properly: same 60-case golden set (offline arm-vs-arm) and same week-over-week online metrics (thumbs, escalation, re-contact — problems like Monday's angry cohort). Watch for **novelty/primacy effects**: power users adapt to wording changes in days, so early thumbs movement exaggerates the true effect. Hold at 10% for at least one full weekly cycle. Significance rules from 36.1.1 §7 apply unchanged (n, p = 0.05) — an "upgrade win" at 300 conversations is a Coin flip with better PR.
+
+## 6. The "Feedback Debt" Anti-Pattern — and Paying It Off
+
+Feedback debt is the backlog of down-votes, escalations and free-text complaints nobody has reconciled — the agent equivalent of ignoring failing tests until someone asks "why is quality bad?" Interest compounds: every week unread, the same refund bug re-fires, CSAT drifts, and the next model upgrade ships on top of an unknown minefield.
+
+Pay it off the way you pay technical debt: a weekly 30-minute review, a cap on backlog (5 unresolved patterns max), every pattern converted either into a golden-set case, a prompt/tool fix, or an explicit "won't fix — here's why," and an owner. Zero items added to the backlog is suspicious, not virtuous — it means nobody reads the signal.
+
+## 7. Retiring an Agent Honestly — No One Gets AI Fatigue
+
+Agents should be killable. Retire HelpBot-v1 when: the golden set shows the successor wins by margin (not vibes), online CSAT after cutover is equal-or-better, support load drops, and **nobody is quietly keeping the old prompt "just in case"** — a zombie agent with real tool access is a liability, not a safety net. Announce the retirement, provide a 2-week feedback window, archive the config and golden baseline (they are your regression suite for the successor), and remove credentials last. AI fatigue — users forced onto a worse "upgraded" agent with no opt-back — is how you train customers to route around your AI entirely.
+
+## 8. Organizational Maturity Ladder — Demo to Fleet
+
+| Stage | What exists | Gate to next |
+| :-- | :-- | :-- |
+| **Demo** | Great in the meeting | One real use case, measured |
+| **Pilot** | 1 team, guardrails, human in loop | Eval gate + SLO defined; 2 weeks stable |
+| **Production** | Real traffic, on-call, rollback | Audit trail + privacy review + postmortem done once for real |
+| **Fleet** | N agents, shared platform, governance | Registry, per-agent owner, cost allocation, retirement process |
+
+Most orgs live in pilot forever — not because pilots fail, but because nobody budgets for the audit trail, the deletion path and the on-call rotation. Fund the transition explicitly.
+
+## 9. The Metric That Matters — Time-to-Resolution, Not Tokens
+
+Tokens, eval scores and cost-per-run are **inputs**. The output metric for HelpBot: **median time from customer question to customer-unblocked** (agent answered + action done, or human handoff with context). A 0.95 golden score with slower resolutions is worse than 0.88 with faster ones — if customers re-contact, nothing else counted. Review weekly: median TTR, p90 TTR, % resolved without human, % resolved-first-contact. When those move, the rest follows.
+
+## 10. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| New model passes golden set, production thumbs drop | Golden set no longer representative; or rollout too fast | Add the missing strata cases; widen ramp; check novelty effect |
+| Drift alert every week after provider update | Alias re-pointed | Pin snapshot string (§2); re-baseline once deliberately |
+| Canary can't be rolled back — flag was deleted | Flag lifecycle unmanaged | Flags owning model routes need TTL + audit; rehearse rollback quarterly |
+| Weekly review keeps getting skipped | No named owner | Put the 30 min on the calendar with an owner; skip only with written handoff |
+| Successor agent "won" eval, support load unchanged | Success, measured on the wrong metric | Gate cutover on TTR + re-contact, not only offline score (§9) |
+
+## 11. Practice
+
+**Guided exercise.** Add the §4 drift check to your 36.1.1 promptfoo setup: run it twice, hand-edit `baseline.json`, and confirm the WATCH verdict and the two worst failing cases appear.
+
+**Independent exercise.** Write the rollback runbook for your HelpBot flag (who flips, what they verify, comms template, 5-minute timer). Rehearse the flip in staging.
+
+**Challenge.** Design the migration from one pinned model string to the next: eval gate, canary stages with exit criteria, monitoring, comms, kill criteria. Present it as a one-page change-management doc with the §3 yaml filled in for your stack.
+
+**Assessment checklist**
+
+- [ ] I monitor provider changelogs and pin snapshot model strings.
+- [ ] I can stage a model upgrade: regression gate, canary 5% → 10% → 100%, auto-reversible guardrail.
+- [ ] I run weekly golden-set drift checks and know my 1%/2% thresholds.
+- [ ] I apply the same significance rules to upgrades as to any A/B (n, p = 0.05).
+- [ ] I keep a capped feedback backlog reviewed weekly — no feedback debt.
+- [ ] I know how to retire an agent honestly (criteria, comms, archive, credential removal).
+- [ ] I report time-to-resolution (median and p90) as the headline metric, not token spend.
+
+</BookNodePage>

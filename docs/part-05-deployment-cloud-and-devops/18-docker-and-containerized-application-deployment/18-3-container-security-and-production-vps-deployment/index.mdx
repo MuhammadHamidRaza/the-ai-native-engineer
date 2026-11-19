@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "18.3 Container Security & Production VPS Deployment"
+sidebar_label: "18.3 Container Security & Prod VPS Deployment"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-3-container-security-and-production-vps-deployment"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s3">
+
+**Subchapter 18.3** is where containers meet production reality: an image with a root user and a baked-in secret is not deployable anywhere serious. It covers the minimum hygiene every image must pass, then ships the ShopCore Compose stack to the VPS you provisioned and hardened in [Chapter 17](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration).
+
+## Lessons in Subchapter 18.3
+
+1. **[18.3.1 Container Security and Deploying Docker to Production VPS](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-3-container-security-and-production-vps-deployment/18-3-1-container-security-and-deploying-docker-to-production-vps):** Non-root `USER`, minimal base images, no secrets in layers, `docker scout`/Trivy scans, read-only filesystems and memory/CPU limits — then `scp` the Compose file to your VPS, pull from the registry, `docker compose up -d`, ufw rules and the nginx reverse proxy from [17.2.2](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-2-reverse-proxies-with-nginx-and-caddy) with HTTPS.
+
+**Prerequisites:** 18.1 and 18.2 complete, plus the Chapter 17 VPS (SSH access, ufw, nginx). **Billing note:** a VPS costs money — a small instance runs ~$4–6/month; keep it funded, and remember that *stopping* an instance usually still bills attached storage. Check your provider's current pricing page before provisioning.
+
+</BookNodePage>

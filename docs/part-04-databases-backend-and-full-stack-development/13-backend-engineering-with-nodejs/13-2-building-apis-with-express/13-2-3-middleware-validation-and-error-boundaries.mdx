@@ -1,0 +1,72 @@
+---
+id: "13-2-3-middleware-validation-and-error-boundaries"
+title: "13.2.3 Middleware, Validation and Error Boundaries"
+sidebar_label: "Middleware, Validation and Error Boundaries"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-3-middleware-validation-and-error-boundaries"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s2-t3">
+
+Middleware forms an ordered pipeline around every request: **CORS -> Body Size Limit -> Request Logger -> Auth -> Zod Schema Validation -> Route Handler -> Centralized Error Boundary**.
+
+## 1. Reusable Zod Middleware & Typed `AppError`
+
+```javascript
+// src/lib/errors.js  (error boundary) — pairs with src/middleware/validate.js
+import { z } from 'zod';
+
+export class AppError extends Error {
+  constructor(statusCode, code, message) {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+// src/middleware/validate.js  — request-body validation middleware
+export function validateBody(schema) {
+  return (req, res, next) => {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        issues: parsed.error.issues.map((i) => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+      });
+      return;
+    }
+    req.body = parsed.data;
+    next();
+  };
+}
+
+// Express 5 automatically forwards rejected async route promises here!
+// (Express 4 needs the same signature but does NOT auto-forward; wrap async
+// routes in try/catch or use a tiny asyncHandler.)
+export function errorBoundary(err, req, res, _next) {
+  if (err instanceof AppError) {
+    res.status(err.statusCode).json({ error: err.code, message: err.message });
+    return;
+  }
+  // Log structured JSON server-side; never leak stacks to the client.
+  console.error(JSON.stringify({ event: 'unhandled_error', path: req.path, message: err.message }));
+  res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Something went wrong' });
+}
+```
+
+**Important Rule:** Register `app.use(errorBoundary)` **LAST**, after all routes and 404 handlers! And never leak `err.stack` or raw SQL messages in `500` JSON responses—log them server-side with **Pino** (`pino-http`) instead.
+
+## 2. Explicit CORS Configuration
+
+Never deploy `cors({ origin: "*", credentials: true })` (browsers block wildcard `*` with cookies anyway!). Always load an explicit allowlist from environment configuration (`ALLOWED_ORIGINS=https://app.example.com,http://localhost:5173`).
+
+## Mastery Checklist
+
+- [ ] Validates every incoming request body/params with Zod before touching business logic.
+- [ ] Uses a single 4-argument Express 5 error boundary registered last, logging stacks safely on the server only.
+
+</BookNodePage>

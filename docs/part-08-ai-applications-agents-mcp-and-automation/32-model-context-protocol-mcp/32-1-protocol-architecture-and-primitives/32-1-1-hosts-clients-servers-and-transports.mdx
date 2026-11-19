@@ -1,0 +1,154 @@
+---
+id: "32-1-1-hosts-clients-servers-and-transports"
+title: "32.1.1 Hosts, Clients, Servers and Transports"
+sidebar_label: "32.1.1 Hosts, Clients, Servers and Transports"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-1-protocol-architecture-and-primitives/32-1-1-hosts-clients-servers-and-transports"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32-s1-t1">
+
+Before MCP, every agent framework invented its own plugin system: LangChain tools, semantic-kernel plugins, OpenAI function schemas, home-grown RPC. Tool authors wrote N integrations for N hosts; hosts each re-implemented validation, auth and UX. MCP is the USB-C port for that mess: **one protocol, any host, any tool provider.** A ShopCore policy server written once works in Claude Desktop, Cursor, Claude Code, VS Code agent mode, and your custom Postmaster host — unchanged.
+
+**Verified November 2026:** spec revision **`2026-07-28`** ([modelcontextprotocol.io/specification](https://modelcontextprotocol.io/specification)); Python SDK **`mcp` 2.3.0** on PyPI (`pip install "mcp[cli]"`, v2 line, Python 3.11+ per SDK docs though PyPI metadata says >=3.10 — trust the docs); TypeScript SDK **`@modelcontextprotocol/sdk` 1.32.2** (v1.x maintenance, spec ≤ 2025-11-25; v2 stable ships as `@modelcontextprotocol/server` and `@modelcontextprotocol/client`); **registry.modelcontextprotocol.io** is the official registry (live). Re-verify all four before you ship — this space moves quarterly.
+
+## 1. The Three Roles — Host, Client, Server
+
+```text
+┌─ Host process (your app) ──────────────────────────────┐
+│  Claude Desktop · Claude Code · Cursor · VS Code       │
+│  · your FastAPI postmaster-host                         │
+│                                                         │
+│   ┌─────────┐   ┌─────────┐   ┌─────────┐               │
+│   │ client 1│   │ client 2│   │ client 3│   1:1 each    │
+│   └────┬────┘   └────┬────┘   └────┬────┘               │
+└────────┼─────────────┼─────────────┼────────────────────┘
+         │             │             │
+   stdio │     stdio   │       HTTPS│ (Streamable HTTP)
+         ▼             ▼             ▼
+   ┌──────────┐  ┌──────────┐  ┌──────────┐
+   │ mcp-fs   │  │ postgres │  │ shopcore │
+   │ (local)  │  │ server   │  │ policy   │
+   └──────────┘  └──────────┘  └──────────┘
+   tools · resources · prompts — the three primitives
+```
+
+- **Host** — the LLM application that owns the conversation, consent and UI. It creates and supervises clients, enforces policy (what may be called, with what approval), and decides what context reaches the model. Examples: Claude Desktop, Claude Code, Cursor, VS Code (agent mode), your custom host.
+- **Client** — an SDK instance *inside* the host, one per server, 1:1. It carries protocol version + client capabilities on every request (2026-07-28) or performs the `initialize` handshake (2025-era), routes messages, and manages subscriptions.
+- **Server** — the process exposing capabilities. It can be a local subprocess (stdio) or a remote HTTPS service (Streamable HTTP). It knows nothing about your conversation; it sees only typed requests.
+
+Capability negotiation: at 2026-07-28 the client may call `server/discover` for up-front discovery; each request carries `_meta.io.modelcontextprotocol/protocolVersion` and client capabilities; servers advertise tool/resource/prompt support in their responses. Servers **cannot** initiate requests — server-to-client interactions (elicitation, sampling) ride inside results as `InputRequiredResult` (multi-round-trip). Roots/sampling are deprecated at this revision.
+
+## 1.5 Why MCP Won — and What It Does Not Fix
+
+The pre-MCP integration bill was exponential: *M* hosts × *N* tools × (auth + validation + UX + error shape + retries). MCP collapses the matrix to *M + N* adapters and moves the hard parts into the protocol: typed schemas (`inputSchema` is JSON Schema), structured errors, cancellation, progress, and change notification. What it does **not** fix: your auth model (32.2.2), your tool *quality* (a badly described tool is still a bad tool), your policy (31.2), or prompt injection (26.2.3) — the protocol carries bytes faithfully; judgment stays yours.
+
+Host adoption to know (all current as of Nov 2026, verify before you rely): Claude Desktop and Claude Code (Anthropic), Cursor, VS Code agent mode / GitHub Copilot, Windsurf, Zed, and JetBrains AI Assistant all speak MCP; each shows tool calls differently and applies its own consent UI. **Consent is the host's job** — the spec requires hosts to obtain explicit user consent before invoking tools, and servers to treat tool annotations as untrusted. Never assume a host enforced a policy you didn't verify.
+
+## 2. Transports — stdio vs Streamable HTTP (and the Dead SSE)
+
+| Transport | Use when | Shape | Status (Nov 2026) |
+| :-- | :-- | :-- | :-- |
+| **stdio** | Local, same-machine, host-spawned | Newline-delimited JSON-RPC over the subprocess's stdin/stdout | Current; the default for desktop/dev |
+| **Streamable HTTP** | Remote, multi-client, behind LB | Single endpoint, **every message is one HTTP POST**; reply is one JSON object **or** a request-scoped SSE stream; long-lived change streams via `subscriptions/listen` | Current; replaced legacy SSE |
+| HTTP+SSE | Nothing new | Two endpoints (POST + GET stream), session via `Mcp-Session-Id` | **Deprecated** (2025-03-26); eligible for removal; migrate |
+
+Notes the docs are blunt about: at 2026-07-28 Streamable HTTP dropped the standalone GET stream and protocol sessions — nothing pins a modern request to a worker, so round-robin LBs are fine. Requests must carry `MCP-Protocol-Version`, `Mcp-Method`, and (for `tools/call`, `resources/read`, `prompts/get`) `Mcp-Name` headers matching the body, or the server MUST reject with `400` + `-32020 HeaderMismatch`. 2025-era servers still use `initialize` + `Mcp-Session-Id`; Python SDK v2 serves **both eras** from the same process. Local servers should bind `127.0.0.1` only and validate the `Origin` header (else HTTP 403) — DNS-rebinding is a real attack on localhost MCP servers.
+
+stdio lifecycle: host spawns `python server.py`, pipes JSON-RPC, reads newline-delimited responses, kills the child on exit. Per-OS: same command on Windows and WSL2; the host (not you) owns spawning.
+
+## 3. Lifecycle of One Tool Call — End to End
+
+```text
+User: "refund ORD-2026-004417, $40, damaged"
+   │
+   ▼
+Host builds context (policy + ticket + <remembered_facts>)
+   │
+   ▼
+Model emits tool_call issue_refund{order_id, amount_cents: 4000, ...}
+   │
+   ▼
+Client ──JSON-RPC──► Server        (stdio pipe or POST /mcp)
+         method="tools/call"  id=17
+         params={name, arguments, _meta:{protocolVersion, clientCapabilities}}
+   │
+   ▼
+Server validates args (schema) ─► not valid? ─► CallToolResult isError=true
+   │ valid
+   ▼
+Approval gate (31.2.2): T1 ≤ $50 ─► auto;  T2 ─► InputRequiredResult / host prompt
+   │
+   ▼
+Handler runs: SELECT … FOR UPDATE; INSERT refunds ON CONFLICT DO NOTHING
+   │
+   ▼
+Server ◄──CallToolResult── Client ◄── Host ◄── model gets {content:[{type:"text", text:"refund_issued id=…"}]}
+   │
+   ▼
+Model writes the reply; CHECK 4 output filter redacts; user sees answer
+```
+
+Every hop is observable: `_meta` carries trace context (OTel spans if you enable them), and `id` correlates request/response in server logs.
+
+## 4. SDKs — What to Install Today
+
+| SDK | Install | High-level API | Notes |
+| :-- | :-- | :-- | :-- |
+| Python (v2, current) | `pip install "mcp[cli]"` (or `uv add "mcp[cli]"`) | `from mcp.server import MCPServer` | v1 `FastMCP` is gone, not deprecated; `@mcp.tool()`, `@mcp.resource()`, `@mcp.prompt()`; `mcp dev server.py` opens Inspector (needs Node/`npx`) |
+| TypeScript v1.x (maintenance) | `npm install @modelcontextprotocol/sdk zod` | `McpServer` from `@modelcontextprotocol/sdk/server/mcp.js` | Spec ≤ 2025-11-25; ≥6 months of fixes after v2 (2026-07-27) |
+| TypeScript v2 (current stable) | `npm install @modelcontextprotocol/server zod` | `McpServer` from `@modelcontextprotocol/server` | Spec 2026-07-28; split packages (`/server`, `/client`, `/node`, …) |
+
+**Ecosystem state.** The registry at [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io) is the official, live index of published servers (API at `/v0/servers`). Claude Desktop, Claude Code, Cursor and VS Code agent mode all consume MCP servers; quality varies wildly — pin versions, read the source, and treat unreviewed servers as untrusted code (32.2.2).
+
+## 4.5 The 2026-07-28 Stateless Model — What Changes Operationally
+
+Earlier revisions (2025-03-26 → 2025-11-25) ran Streamable HTTP with `Mcp-Session-Id` and a standalone GET stream. That era is over for new builds: at `2026-07-28` there is **no session and no GET stream** — every request is self-contained, `_meta` carries protocol version + client capabilities, and long-lived change notification rides one `subscriptions/listen` stream per client. Practical consequences: (1) any replica behind round-robin can answer any request; (2) nothing pins a multi-round-trip retry to a worker except the sealed `request_state` (the Python SDK v2 seals it; scaled deployments may pass `RequestStateSecurity(keys=[...])` to share the key — verify your SDK version's docs for exact parameter names); (3) "resumable streams" via `Last-Event-ID` no longer exist; (4) 2025-era clients still speak the session protocol — Python SDK v2 serves both, TypeScript v1.x serves ≤ 2025-11-25. When in doubt, check which era your host is on: `Client` in Python probes `server/discover` and falls back to `initialize`.
+
+Registry hygiene: check a server's listing date and revision support; a server last touched in early 2025 likely speaks only the session era.
+
+## 4.6 Reading the Wire — a Real Frame
+
+What an actual 2026-era `tools/call` POST looks like (headers elided; body shown):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "method": "tools/call",
+  "params": {
+    "name": "lookup_order",
+    "arguments": { "order_id": "ORD-2026-004417" },
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": { "name": "postmaster-host", "version": "1.4.0" },
+      "io.modelcontextprotocol/clientCapabilities": {}
+    }
+  }
+}
+```
+
+The same shape on stdio — newline-terminated, one object per line, nothing else on stdout. Structured error example: `{"jsonrpc":"2.0","id":17,"error":{"code":-32602,"message":"..."}}`. Keep this frame in your team's wiki; the moment production misbehaves, reading raw frames beats reading SDK source.
+
+## 5. Troubleshooting & Assessment
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `400 HeaderMismatch` | `Mcp-Name`/`Mcp-Protocol-Version` not mirrored | Use SDK ≥ current; it handles headers; don't hand-roll HTTP |
+| Server "works" in dev, fails behind nginx | Response buffering / proxy timeout on SSE stream | Set `X-Accel-Buffering: no` on the MCP endpoint (SDK does this); raise proxy read timeout |
+| `initialize` works but modern host errors | Mixed-era client/server | Python v2 serves both eras; on TS stay on one major line |
+| Tool list empty in host | Server crashed at startup; stdout polluted | stdio servers must log to **stderr** only — a stray `print()` corrupts the stream |
+| `UnsupportedProtocolVersionError` (-32022) | Client older/newer than server revision | Match SDK versions; check `supported` list in the error body |
+
+**Practice.** (1) `pip install "mcp[cli]"`; run `mcp dev` on a 20-line `MCPServer` with one `add` tool; call it from Inspector. (2) In Claude Desktop's config add a stdio server entry (see 32.2.1 for the exact JSON) and confirm the tool appears. (3) Point `curl` at a remote Streamable HTTP endpoint without headers and confirm `400`; add `MCP-Protocol-Version: 2026-07-28` and `Mcp-Method: tools/list` and read the JSON-RPC reply.
+
+**Assessment checklist**
+
+- [ ] I can draw host/client/server and say what each is allowed to see.
+- [ ] I know stdio vs Streamable HTTP, and why legacy SSE is retired (point at 2025-03-26).
+- [ ] I know the current spec revision (2026-07-28) and where it is published.
+- [ ] I can install both SDKs and name the v2 Python import (`MCPServer`).
+- [ ] I can trace one `tools/call` through every hop and name the correlation ID.
+
+</BookNodePage>

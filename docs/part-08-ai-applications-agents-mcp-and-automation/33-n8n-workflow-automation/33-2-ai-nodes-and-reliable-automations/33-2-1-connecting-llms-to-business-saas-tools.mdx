@@ -1,0 +1,137 @@
+---
+id: "33-2-1-connecting-llms-to-business-saas-tools"
+title: "33.2.1 Connecting LLMs to Business SaaS Tools"
+sidebar_label: "33.2.1 Connecting LLMs to Business SaaS Tools"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations/33-2-1-connecting-llms-to-business-saas-tools"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33-s2-t1">
+
+This lesson wires real models into the ShopCore dispute pipeline. Node names and capabilities below were verified against n8n's official documentation on **2026-11-17**; n8n ships fast, so if a screen differs, trust the doc page for your installed version.
+
+## 1. The AI Node Family — Exact Node Names
+
+| Node | Role | Notes (verified Nov 2026) |
+| :-- | :-- | :-- |
+| **AI Agent** | Root node; model decides which tools to call | All agents run as Tools Agents (since 1.82); set an iteration cap (default ~10) |
+| **Basic LLM Chain** | One prompt → one completion | Enough for pure classification; no tool loop |
+| **OpenAI Chat Model** | OpenAI models | Toggle **Use Responses API** (recommended by OpenAI for new projects); built-in code-interpreter tools only work inside AI Agent |
+| **Anthropic Chat Model** | Claude models | Prompt caching supported (added ~2.42); pick model by ID |
+| **Google Gemini Chat Model** | Gemini models | Key from Google AI Studio; free tier exists |
+| **Azure OpenAI Chat Model** | OpenAI via Azure | Required for some regulated estates |
+| **Ollama Chat Model** | Local/open models | Self-hosted privacy path; tool-calling varies by model |
+| **OpenRouter / Groq / Mistral Cloud** | Other gateways | OpenRouter: one key, many models; handy for A/B evals |
+| **Structured Output Parser** | Force schema-valid output | JSON Schema or example-generated; pair with **Require Specific Output Format** |
+| **Simple Memory** / **Postgres Chat Memory** / **Redis Chat Memory** | Conversation state | Simple Memory is not queue-mode-safe; production multi-worker → Postgres/Redis |
+| **Basic LLM Chain + Retriever** | RAG inside a flow | Query the Ch 28 pgvector store via a Vector Store node |
+
+On **n8n Cloud**, OpenAI (and some other) models can run on **Gateway credits** instead of your own API key — select **Use Gateway credits** in the credential field. Self-hosted Community Edition always uses your own keys. Model IDs drift monthly; as of November 2026 the docs' examples reference `GPT-5-class`, `claude-sonnet/haiku-class` and `gemini-2.5-class` families, but pin exact IDs from each provider's docs before production. Two practical notes:
+
+- **Fallback model:** both AI Agent and chain nodes support an **Enable Fallback Model** slot — wire a second, different-provider model (e.g. Anthropic primary, Gemini fallback) so a 529/429 from one provider doesn't take the dispute pipeline down. Verify the fallback fires by breaking the primary key in staging.
+- **Prompt caching:** Anthropic models on current n8n releases support prompt caching — stable system prompts and policy chunks hit the cache, cutting both latency and input-token cost on multi-turn agents.
+
+## 2. Credentials Hygiene — Non-Negotiable
+
+1. Every API key lives in **Credentials** (left sidebar → New), never in a node parameter, never in a Code node, never in git. n8n encrypts the credential store with `N8N_ENCRYPTION_KEY` — on self-hosted, *you* own that key; lose it and all stored credentials are unreadable.
+2. Use per-service scopes: the Slack credential for posting needs `chat:write`; it does not need `admin`. Least privilege per credential.
+3. Name credentials like `shopcore-slack-ops-prod`, not `Slack 1` — Future-you rotates keys.
+4. Rotate on staff offboarding; run with separate dev/prod credentials.
+
+## 3. The SaaS Catalog ShopCore Actually Uses
+
+| Service | Node(s) | ShopCore job |
+| :-- | :-- | :-- |
+| **Slack** | Slack (Send Message, buttons via Interactive Messages), Slack Trigger | `#support-ops` notices, approval gates |
+| **Gmail** | Gmail, Gmail Trigger | Support inbox intake |
+| **Notion** | Notion (Create Page/Database Item) | Research Briefs land as pages (34.2.1) |
+| **Linear** | Linear (Create Issue) | Dispute/escalation tickets |
+| **HubSpot** | HubSpot (Contact/Deal) | Sync dispute↔customer for RevOps |
+| **Postgres** | Postgres (Execute Query) | Audit log + idempotency (schema in 34.2.2) |
+| **HTTP Request** | HTTP Request | Anything without a node — the universal escape hatch |
+
+## 4. Build the AI Half — Node by Node
+
+Replace the 33.1.1 placeholder Switch with a model. Same input; smarter routing.
+
+```text
+Gmail Trigger --> Code (extract) --> Basic LLM Chain (classify) --> Structured Output Parser
+                                                                          |
+                                                            Switch (auto | review | escalate)
+```
+
+1. **Basic LLM Chain** — Prompt:
+
+```text
+You classify ShopCore refund disputes. Return JSON only.
+Order: {{ $('Code').item.json.orderId }}  Claimed: ${{ $('Code').item.json.amountClaimed }}
+Message: {{ $('Code').item.json.raw }}
+Decide: auto (minor, evidence clear, < $250, polite), review (unclear), escalate (threats, chargeback, legal, > $250).
+```
+
+2. **Structured Output Parser** — schema:
+
+```json
+{ "type": "object", "properties": {
+  "decision": { "type": "string", "enum": ["auto", "review", "escalate"] },
+  "reason": { "type": "string" },
+  "confidence": { "type": "number", "minimum": 0, "maximum": 1 } },
+  "required": ["decision", "reason", "confidence"] }
+```
+
+3. **Switch** on `{{ $json.decision }}`, **fallback** → `review` (fail safe, never to `auto`).
+
+For the `escalate` branch, replace the Slack notice with **Linear → Create Issue**: title `Dispute {{ orderId }} — ${{ amountClaimed }}`, description = LLM `reason` + raw snippet + link to the execution. For `review`, post to Slack with two **buttons**: *Approve auto-handle* / *Escalate* (see §5). For `auto`, Slack `#support-ops` heads-up only — **never a customer-facing reply without the approval gate in 34.1.1**.
+
+Need retrieval? Insert a **Vector Store (pgvector)** + **Embeddings OpenAI** pair feeding a **Retriever** into the chain — that is how the classifier reads the Ch 28 refund policy instead of guessing.
+
+## 5. Human-in-the-Loop: Approval via Slack
+
+Two production-grade patterns:
+
+- **Wait-for-approval**: Slack node posts with `interactive` buttons → workflow uses **Wait** node (webhook resume) or **Slack Trigger** for button callbacks → only then does Linear create the ticket. `response_url`/signature verification applies as with any webhook.
+- **AI-drafted, human-sent**: the chain drafts the customer reply; a human approves/edits in Slack/Intercom; the send happens from the approval branch — never from inside the LLM branch. This is the red line from 34.1.1 enforced architecturally.
+
+n8n also ships human-in-the-loop affordances for AI Agents in current releases (HITL cards in chat/notify surfaces — see release notes for your version); the Slack-Wait pattern above works on every edition including free self-hosted.
+
+## 6. Rate Limits, Cost and Observability
+
+- Provider rate limits arrive as HTTP 429 — enable **Retry On Fail → wait 5s → max 3 tries** on the model sub-node (see 33.2.2), and keep batches small.
+- One execution = one workflow run regardless of step count (Cloud billing); local/self-hosted cost is server + tokens.
+- A worked estimate (illustrative): 800 disputes/mo, chain pass ≈ 900 in / 120 out on a mid-tier model at ~$3/$15 per M tokens → 800 x (900 x $3/M + 120 x $15/M) = 800 x ($0.0027 + $0.0018) = 800 x **$0.0045/dispute ≈ $3.60/mo** vs the human 5-minute triage it replaces. Agent-with-tools passes cost 3-6x that; still trivial - until the agent mis-fires into 40 tool calls because the iteration cap was unset.
+- Cloud metering: executions over your plan cap **fail** until the month resets on Starter/Pro — for a busy dispute inbox that means classification silently stops. Size the plan to p95 monthly volume, or self-host.
+- Log every run: **Executions** shows per-node input/output, duration, and (with **Save successful production executions** on) the full payload. For a durable audit trail, write the decision to **Postgres** (`worker_runs` table, 34.2.2) — the execution log rotates; your audit table should not.
+
+## 7. Verify End-to-End
+
+Send a realistic dispute ("I was charged twice for order ORD-1141, $319, fix this now or my lawyer hears about it"). Expect: decision `escalate`, Linear issue created, Slack notice posted, Postgres row written. If the LLM says `auto`, your prompt is too weak — tighten the enum guidance before touching temperature.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `400` from OpenAI/Anthropic node | Wrong model ID or bad key | Re-copy model ID from provider docs; re-create credential |
+| Structured Output Parser: invalid JSON | Model ignored schema | Lower temperature (0–0.2); simplify schema; enable auto-fix parser variant |
+| `429 Too Many Requests` | Rate limit or batch too big | Retry w/ backoff; Loop Over Items with batch 10 |
+| Postgres Chat Memory fails in queue mode | In-memory store | Switch memory sub-node to Postgres/Redis |
+| Buttons clicked but nothing resumes | Wait webhook URL wrong / workflow inactive | Re-check `WEBHOOK_URL`; workflow must be Active; verify signature |
+| Huge payload, truncated prompt | Full email body stuffed in | Send `snippet`/trimmed body; RAG for the long parts |
+
+## 9. Practice
+
+**Guided.** Build the classifier chain above; run 10 hand-labeled dispute emails; record decision vs your labels.
+
+**Independent.** Add the pgvector retriever with the Ch 28 policy corpus; confirm a "where is my order" question retrieves the shipping-policy chunk (not refund) via the execution log.
+
+**Challenge.** Wire Slack buttons → Wait → Linear. Prove the ticket is created *only* after a button click, and that a double-click does not create two tickets (idempotency on Slack `ts`).
+
+**Checklist**
+
+- [ ] Model sub-node connected with a named, scoped credential — nothing hard-coded
+- [ ] LLM output is schema-validated JSON with a fail-safe default branch
+- [ ] LINEAR/Slack side effects happen only downstream of classification + approval
+- [ ] I can read one full execution and explain every hop
+- [ ] Token spend per run is measured, not guessed
+
+</BookNodePage>

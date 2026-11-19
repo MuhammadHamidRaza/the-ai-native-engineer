@@ -1,0 +1,74 @@
+---
+id: "00-1-5-what-you-can-expect-to-build"
+title: "00.1.5 What You Can Expect to Build"
+sidebar_label: "00.1.5 What You Can Expect to Build"
+slug: "/part-00-about-this-book/00-1-welcome-to-the-ai-native-engineer/00-1-5-what-you-can-expect-to-build"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-1-5">
+
+Technical competence cannot be verified by highlighting paragraphs or nodding along with clean explanations. Across *The AI-Native Engineer*, every concept moves swiftly into working software that you configure, run, test with bad inputs, break deliberately, debug from stack traces, and deploy cleanly.
+
+Yet scattered micro-exercises rarely build portfolio confidence either. Finishing thirty unrelated 20-line scripts does not teach you how authentication middleware interacts with database migrations, or why an AI evaluation suite catches subtle retrieval drift after a schema refactor. That is why this curriculum arranges your builds as an **escalating architectural progression** from Part 01 through Part 10.
+
+## 1. The Four Build Tiers Across the 638 Hours
+
+| Curriculum Stage | Representative Systems & Software You Build | Core Engineering Constraints Enforced | Verifiable Proof Produced |
+| :--- | :--- | :--- | :--- |
+| **Tier 1: Foundations & Core Languages (`Parts 01–03` · `158h`)** | Network/DNS diagnostic scripts, clean multi-branch Git workflows, accessible semantic web interfaces, TypeScript CLI/state engines, interactive React/Next.js apps, and Python FastAPI file/automation utilities | Clean CLI error exit codes, zero `any` leaks in strict TypeScript, semantic HTML/keyboard navigation, deterministic Python `venv` + Pydantic validation | Working Git history, typed frontends, runnable Python CLI/API tools with unit tests |
+| **Tier 2: Full-Stack, Cloud & Quality (`Parts 04–06` · `236h`)** | Normalized relational schemas in PostgreSQL, Node.js/TS REST backends with authentication & RBAC, a **Complete Full-Stack Web Application (`Ch 15`)**, multi-container Docker Compose stacks, CI/CD GitHub Actions pipelines, live HTTPS cloud deployments, structured logging, and indexed DB queries | Parameterized SQL (zero injection), password hashing/session security, row-level tenant scoping, container healthchecks, zero-secret commits (`.env.example`), load-safe pagination | Live HTTPS full-stack SaaS application, green automated CI test pipeline, Docker reproducibility |
+| **Tier 3: AI-Native, RAG, Agents & Automation (`Parts 07–08` · `168h`)** | Spec-driven repository features, structured JSON extraction services, permission-scoped **Hybrid RAG Application (`Ch 28`)**, tool-using agents via **OpenAI Agents SDK (`Ch 30`)** with safety guardrails, custom **MCP Server (`Ch 32`)**, **n8n Business Automations (`Ch 33`)**, and idempotent **AI Workers (`Ch 34`)** | Strict Zod/Pydantic output checks, deterministic verification around LLM claims, step budgets, prompt-injection defense, dead-letter error queues, token cost telemetry, golden eval suites | Deployed AI system backed by automated evaluation accuracy/latency/cost benchmarks |
+| **Tier 4: Field Delivery & Integrated Capstone (`Parts 09–10` · `76h`)** | Complete FDE discovery brief + workflow map, clean developer portfolio (`3–4` flagship case studies), client scoping/handover docs (`Ch 39`), MVP product slice (`Ch 40`), and the **`36h` Chapter 42 Integrated Capstone** | Real problem validation, shadow-run comparison against baseline metrics, end-to-end automated tests + AI evals, operator runbook, 5-minute fresh-clone setup | Public flagship capstone repo, live production deployment, ADR docs, and handover walkthrough |
+
+## 2. What "Production-Minded" Means Even in Early Builds
+
+Many books wait until the final two chapters to mention security, testing, error handling, or documentation—training readers for months to write sloppy code that has to be unlearned later. *The AI-Native Engineer* enforces six production habits from **Part 01** onward, even on small builds:
+
+1. **Zero secrets in source control:** API keys, database URLs, and session secrets never get pasted into code or committed to Git. Every repository uses `.gitignore` plus an accurate `.env.example` documenting required variables without exposing values.
+2. **Negative paths built intentionally:** You never test only the "happy click." Every API endpoint and form must reject missing fields, invalid types, oversized payloads, and unauthorized users with explicit, structured error responses (`400`, `401`, `403`, `404`, `422`) and clear UI states (loading, empty, error, retry).
+3. **Reproducible startup (`git clone → boot cleanly`):** Every milestone project ships with clear dependency manifests (`package.json`, `requirements.txt`/`pyproject.toml`), database setup or seed instructions, and exact run commands verified on a clean shell.
+4. **Empirical verification evidence:** Instead of writing *"tested manually"* in notes, you keep runnable unit/integration tests, reproducible `curl` verification commands, or golden AI evaluation scripts right inside the repository.
+5. **Concise Architecture Decision Notes (`ADR`):** Even three paragraphs inside `README.md` explaining *why* you structured tables a certain way or chose a deterministic parser ahead of an LLM call signals mature engineering thinking (`00.10.4`).
+6. **Observability over silent failures:** Background jobs and API boundaries emit structured logs (request/correlation ID, status, duration, error context) rather than swallowing failures inside empty `try/catch` blocks.
+
+## 3. Concrete Walkthrough: How One Concept Grows Across Four Build Tiers
+
+To visualize how your projects mature instead of staying trapped in toy complexity, trace how a single real-world capability—**handling uploaded customer documents**—evolves as you advance through the curriculum:
+
+- **In Part 03 (`Ch 10` Python Files & APIs):** You write a clean local Python script and FastAPI endpoint that accepts CSV/PDF uploads safely, checks file extensions and max byte sizes, parses text cleanly, and catches corrupt-file exceptions without crashing the server.
+- **In Part 04–05 (`Ch 12, 15, 18`):** You store document metadata and organization ownership inside PostgreSQL, connect authenticated Next.js file upload UI states, persist objects safely, and package the API + database inside Docker Compose (`Ch 18`) with automated GitHub Actions tests (`Ch 19`).
+- **In Part 08 (`Ch 28, 34, 36`):** You move heavy parsing off the HTTP request thread onto an idempotent background **AI Worker (`Ch 34`)**, extract structured fields using constrained LLM JSON schemas verified arithmetically in code, index approved chunks with `organization_id` isolation for hybrid **RAG (`Ch 28`)**, and run a 30-document **golden evaluation test (`Ch 36`)** before every prompt edit.
+- **In Part 09–10 (`Ch 39, 42`):** You sit beside a real user, measure minutes spent processing documents manually, ship Slice 1 with a side-by-side operator verification pane, and hand over a live URL, monitoring alerts, and an operator runbook.
+
+Notice how **zero effort is wasted**: every earlier build becomes the structural muscle inside the next tier!
+
+## 4. Common Building Mistakes That Stall Learners
+
+1. **Endless half-started projects ("tutorial graveyard"):** Starting six side projects after Chapter 08 without finishing validation, tests, documentation, or deployment on *any* of them produces weak portfolio proof. Finish fewer systems to a genuinely high operational bar (`00.10.2`).
+2. **Polishing CSS for six hours while auth or database invariants are broken:** Visual polish matters for usability (`Ch 06–07`), yet a sleek dark-mode gradient sitting on top of unauthenticated SQL queries or swallowed `500` errors fails every technical review. Build correctness and security first, polish UX cleanly alongside it.
+3. **Treating Chapter 42 as a solo sprint without discovery:** Starting the Capstone by inventing an abstract feature nobody needs wastes its full-lifecycle potential. Anchor Chapter 42 in a concrete problem (`00.8.1`), measurable baseline, and authentic user feedback.
+
+## 5. Practical Build-Charter Exercise (10 Minutes)
+
+Create a quick **`PORTFOLIO_ROADMAP.md`** note in your personal study folder mapping your four planned milestone builds:
+1. **Tier 1 Build Goal (`Parts 02–03`):** Interactive frontend web utility + Python API automation tool.
+2. **Tier 2 Flagship (`Parts 04–06`):** Multi-user authenticated full-stack Next.js + PostgreSQL + Docker application deployed live over HTTPS.
+3. **Tier 3 Flagship (`Parts 07–08`):** Production RAG / Agent / MCP + Worker automation platform with golden eval metrics.
+4. **Tier 4 Capstone (`Ch 42`):** Complete end-to-end real-world problem solution packaged with full ADR + FDE handover docs.
+
+Every time a weekly drill feels tedious in Chapter 02 or Chapter 04, glance at that four-tier map—you will see immediately what larger system that drill unlocks.
+
+## 6. Key Takeaways
+
+- **Projects escalate intentionally** from clean CLI/browser tools (`Parts 01–03`) → authenticated full-stack cloud apps (`Parts 04–06`) → evaluated RAG/agent/MCP workflows (`Parts 07–08`) → full FDE Capstone (`Ch 42`).
+- **Production habits start on day one:** `.env.example` hygiene, negative-path validation, reproducible setup, tests, structured logs, and concise ADRs apply at every tier.
+- **Finish fewer builds cleanly (`00.10.3`)** rather than accumulating dozens of unfinished starter templates.
+
+## 7. Further Reading & References
+
+- **Cross-References in Part 00:** [Section 00.6.5: Hands-On Labs and Projects](/book/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-5-hands-on-labs-and-projects), [Section 00.10.1: Understanding the Project Journey](/book/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-1-understanding-the-project-journey), and [Section 00.10.8: Understanding the Capstone](/book/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-8-understanding-the-capstone).
+- **Build & Documentation Standards:** [The Twelve-Factor App (Config, Logs & Build/Run Parity)](https://12factor.net/) and [GitHub Docs: Managing Repositories & READMEs](https://docs.github.com/en/repositories).
+
+</BookNodePage>

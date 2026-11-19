@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "12.2 SQL & Relational Querying"
+sidebar_label: "12.2 SQL & Relational Querying"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s2">
+
+**Subchapter 12.2** teaches the SQL you will use daily: reading rows, joining ShopCore's tables, aggregating with GROUP BY, taming complex logic with CTEs and window functions, and proving query performance with indexes and `EXPLAIN ANALYZE`. Everything runs against the canonical ShopCore dataset from [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema).
+
+## Lessons in Subchapter 12.2
+
+1. **[12.2.1 SELECT, JOINs, Grouping and Aggregations](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-1-select-joins-grouping-and-aggregations):** The SELECT lifecycle, INNER vs LEFT JOIN (and the ON-vs-WHERE trap), GROUP BY/HAVING, revenue reports on real seed data.
+2. **[12.2.2 Subqueries, CTEs and Window Functions](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-2-subqueries-ctes-and-window-functions):** When to nest, when to `WITH`, and how RANK/ROW_NUMBER/running totals work without collapsing rows.
+3. **[12.2.3 Indexes and EXPLAIN ANALYZE](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-3-indexes-and-explain-analyze):** B-tree, composite (ESR), partial indexes, and reading Seq Scan vs Index Scan — index only with proof.
+
+</BookNodePage>

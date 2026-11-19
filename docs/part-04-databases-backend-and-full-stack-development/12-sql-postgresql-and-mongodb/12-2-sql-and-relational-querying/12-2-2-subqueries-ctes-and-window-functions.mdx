@@ -1,0 +1,169 @@
+---
+id: "12-2-2-subqueries-ctes-and-window-functions"
+title: "12.2.2 Subqueries, CTEs and Window Functions"
+sidebar_label: "12.2.2 CTEs & Window Functions"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-2-subqueries-ctes-and-window-functions"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s2-t2">
+
+As your queries grow past one join, readability collapses into nested parenthesis pyramids. This lesson gives you the three tools professionals use to keep complex SQL **linear, readable and correct**: subqueries, CTEs (`WITH`) and window functions (`OVER`). All examples use the ShopCore seed data from [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema).
+
+## 1. Subqueries — A Query Inside a Query
+
+A subquery is a `SELECT` in parentheses whose result is used by the outer query. Three positions:
+
+```sql
+-- (a) In WHERE: rows matching a set
+SELECT title FROM products
+WHERE price_cents > (SELECT AVG(price_cents) FROM products);
+
+-- (b) In FROM: a derived table (give it an alias)
+SELECT sku, price_cents
+FROM (SELECT sku, price_cents FROM products WHERE price_cents > 5000) AS pricey
+ORDER BY price_cents;
+
+-- (c) In SELECT: a per-row lookup
+SELECT full_name,
+       (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count
+FROM users u;
+```
+
+Subqueries are perfect for one-off comparisons — but nest them deeper than two levels and nobody can review them. That's what CTEs are for.
+
+## 2. CTEs — Named Temporary Result Sets (`WITH`)
+
+A **Common Table Expression** is a subquery you name once and reference many times. It reads top-to-bottom like a report:
+
+```sql
+WITH order_totals AS (
+  SELECT o.id            AS order_id,
+         o.user_id,
+         o.status,
+         SUM(oi.qty * oi.unit_price_cents) AS order_cents
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.id
+  GROUP BY o.id, o.user_id, o.status
+)
+SELECT u.full_name,
+       ot.order_id,
+       ot.status,
+       ot.order_cents
+FROM order_totals ot
+JOIN users u ON u.id = ot.user_id
+WHERE ot.status = 'paid'
+ORDER BY ot.order_cents DESC;
+```
+
+Advantages over nested subqueries:
+- **Readability:** each block has a name — "order_totals", "ranked_customers".
+- **Reuse:** reference the CTE multiple times in the main query — one definition, zero duplication.
+- **Debuggability:** comment out the main query and run just the CTE to inspect intermediate results.
+
+Multiple CTEs chain with commas:
+
+```sql
+WITH order_totals AS (
+  SELECT o.id AS order_id, o.user_id, SUM(oi.qty * oi.unit_price_cents) AS total
+  FROM orders o JOIN order_items oi ON oi.order_id = o.id
+  GROUP BY o.id, o.user_id
+),
+customer_totals AS (
+  SELECT user_id, SUM(total) AS lifetime_value
+  FROM order_totals
+  GROUP BY user_id
+)
+SELECT u.email, ct.lifetime_value
+FROM customer_totals ct
+JOIN users u ON u.id = ct.user_id
+ORDER BY ct.lifetime_value DESC;
+```
+
+### Recursive CTEs — When Trees Must Be Walked
+
+Category hierarchies, org charts, graph walks — one `WITH RECURSIVE` solves all:
+
+```sql
+WITH RECURSIVE descendants AS (
+  SELECT id, name, parent_id FROM categories WHERE id = 1      -- anchor
+  UNION ALL
+  SELECT c.id, c.name, c.parent_id
+  FROM categories c
+  JOIN descendants d ON d.id = c.parent_id                     -- recursive step
+)
+SELECT * FROM descendants;
+```
+
+(ShopCore's categories are flat today — this pattern is for when you add parent/child categories.)
+
+## 3. Window Functions — Aggregate Without Collapsing Rows
+
+`GROUP BY` collapses many rows into one. A **window function** computes the same aggregate *alongside the individual rows* — rows stay visible, numbers ride along.
+
+```sql
+-- Each order item, plus the order's full total next to it (no GROUP BY!)
+SELECT oi.order_id,
+       oi.product_id,
+       oi.qty,
+       oi.unit_price_cents,
+       SUM(oi.qty * oi.unit_price_cents) OVER (PARTITION BY oi.order_id) AS order_total
+FROM order_items oi;
+```
+
+`OVER (PARTITION BY oi.order_id)` means "as opposed to collapsing across the whole table, compute per order_id window, keeping every row".
+
+### Ranking and Running Totals
+
+```sql
+-- Rank every paid order by size, per user
+WITH paid_totals AS (
+  SELECT o.user_id, o.id AS order_id,
+         SUM(oi.qty * oi.unit_price_cents) AS total
+  FROM orders o JOIN order_items oi ON oi.order_id = o.id
+  WHERE o.status = 'paid'
+  GROUP BY o.user_id, o.id
+)
+SELECT user_id, order_id, total,
+       RANK()       OVER (PARTITION BY user_id ORDER BY total DESC) AS rank_in_user_orders,
+       SUM(total)   OVER (PARTITION BY user_id ORDER BY order_id)   AS running_total,
+       ROW_NUMBER() OVER (ORDER BY total DESC)                      AS global_row
+FROM paid_totals;
+```
+
+| Function | Meaning |
+| :-- | :-- |
+| `ROW_NUMBER()` | 1, 2, 3 … unique per row (ties get arbitrary distinct numbers) |
+| `RANK()` | 1, 2, 2, 4 … ties share a rank, next skips |
+| `DENSE_RANK()` | 1, 2, 2, 3 … ties share a rank, next doesn't skip |
+| `SUM/AVG/COUNT() OVER (ORDER BY ...)` | Running (cumulative) total/average/count |
+| `LAG()/LEAD()` | Previous/next row's value — month-over-month deltas |
+
+## 4. Subqueries vs CTEs vs Windows — Choosing
+
+| Need | Tool |
+| :-- | :-- |
+| Filter rows by a set/aggregate | Subquery in `WHERE` |
+| Linear, named, reusable multi-step logic | CTE |
+| Rank, percentile, running total, compare to row neighbors | Window function |
+| Recursive trees | `WITH RECURSIVE` |
+| Just aggregating to one row per group | Plain `GROUP BY` (don't over-engineer!) |
+
+## 5. Practice
+
+**Guided exercise.** Write the ranked-paid-orders query from section 3 with all three window functions. Verify: Ada's order 1 (24700) ranks 1, running total 24700.
+
+**Independent exercise.** "Top product per category": using a CTE (total units per product) + window function, return each category's best seller by units sold. (Hint: `RANK() OVER (PARTITION BY c.id ORDER BY units DESC)`, then keep `rank = 1`.)
+
+**Challenge.** "Month-over-month paid revenue": bucket `orders.created_at` by month (`date_trunc('month', created_at)`), sum `qty*unit_price_cents`, and use `LAG()` to show delta from previous month. (Seed spans little time — extend the seed with varied `created_at` dates to make this meaningful.)
+
+**Assessment checklist**
+
+- [ ] I can place a subquery in WHERE, FROM and SELECT and say when each is right.
+- [ ] I can refactor a nested subquery into a CTE and vice versa.
+- [ ] I can write PARTITION BY / ORDER BY window functions without collapsing rows.
+- [ ] I know ROW_NUMBER vs RANK vs DENSE_RANK.
+- [ ] I only reach for window functions when GROUP BY is not enough.
+
+</BookNodePage>

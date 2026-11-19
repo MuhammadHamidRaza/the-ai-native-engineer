@@ -1,0 +1,65 @@
+---
+id: "08-2-3-middleware-and-edge-considerations"
+title: "08.2.3 Middleware and Edge Considerations"
+sidebar_label: "08.2.3 Middleware and Edge Considerations"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-2-server-actions-route-handlers-and-seo/08-2-3-middleware-and-edge-considerations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08-s2-t3">
+
+Next.js `src/proxy.ts` (renamed from `middleware.ts` in Next.js 16) intercepts incoming requests **before** a route renders. Used properly, it handles fast redirects, locale rewrites, and optimistic session-cookie presence checks cleanly; used carelessly, it tries to run heavy database queries in restricted Edge runtimes or becomes your sole security boundary.
+
+## 1. Lightweight `proxy.ts` Example
+
+```typescript
+// src/proxy.ts
+import { NextResponse, type NextRequest } from "next/server";
+
+export function proxy(request: NextRequest) {
+  const hasSession = request.cookies.has("session_token");
+
+  if (!hasSession && request.nextUrl.pathname.startsWith("/dashboard")) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", request.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/dashboard/:path*"],
+};
+```
+
+**Two Critical Production Rules:**
+1. **Always restrict `matcher`:** Never run middleware on static images, `_next/static`, or `favicon.ico`.
+2. **Never treat Middleware as your only auth check!** Because Middleware only checks quickly (e.g., whether a cookie exists) and runs before Data Access layers, **every Server Component, Server Action, and Route Handler must still verify the session token cryptographically and check user permissions in Node.js** (`defense in depth`).
+
+## 2. Production Verification (`next build` + `next start`)
+
+`npm run dev` compiles routes lazily on demand and hides build-time static/type failures. Before shipping or deploying (`Part 05`), always run the full production pipeline locally:
+
+```bash
+npx tsc --noEmit
+npm run lint
+npm run build
+npm run start
+```
+
+Test `http://localhost:3000` under `npm run start`—that runs the exact compiled server bundle you will deploy to Node hosting, Docker, or managed platforms.
+
+## 3. Debugging Common Next.js Production Errors
+
+- **`Error: Dynamic server usage` during `next build`:** A route tried reading `cookies()` or `searchParams` while expected to be statically generated—add `export const dynamic = "force-dynamic"` or wrap the dynamic section in `<Suspense>`.
+- **Browser console `Hydration failed`:** Server HTML did not match Client initial JSX (`08.1.2`). Move browser-only reads (`localStorage`, `Date.now()`) into `useEffect`.
+
+## Mastery Checklist
+
+- [ ] Uses `proxy.ts` strictly for lightweight redirects/rewrites with explicit `matcher` rules.
+- [ ] Enforces real authentication and authorization inside Node Server Components, Route Handlers, and Server Actions.
+- [ ] Runs `tsc --noEmit && npm run lint && npm run build && npm run start` cleanly before deploying.
+
+</BookNodePage>

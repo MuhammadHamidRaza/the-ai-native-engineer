@@ -1,0 +1,74 @@
+---
+id: "e-4-assessment-rubrics"
+title: "E.4 Assessment Rubrics"
+sidebar_label: "E.4 Assessment Rubrics"
+slug: "/appendix/appendix-e-developer-reference-materials/e-4-assessment-rubrics"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-e-4">
+
+**Purpose:** Grade your own (or a peer's) work before someone else does it for you. These rubrics cover the three assessment dimensions that matter: technical, delivery, and professional maturity.
+
+## Rubric 1 — Technical Correctness (50 points: five rows × 10)
+
+| Area | 0 | 5 | 10 |
+| :-- | :--: | :--: | :-- |
+| Code works | Doesn't run | Runs with issues | Clean, handles edge cases |
+| Tests pass | No tests | Some tests | Meaningful coverage |
+| Security | Secrets committed / no auth | Basic auth | Proper auth + input validation + no secrets |
+| Data model | Normalized-ish | Reasonable | Normalized, indexed, migrations clean |
+| Performance | Unusable | Acceptable | Hot paths optimized, measured |
+
+**Scoring:** sum the five rows. **Passing:** ≥35/50 (i.e., ≥7/10). **Excellent:** ≥45/50 (i.e., ≥9/10).
+
+## Rubric 2 — Delivery & Process (50 points: five rows × 10)
+
+| Area | 0 | 5 | 10 |
+| :-- | :--: | :--: | :-- |
+| Commit history | "initial commit" squashed | Some structure | Atomic, meaningful messages |
+| Documentation | None | README exists | Problem → architecture → run → deploy |
+| Reproducibility | "Works on my machine" | Mostly reproducible | One command to run; `.env.example` complete |
+| Deployment | Manual / broken | Deployed once | Automated deploy + smoke test |
+| Monitoring | None | Logs exist | Logs + one alert + dashboard |
+
+**Scoring:** sum the five rows. **Passing:** ≥35/50 (i.e., ≥7/10). **Excellent:** ≥45/50 (i.e., ≥9/10).
+
+## Rubric 3 — Professional Maturity (50 points: five rows × 10)
+
+| Area | 0 | 5 | 10 |
+| :-- | :--: | :--: | :-- |
+| Scope control | Scope creep throughout | Mostly held | Clear out-of-scope, explicit decisions |
+| Communication | Silent builds | Occasional updates | Weekly status, proactive flagging |
+| Trade-off documentation | None | Some | Every non-obvious decision has an ADR/note |
+| Client/user feedback | Ignored | Some incorporated | Iterated based on real feedback |
+| Honesty about limitations | Claims perfection | Some caveats | Explicit known issues and what needs more work |
+
+**Scoring:** sum the five rows. **Passing:** ≥35/50 (i.e., ≥7/10). **Excellent:** ≥45/50 (i.e., ≥9/10).
+
+## Rubric 4 — The Capstone/Portfolio Project Scorecard
+
+| Dimension | Weight | Score (1–5) |
+| :-- | :--: | :--: |
+| Solves a real problem for a real person | 25% | |
+| End-to-end: frontend to backend to DB | 15% | |
+| Tests + CI passing | 10% | |
+| Documentation (README + runbook) | 10% | |
+| Deployed and accessible | 15% | |
+| Security hygiene | 15% | |
+| Client/user validation | 10% | |
+
+**Total ≥ 4.0 = portfolio-worthy. ≥ 4.5 = interview-ready.**
+
+## Rubric 5 — The Self-Review Questions
+
+1. Would I ship this to a client today?
+2. What broke during development, and how did I handle it?
+3. What would I do differently next time?
+4. Can a stranger run this in under 10 minutes?
+5. If this failed in production, would I know?
+
+**If you can't answer all five, you're not done.**
+
+</BookNodePage>

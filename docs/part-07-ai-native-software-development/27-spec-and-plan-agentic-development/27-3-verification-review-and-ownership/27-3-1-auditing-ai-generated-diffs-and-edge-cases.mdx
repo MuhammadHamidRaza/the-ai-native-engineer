@@ -1,0 +1,151 @@
+---
+id: "27-3-1-auditing-ai-generated-diffs-and-edge-cases"
+title: "27.3.1 Auditing AI-Generated Diffs and Edge Cases"
+sidebar_label: "27.3.1 Auditing AI-Generated Diffs and Edge Cases"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-3-verification-review-and-ownership/27-3-1-auditing-ai-generated-diffs-and-edge-cases"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s3-t1">
+
+Agent-written code fails review at a steady rate, and it fails **systematically**. The tells are learnable. This lesson gives you a six-layer audit method, the nine tells agents actually exhibit, a real ~120-line abandoned-cart diff with nine seeded defects (find them before reading the answers), and a triage rubric for what to do with each finding.
+
+## 1. The Six-Layer Diff Audit
+
+Read every agent diff in this order. Skipping a layer is how the other layers miss.
+
+1. **Parse.** What files changed, what kind of change is this (migration/query/job/tests/deps)? If `package.json` or lockfiles changed and you did not ask for a dependency, stop there.
+2. **Understand.** Narrate the diff line-by-line in plain language. If you cannot, it is not reviewable yet — send it back.
+3. **Threat-model.** What can this code destroy? Deletes, writes, loops, loops over user data, cron jobs, migrations. Ask: what is the worst input, and what happens?
+4. **Verify claims.** Every comment is a claim (`// Safe: ...`). Check each against the code. Confident comments are made by the model, not by reality.
+5. **Edge cases.** Empty cart, exactly-at-boundary times, missing env vars, duplicate runs, retries, concurrent workers, DB down, mailer 500.
+6. **Ownership.** Could you merge this and explain it in a postmortem in six months? If not, it does not merge.
+
+## 2. The Nine Tells (Agent Fingerprints)
+
+| Tell | Looks like | Reality |
+| :-- | :-- | :-- |
+| Renamed vars mid-diff | `cart` becomes `orderSnapshot` halfway | Two names for one thing; drift between old and new code |
+| Suspiciously confident comments | `// Obviously safe: ...` | The certainty is decoration; verify or delete |
+| Swallowed errors | `catch { return null; }` / empty `catch {}` | Failure erased; retries never fire; debugging becomes archaeology |
+| Mocked-away behavior | The test mocks the very thing under test | Green tests, zero behavior verified |
+| Dependency churn | `package.json` + lockfile changes | New, unaudited supply chain for zero need |
+| Test deletion/weakening | Removed assertions, looser matchers, skipped tests | "Fix" the red by deleting red |
+| Dead code paths | Commented-out legacy block left in | Future readers cannot tell live from dead |
+| Hallucinated imports | `import { renderTemplate } from ...` | The identifier does not exist; compile or runtime error later |
+| Date-math off-by-one | ms vs minutes, ceil vs floor, UTC vs local | Boundary cases silently misbehave |
+
+## 3. Worked Example — The Seeded Diff
+
+Review this agent output for Task 3 (job sends one abandoned-cart reminder). **Nine defects are planted.** Audit with the six layers first, then check your list against Section 4.
+
+```diff
++ // src/jobs/abandoned-cart-scan.js
++ import { findUnrecoveredCartsOlderThan } from '../db/queries/cart';
++ import { sendMail, renderTemplate } from '../services/mailer';
++ import nodemailer from 'nodemailer';
++
++ // Obviously safe: carts are always recovered on checkout, so this only hits stale ones
++ const FOUR_HOURS = 4 * 60 * 1000; // 4 hours in ms
++
++ export async function scanOnce(db) {
++   try {
++     const carts = await findUnrecoveredCartsOlderThan(4, 100);
++     for (const cart of carts) {
++       try {
++         const profile = { email: cart.customer_email, name: cart.customer_name };
++         const hoursIdle = Math.ceil((Date.now() - new Date(cart.updated_at).getTime()) / 3600000);
++         if (hoursIdle > 4) {
++           const html = renderTemplate('abandoned-cart', { name: profile.name });
++           await sendMail({ to: profile.email, template: 'abandoned-cart', data: profile });
++         }
++       } catch (err) {
++         return null; // skip broken cart, keep scanning
++       }
++     }
++   } catch (err) {
++     return null;
++   }
++ }
++
++ // legacy: direct SMTP (kept for reference)
++ // const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST });
++ // async function legacySendReminder(to) { return transporter.sendMail({ from: 'x', to, subject: 'cart' }); }
+```
+
+```diff
++ // src/db/queries/cart.js  (addition)
++ export async function findUnrecoveredCartsOlderThan(hours, limit) {
++   const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
++   const { rows } = await db.query(
++     `SELECT c.*, cu.email AS customer_email, cu.name AS customer_name
++      FROM carts c JOIN customers cu ON cu.id = c.customer_id
++      WHERE c.recovered_at IS NULL
++        AND c.customer_id IS NOT NULL
++        AND c.updated_at > $1
++      LIMIT $2`, [cutoff, limit]);
++   return rows;
++ }
+```
+
+```diff
++ // test/jobs/abandoned-cart-send.test.js
++ jest.mock('../../src/services/mailer', () => ({
++   sendMail: jest.fn(async () => ({ id: 'mock-id' })),
++   renderTemplate: jest.fn(() => '<html></html>'),
++ }));
++ test('sends reminder', async () => {
++   await scanOnce(fakeDbWithOneStaleCart);
++   const sent = await db.query('SELECT count(*) FROM cart_reminders');
++   expect(Number(sent.rows[0].count)).toBeGreaterThanOrEqual(0);
++ });
+```
+
+```diff
+  // package.json
++   "dependencies": {
++     "nodemailer": "^6.9.16"
+   },
+```
+
+## 4. The Nine Defects, Enumerated
+
+1. **Hallucinated import** — `renderTemplate` does not exist in `src/services/mailer.js` (which exports `sendMail` only). The `html` variable is built from nothing; if `renderTemplate` were real here it is unused anyway.
+2. **Date-math unit bug** — `FOUR_HOURS = 4 * 60 * 1000` is 240 *seconds* (4 minutes), not 4 hours; `4 * 60 * 60 * 1000`. Dead constant (unused), which makes it worse: it documents the wrong number.
+3. **Wrong SQL comparison (fresh carts selected)** — `c.updated_at > $1` selects carts active *within* the window; spec requires idle **older than** 4h, i.e. `c.updated_at <= $1` (or `<`). Every actively used cart gets a "we miss you" email; genuinely abandoned carts never do.
+4. **Boundary off-by-one** — `hoursIdle > 4` with `Math.ceil` excludes carts at exactly 4h00m (ceil(4.0) = 4, not > 4). Spec says >= 4h receives one email. Silently loses the exact-boundary cohort — the classic off-by-one, hiding in plain sight.
+5. **Swallowed errors** — both `catch` blocks `return null`. Outer catch: a DB outage is indistinguishable from "no work"; the cron logs nothing; retries never run. Inner catch: one bad cart aborts nothing but records nothing.
+6. **Comment lies** — "carts are always recovered on checkout" is not enforced by any constraint, test or trigger; a checkout failure leaves `recovered_at` NULL and the reminder fires post-purchase. Confident comment, zero mechanism.
+7. **Mocked-away behavior** — the test mocks `mailer` *including `renderTemplate`* (which does not exist) and asserts nothing about rows: `toBeGreaterThanOrEqual(0)` is tautology — every number satisfies it. The one assertion that matters (exactly one row, right cart_id) is gone.
+8. **Dependency churn** — `nodemailer` added although the repo already ships Postmark via `services/mailer.js`; new supply-chain surface, zero benefit, plus an SMTP credential model nobody provisioned.
+9. **Dead code path** — `legacySendReminder` commented block left in with a *real* SMTP call shape; the next reader may uncomment it and bypass the queue, Postmark, retries and audit rows entirely.
+
+## 5. Triage Rubric
+
+| Verdict | Meaning | Example from Section 4 |
+| :-- | :-- | :-- |
+| **block** | Cannot merge; correctness or safety is wrong | 3, 4, 7, 1 |
+| **fix** | Real defect, small change, merge after fix | 2, 5, 9 |
+| **nit** | Style, hygiene, comments | 6 (rewrite or delete the comment) |
+| **accept** | Noted, consciously allowed | none here; even 9's removal is "fix" |
+
+"Fix" means the author fixes and re-requests review; it does not mean you patch it silently and merge. Findings get numbered, linked to lines, and re-checked — the same discipline as human review, minus the politeness filter.
+
+## 6. Practice
+
+**Guided exercise.** Re-audit the diff in Section 3 *without* reading Section 4. Time yourself. Layer order should be parse -> understand -> ... -> ownership; if you started at the tests, note why that blinds you.
+
+**Independent exercise.** Take a real agent diff from your repo, seed nothing, apply the six layers, and file the findings in block/fix/nit/accept. Compare against a teammate's pass.
+
+**Challenge.** Write a `PreToolUse` or CI check that greps agent diffs for `catch {`, `.skip(`, `package.json` changes and `toBeGreaterThanOrEqual(0)`. Wire it as a warning, not a gate — then evaluate whether it deserves to be a gate.
+
+**Assessment checklist**
+
+- [ ] I can recite the six layers in order without looking.
+- [ ] I spotted at least seven of the nine defects unaided.
+- [ ] I check every comment as a claim, not as truth.
+- [ ] I can classify findings block/fix/nit/accept on sight.
+- [ ] I never approve a diff I cannot narrate line-by-line.
+
+</BookNodePage>

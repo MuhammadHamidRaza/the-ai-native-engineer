@@ -1,0 +1,120 @@
+---
+id: "20-3-1-multi-cloud-strategy-portability-egress-and-lock-in"
+title: "20.3.1 Multi-Cloud Strategy, Portability, Egress and Lock-In"
+sidebar_label: "20.3.1 Multi-Cloud Strategy, Portability, Egress and Lock-In"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-3-multi-cloud-architecture-and-cross-provider-engineering/20-3-1-multi-cloud-strategy-portability-egress-and-lock-in"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s3-t1">
+
+Every few quarters a vendor deck arrives: "avoid lock-in with multi-cloud." What it omits is the invoice. This lesson hands you the three instruments that actually decide: a portability taxonomy, an egress-cost worksheet, and a lock-in scorecard. Use them before signing anything.
+
+## 1. The Portability Taxonomy — Four Separate Properties
+
+"Portable" is meaningless until you say *what* moves. Score each layer independently:
+
+| Layer | Example | Portability | Effort |
+| :-- | :-- | :-- | :-- |
+| **Code** | Containerized Node app; Helm chart | High | Days |
+| **Data** | Postgres dumps, object storage objects | Medium — portable formats, heavy gravity | Weeks–months, ongoing egress |
+| **Infrastructure** | Terraform/VPC/K8s manifests | Medium — IaC is portable in principle, provider modules are not | Weeks |
+| **Operations** | IAM model, CI/CD, monitoring, on-call runbooks | Low — every provider's operational plane differs | Months; rarely budgeted |
+
+Honest conclusion from the table: **compute is portable; knowledge and data are not.** A team that containerized everything is "cloud-portable" in the sense that they can *move* — not in the sense that moving is cheap or fast.
+
+## 2. Egress — The Bill Multi-Cloud Rarely Mentions
+
+Providers charge for data **leaving** their network. Approximate internet-egress rates (as of Nov 2026 — **CLAIM TO VERIFY: these prices move; check [AWS pricing](https://aws.amazon.com/ec2/pricing/on-demand/), [Azure bandwidth](https://azure.microsoft.com/en-us/pricing/details/bandwidth/), [GCP VPC network pricing](https://cloud.google.com/vpc/network-pricing/)**):
+
+| Provider | First tier (approx.) | Note |
+| :-- | :-- | :-- |
+| AWS | $0.09/GB after 100 GB free/mo | Drops to ~$0.085, ~$0.07 at higher tiers |
+| Azure | $0.087/GB after 100 GB free/mo | First 100 GB/mo free; Zone 2 (Asia) higher (~$0.12) |
+| GCP | Premium ~$0.12/GB first TB, ~$0.11 to 10 TB; Standard ~$0.085 | 1 GB/mo free internet egress |
+| Oracle Cloud | 10 TB/month free, then ~$0.0085/GB | Aggressive outlier |
+
+**Worked example — 5 TB/month of internet egress** (e.g., serving ShopCore's static assets direct from the origin):
+
+```text
+AWS    ~ (5000 - 100) GB × $0.09  ≈ $441 / month
+Azure  ~ (5000 - 100) GB × $0.087 ≈ $426 / month
+GCP    ~ 1024 × $0.12 + 3976 × $0.11 ≈ $560 / month  (Premium Tier)
+Oracle ~ 10 TB free → $0            (then $0.0085/GB)
+```
+
+Two implications: (1) **a CDN is not optional at scale** — front everything static/cacheable so you pay $0.0x/GB to the CDN, not origin egress; (2) **replicating data between clouds is also egress** — nightly 500 GB DB sync from AWS to GCP ≈ $45/mo just to leave AWS. That's the tax collectors wave at from the second cloud.
+
+## 3. The Lock-In Scorecard — Grade Any Service Before You Adopt It
+
+Rate 1 (portable) – 5 (full lock-in) per cell:
+
+| Service example | Data gravity | API fit | Re-implementation cost | Score |
+| :-- | :-- | :-- | :-- | :-- |
+| EKS / GKE (managed K8s) | 1 | K8s standard | 1 (hours) | **3** — port the manifests, re-learn the provider |
+| RDS PostgreSQL / Cloud SQL | 3 | Postgres standard | 2 | **5** |
+| DynamoDB / Spanner / Cosmos DB | 5 | proprietary | 5 | **13–15** |
+| SQS / Pub/Sub / Service Bus | 2 | queue patterns portable | 3 | **7** |
+| S3 / GCS / Blob | 2 | S3 API widely copied | 2 | **4** — with an abstraction layer |
+| Cloud Functions / Lambda | 3 | event-driven, portable-ish | 3–4 | **9** |
+
+Interpretation: a score ≤ 5 means "migration is boring"; ≥ 10 means "adopting this *is* the commitment." Neither is wrong — the score just forces the conversation before the bill arrives. Mitigations for high scorers: S3-API-compatible storage layers, queue abstraction, feature flags to swap implementations.
+
+## 4. The Multi-Cloud Tax — and When It's Actually Rational
+
+Every duplicated capability costs: a second IAM model, a second CI/CD pipeline, a second monitoring stack, N runbooks, 2x experimentation, and slower everything. "We run prod on AWS and DR on GCP" almost always means **an untested GCP footprint nobody believes will work**.
+
+**Multi-region is not multi-cloud — and often it's what you actually need.** Running the same cloud in two regions (failover via DNS/global LB, replication across regions) covers most "we can't afford a provider outage" fears at a fraction of the duplication tax. Property comparison:
+
+| Property | Multi-region, one cloud | Multi-cloud |
+| :-- | :-- | :-- |
+| Blast radius covered | Region-level outages, AZ loss | Region + provider-wide events |
+| Cost overhead | ~15–30% (duplicate infra, cross-region egress) | ~40–100%+ (full duplication + second ops stack) |
+| Skill/pipeline duplication | One IAM model, one pipeline, two var sets | Two of everything |
+| Data replication | Cross-region replication, same engine | Cross-cloud sync (egress fees + format drift) |
+| Honest ceiling | Doesn't survive provider collapse or policy bans | Survives anything except your own complexity |
+
+Rational cases for the full multi-cloud:
+
+1. **Regulatory / data residency** — data must live in jurisdiction X with provider A, rest elsewhere. (Mostly GCP/AWS/Azure all qualify; this is compliance, not redundancy.)
+2. **Latency** — users in Asia blocked on a US-only origin; second region/cloud closer to them.
+3. **Negotiation leverage** — a credible, rehearsed migration path lowers renewal prices. Requires the portability to be real: arrive with a one-page worked egress + migration-cost memo, not "we might leave." Procurement pays for options, not bluffs.
+4. **M&A** — you acquire a company on a different cloud; rationalizing takes years.
+5. **Extreme availability** — rare; Uber/Netflix-class. Even then, usually multi-**region**, not multi-**cloud**.
+
+Cargo-cult cases: "avoid lock-in" as a slogan; "best-of-breed per service" (the integration tax swamps the savings); résumé-driven development. If you cannot name the outage, regulation or latency number forcing the split, you don't need it.
+
+**Default recommendation for ShopCore-class teams:** single cloud, multi-region, portable architecture (containers, Postgres, S3-compatible objects, IaC, no proprietary databases in the critical path). Rehearse one cross-cloud failover *paper exercise* per year. That is 80% of the benefit at 10% of the cost.
+
+**Questions to ask before adopting any managed service** (your anti-lock-in interview):
+
+1. Is the data exportable in a standard format, at what cost, how long?
+2. Does the API have an open spec (OpenAPI/protobuf), and who else implements it?
+3. What breaks in CI/CD the day we flip providers? (build vs pull vs config)
+4. What is the egress fee on a full exit, in writing?
+5. Who else has actually left this service — public postmortems?
+
+**The honest FAQ:**
+
+- *"Our board wants multi-cloud for resilience."* → Show them the redundancy math: multi-region one cloud covers region loss for ~20% overhead; multi-cloud covers provider collapse for 2–5x ops cost, and no major provider has had a total collapse with no recovery path. Resilience is a budget decision, not an architecture slogan.
+- *"Best tool per job."* → The integration seam *is* a service you now own. Count the cross-cloud auth, retries, schemas and monitoring — then recount.
+- *"What if AWS doubles prices?"* → Migration optionality is the answer to price risk; it is bought with portability exercises (scorecard, IaC, exit drills), not with a second production footprint.
+- *"Regulated industry — we must avoid single points."* → Correct, and the answer is provider + region + independent backups you control, reviewed against the regulation text — not automatic duplication.
+
+## 5. Practice and Assessment
+
+**Guided.** Compute your egress bill for last month from your cloud console export; then price the same traffic to another provider using their calculator. Screenshot both.
+
+**Independent.** Score your current stack on the lock-in scorecard (be brutal about your database and queues). Identify the single highest-scoring component and describe the migration path — even if you never execute it.
+
+**Challenge.** Draft a one-page multi-cloud decision memo for ShopCore: "Should we go multi-cloud in the next 12 months?" — with numbers (egress, ops tax), the failure mode it addresses, and the recommended alternative (multi-region).
+
+**Assessment checklist**
+
+- [ ] I can score code/data/infra/ops portability separately for any system.
+- [ ] I can compute a 5 TB/month egress bill across at least two providers.
+- [ ] I can fill in the lock-in scorecard for a proposed managed service.
+- [ ] I can state two rational multi-cloud drivers and two cargo-cult ones.
+
+</BookNodePage>

@@ -1,0 +1,29 @@
+---
+id: "index"
+title: "21.3 Architecture & Distributed Systems"
+sidebar_label: "21.3 Architecture & Distributed Systems"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s3">
+
+**Subchapter 21.3** is where the design decisions from 21.2 become structures. Three lessons take ShopCore from "one deployable" to "a system whose parts can be changed, called and replaced independently" — with equal honesty about what distributed buys you and what it costs.
+
+## Lessons in Subchapter 21.3
+
+1. **[21.3.1 Modular Monoliths vs Distributed Services](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-1-modular-monoliths-vs-distributed-services):** The honest comparison; Conway's law; the strangler-fig extraction path; the ShopCore rule of thumb (stay monolith until ≥ 2 squads or a payments hot path exists); what distribution actually costs in ops; why deployment scripts are equally mandatory either way.
+2. **[21.3.2 API Architecture: Contracts, Versioning, Pagination and Idempotency](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-2-api-architecture-contracts-versioning-pagination-idempotency):** Resource design (plural nouns, nesting ≤ 2); HTTP semantics per RFC 9110; RFC 9457 problem+json error envelope; URI vs header versioning — picked and defended; cursor vs offset pagination under concurrent inserts; `Idempotency-Key` for payment POSTs; contract-first OpenAPI with generated clients; deprecation with `Sunset` (RFC 8594).
+3. **[21.3.3 Sync APIs vs Event-Driven Messaging](/book/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-3-architecture-and-distributed-systems/21-3-3-sync-apis-vs-event-driven-messaging):** Request/response vs publish/subscribe vs queues vs logs; the ShopCore `order.paid` fan-out (inventory, email, fraud, analytics); why at-least-once + idempotency is the only honest delivery model; ordering tolerance with sequence numbers; eventual consistency windows; sagas vs 2PC (and why 2PC is a ghost); failure modes, retries and dead-letter queues.
+
+Order matters: 21.3.1 picks the shape, 21.3.2 defines the contracts on that shape, 21.3.3 decides which flows travel on which wires. Do not start 21.3.2 before 21.3.1's monolith decision is recorded in an ADR.
+
+**Exit checklist**
+
+- [ ] I can defend ShopCore's monolith (or extraction) decision in three sentences.
+- [ ] I can write a cursor-paginated, idempotency-keyed, RFC 9457-compliant `POST /orders` contract from memory.
+- [ ] I can explain why exactly-once delivery does not exist and what "effectively once" requires.
+- [ ] I can draw the saga for checkout with compensating actions at each step.
+
+</BookNodePage>

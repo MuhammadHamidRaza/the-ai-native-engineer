@@ -1,0 +1,164 @@
+---
+id: "19-2-1-git-workflows-and-github-actions-fundamentals"
+title: "19.2.1 Git Workflows and GitHub Actions Fundamentals"
+sidebar_label: "19.2.1 Git Workflows & Actions Fundamentals"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-2-devops-workflows-and-cicd-pipelines/19-2-1-git-workflows-and-github-actions-fundamentals"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s2-t1">
+
+A deployment you cannot reproduce is a liability. CI/CD is the discipline of making every change pass the same gates automatically. This lesson wires the first gate — lint + build — into the ShopCore repo with GitHub Actions.
+
+## 1. Git Workflow Refresher — Trunk-Based, No Heroics
+
+The flow this book uses (it scales from solo to teams):
+
+```text
+main (protected) ◀── PR ── feature/add-cart-coupon   (short-lived, < 2 days)
+```
+
+Rules: `main` is always releasable; branches live hours-to-days, not weeks; every merge to `main` goes through a **pull request** with green checks; no long-lived `develop` branch; commit messages say *why* (`feat(cart): apply coupon before tax`). Refresher specifics if fuzzy: [Chapter 14](/book/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review).
+
+## 2. Actions Anatomy — One File, Five Keywords
+
+Workflows live in `.github/workflows/*.yml`. The minimum mental model:
+
+```yaml
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+```
+
+| Keyword | Meaning |
+| :-- | :-- |
+| `on:` | The event(s) that trigger the workflow (`push`, `pull_request`, `workflow_dispatch`, `schedule`) |
+| `jobs:` | Parallel units of work; each gets a fresh runner |
+| `runs-on:` | The runner image (`ubuntu-latest`, `windows-latest`, `macos-latest`) |
+| `steps:` | Sequential commands or `uses:` actions |
+| `uses:` | A reusable action from the Marketplace (pin a major tag, e.g. `@v7`) |
+| `with:` | Inputs to an action |
+
+**Where to run:** commit this file; it runs on **github.com** runners — no local setup needed. Read results under the repo's **Actions** tab.
+
+**Version note (verified Nov 2026):** this lesson pins `actions/checkout@v7` and `actions/setup-node@v7`, the current majors as of Nov 2026 (upload-artifact is also v7) — concepts identical to older majors; still bump deliberately and read the release notes before upgrading past a breaking change. `npm ci` requires a committed `package-lock.json`.
+
+**Triggers you will forget exist (and then need):** `workflow_dispatch:` (manual button — for rollbacks), `schedule: [{ cron: '0 6 * * 1' }]` (cron UTC, e.g., weekly dependency checks), `push: { paths: ['src/**'] }` / `paths-ignore` (skip CI on docs-only commits), `workflow_call` (reusable workflows — share one pipeline across repos). Start with `push` + `pull_request`; add the others deliberately, one at a time.
+
+## 3. First Workflow — Lint + Build on Push and PR
+
+Adapt paths to your repo (this assumes the ShopCore API at repo root; single repo example):
+
+```yaml
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint            # eslint exits non-zero on errors
+      - run: npm run build           # tsc / vite build
+```
+
+Push it on a branch, open a PR, and watch the check appear. **Branch protection**: Settings → Branches → add rule for `main` → require status checks ("Lint & Build") to pass + require PR — nobody can merge red code now, including you at 1 a.m.
+
+## 4. What a Green Check Actually Proves — and What It Doesn't
+
+| Green means | Green does **not** mean |
+| :-- | :-- |
+| Lint + build completed on ubuntu-latest | The app works when deployed |
+| `npm ci` + build succeed on a clean machine | Tests pass — there are no tests in this job yet (19.2.2 adds them) |
+| The YAML is valid enough to run | The workflow has correct permissions or secrets |
+| Branch protection can enforce the check | Someone can't force-push if protection is misconfigured |
+
+A workflow that only builds is a smoke alarm with no battery — useful, incomplete. 19.2.2 adds the test job, artifacts and deploy.
+
+**Reproducing CI locally:** the honest debug loop is `git stash`, check out the PR branch, run the exact failing command (`npm ci && npm run lint && npm run build`). The community tool `act` ([github.com/nektos/act](https://github.com/nektos/act)) runs workflows in local Docker containers — handy but imperfect (no exact runner parity, secrets differ). Prefer "same command, same Node major" over simulating the runner.
+
+**Workflow review checklist (steal this for every PR that touches `.github/workflows/`):**
+1. Least-privilege `permissions:` block (default to none, add only what's needed).
+2. Third-party actions pinned to a major (or a SHA for supply-chain discipline).
+3. No plaintext secrets; no `echo "$SECRET"` debug lines.
+4. `on:` triggers scoped correctly — no accidental `push` to every branch on a heavy workflow.
+5. Concurrency cancels superseded runs (see 19.2.2) so minutes aren't burned on stale commits.
+
+## 5. Reading the Logs When It Fails
+
+The red ✗ → click it → click the failing step → read the **last 20 lines** before scrolling. Common patterns:
+
+- `npm ci` error "lock file out of sync" → run `npm install` locally, commit the updated lockfile.
+- `eslint .` exits 1 → the log prints file:line — reproduce locally with the same command.
+- `node-version` mismatch → engine warning vs version in `package.json` `engines`.
+- "Resource not accessible" on `pull_request` from a fork → expected; forks get read-only `GITHUB_TOKEN`.
+
+The **Actions** tab shows per-step timing and full logs; `gh run list` / `gh run view --log` ([GitHub CLI](https://cli.github.com/)) does the same from your terminal.
+
+For the stubborn ones:
+
+- **Re-run failed jobs only** — the run page has a button; re-uses already-green jobs, saves minutes.
+- **Enable runner diagnostic logging** — repo Settings → Secrets and variables → Actions → Variables → add `ACTIONS_RUNNER_DEBUG=true` and `ACTIONS_STEP_DEBUG=true` temporarily; remove them after debugging (they're very verbose).
+- **SSH into the runner** with `mxschmitt/action-tmate` (or similar) — interactive breakpoint inside the failing job. Last-resort tool; powerful but handle secrets carefully while you're in there.
+- **Check runner disk/memory** — `df -h` as the first step of a failing job reveals "no space left" causes before you chase dependencies.
+
+## 6. Cost and Limits (GitHub-hosted runners)
+
+Public repos: GitHub-hosted runners are free. Private repos: free tier includes a monthly minutes allotment (roughly 2,000 minutes for Free plan, rolled up with artifact storage — verify [github.com/pricing](https://github.com/pricing)) — minutes on private repos are billed beyond it. This repo workflow uses minutes only on push/PR, so a small repo stays far below the cap.
+
+## 7. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Workflow never triggers | File not under `.github/workflows/`, or YAML syntax error | Path + indentation; Actions tab shows "workflow file issue" |
+| `npm ci` fails instantly | Lockfile not committed | Commit `package-lock.json`; or use `npm install` (worse, hides drift) |
+| Step passes locally, fails in CI | Uncommitted file / env difference | `git status`; replicate with same Node major (22) |
+| Check not required on merge | Branch protection missing | Settings → Branches → require "Lint & Build" |
+| Huge job times | No dependency cache | `cache: npm` under setup-node saves minutes per run |
+| Wrong trigger (runs on every tag) | `on: push` with no branch filter | Filter: `branches: [main]` |
+
+**Further reading, straight from the source:** [docs.github.com/actions](https://docs.github.com/actions) (full syntax reference), [github.com/marketplace?type=actions](https://github.com/marketplace?type=actions) (every action with usage snippets), [docs.github.com/actions/security-for-github-actions](https://docs.github.com/actions/security-for-github-actions) (hardening guide), and [github.com/actions](https://github.com/actions) (official action source). Fifteen minutes in the syntax reference pays for itself the first time a workflow fails on a YAML subtlety.
+
+## 8. Practice
+
+**Guided.** Add the workflow above; open a PR with a deliberately broken lint rule; watch it fail; fix; watch it go green; merge.
+
+**Independent.** Enable branch protection on `main` requiring the check; try to merge a red PR by pushing another commit and confirm GitHub blocks it.
+
+**Challenge.** Add a second job `build-frontend` (working-directory `./web`) that builds the ShopCore SPA in parallel; make `main` require both checks.
+
+**Assessment checklist**
+
+- [ ] I can explain `on`/`jobs`/`runs-on`/`steps`/`uses`/`with` from memory.
+- [ ] My repo runs lint+build on every push to `main` and every PR.
+- [ ] Branch protection requires green checks before merge.
+- [ ] I can diagnose a red run from the logs and reproduce locally.
+- [ ] I know Actions minutes are free on public repos and quota-based on private ones.
+- [ ] I understand `@v4` pins a major, not an exact version, and where to see newer majors.
+
+</BookNodePage>

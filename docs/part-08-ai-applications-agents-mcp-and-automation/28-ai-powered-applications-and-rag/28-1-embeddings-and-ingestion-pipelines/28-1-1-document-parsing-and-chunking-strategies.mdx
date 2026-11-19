@@ -1,0 +1,145 @@
+---
+id: "28-1-1-document-parsing-and-chunking-strategies"
+title: "28.1.1 Document Parsing and Chunking Strategies"
+sidebar_label: "28.1.1 Document Parsing and Chunking Strategies"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-1-embeddings-and-ingestion-pipelines/28-1-1-document-parsing-and-chunking-strategies"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28-s1-t1">
+
+Every "the chatbot is useless" investigation in this book ends at the same place: the document never made it into the index correctly. Before HelpBot can cite the returns policy, a parser must turn `returns-policy.pdf` into text, and a chunker must split that text into embedding-sized pieces with page numbers attached. Get this wrong and retrieval returns nothing — or worse, confidently wrong fragments.
+
+## 1. Extraction Libraries — What Actually Works
+
+| Format | JavaScript/Node | Python | Notes |
+| :-- | :-- | :-- | :-- |
+| PDF (text layer) | `pdf-parse`, `pdfjs-dist` | PyMuPDF (`pymupdf`), `unstructured` | PyMuPDF is the most accurate for layout-heavy PDFs |
+| PDF (scanned) | — | PyMuPDF + OCR (Tesseract) via `unstructured` | A scan with no text layer yields **zero** characters — you must OCR |
+| DOCX | `mammoth` (to HTML), `word-extractor` | `python-docx`, `unstructured` | `mammoth` preserves headings as HTML tags — re-map them |
+| HTML | `turndown` (→ Markdown), `cheerio` | `beautifulsoup4`, `unstructured` | Strip nav/footer boilerplate first or every chunk is menu text |
+| Markdown | `marked`, or read as-is | read as-is | Split on headings (`#`, `##`) naturally |
+
+```bash
+# ShopCore ingestion deps (workspace root)
+npm install pdf-parse mammoth turndown
+# Python alternate (where parsing is messier — layout PDFs)
+pip install pymupdf unstructured
+```
+
+Quick sanity check on any extracted text: character count, and whether it looks like language. If `returns-policy.pdf` yields under ~200 characters, it is a scan — stop and OCR it.
+
+Windows note: `pdf-parse` and `mammoth` are pure JS and install cleanly; PyMuPDF wheels work on Windows for Python 3.9+. If `pip install pymupdf` fails, fall back to WSL2 (`sudo apt install python3-pip && pip install pymupdf`) rather than fighting native build toolchains.
+
+```ts
+import { PDFParse } from "pdf-parse"; // v2 API shape; check the package README for your installed version
+const parser = new PDFParse({ data: await fs.readFile("returns-policy.pdf") });
+const result = await parser.getText();
+console.log(result.text.length, "chars from", result.total);
+```
+
+Python equivalent: `import pymupdf; doc = pymupdf.open("returns-policy.pdf"); print(sum(len(p.get_text()) for p in doc))`.
+
+Common installation errors: `ERR_MODULE_NOT_FOUND` for `pdf-parse` means you imported the v1 default while on v2 — check the README; `Runtime error: cannot find libmupdf` means the wheel did not match your Python version — create a fresh venv; `unstructured` needs `libmagic` on Linux (`sudo apt install libmagic1`) and is easiest under WSL2.
+
+## 2. Chunking Strategies, Ranked by How Often They Win
+
+| Strategy | How it works | When to use it |
+| :-- | :-- | :-- |
+| **Fixed-size** | Every N tokens, hard cut | Never for prose — cuts mid-sentence, destroys context |
+| **Recursive character** | Split on paragraph → sentence → word boundaries up to a size cap (LangChain `RecursiveCharacterTextSplitter`) | Safe default for unstructured text |
+| **By document structure** | Split at headings/sections (`##`, numbered clauses), keep the heading path | Policy docs, manuals — almost always right for ShopCore |
+| **Parent-document pointer** | Retrieve small chunk, return its parent section (or full doc) to the LLM | Legal/policy docs where clause context matters |
+
+For ShopCore policies, **structure-aware chunking** is the correct default: the returns policy has numbered clauses ("4.2 Refund window", "4.3 Exclusions") that customers cite in disputes. Fixed windows would orphan clause 4.3's first line from its heading and the refund rule would embed poorly.
+
+If you do not want to hand-roll splitting, LangChain ships the strategy above as a configurable class:
+
+```ts
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+
+const splitter = new RecursiveCharacterTextSplitter({
+  chunkSize: 400,          // tokens is ideal; LangChain counts characters — measure yours
+  chunkOverlap: 60,
+  separators: ["\n## ", "\n### ", "\n\n", "\n", " "], // markdown headings first
+});
+const chunks = await splitter.createDocuments([returnsText]);
+console.log(chunks.length); // expect ~6 for the returns policy
+```
+
+Expected output: `6` (±1 depending on tokenizer). If you see 30, your size unit is wrong (characters vs tokens); if you see 2, your separator list is being ignored.
+
+## 3. Worked Math — Sizing Chunks on the Returns Policy
+
+The ShopCore returns policy extracts to ~**1,800 tokens** (rough heuristic: 1 token ≈ 4 characters for English prose). Candidate config: 400-token chunks, 60-token overlap.
+
+Stride = chunk size − overlap = 400 − 60 = 340 tokens per step.
+
+```text
+chunks ≈ ceil((N − size) / stride) + 1
+       = ceil((1800 − 400) / 340) + 1
+       = ceil(1400 / 340) + 1
+       = ceil(4.12) + 1
+       = 6 chunks
+```
+
+Check the edges: chunk 1 covers 0–400, chunk 6 starts at 5×340 = 1,700 and runs past 1,800 (truncated at document end). Every token between 0 and 1,800 is covered at least once, and the 60-token overlap means a clause straddling a boundary appears intact in at least one chunk.
+
+**Why overlap?** Retrieval matches on whole chunks. A sentence cut in half embeds as meaningless fragments; 15% overlap (60/400) is the usual sweet spot — enough to heal boundaries, small enough that duplicates don't waste the context window. Go higher (25%) only for legal text with long sentences.
+
+## 4. Preserving Structure Metadata
+
+Every chunk should carry: `doc_id`, `title`, `heading_path` (e.g. `Returns Policy > 4. Refund Window`), `page`, `chunk_index`, `effective_date`, `doc_type`. This metadata is what makes citations like `[1:returns-policy.pdf#p.2]` possible, and what powers date filtering in 28.1.2.
+
+**Tables are the silent killer.** A refunding table flattened to prose ("Condition Window 30 days Unused 45 days...") embeds terribly. Either convert tables to Markdown tables inside the chunk (keeps row/column structure), or extract them to a separate lookup table with a pointer chunk. Marking the chunk type (`prose` vs `table`) in metadata lets you boost tables at retrieval time.
+
+A well-formed chunk looks like this:
+
+```jsonl
+{"doc_id":"returns-policy","chunk_index":3,"page":2,"heading_path":"Returns Policy > 4. Refund Window","doc_type":"policy","effective_date":"2026-04-01","text":"4.2 Refund window. Customers may return physical goods within 30 calendar days of delivery..."}
+{"doc_id":"returns-policy","chunk_index":4,"page":2,"heading_path":"Returns Policy > 4. Refund Window > table","doc_type":"policy","effective_date":"2026-04-01","text":"| Condition | Window |\n|---|---|\n| Unused, original packaging | 45 days |\n| Opened items | 30 days | ..."}
+```
+
+## 5. The Mistakes That Cause "Empty Retrieval"
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Zero results / gibberish | Scanned PDF with no text layer | OCR with Tesseract via `unstructured`; verify char count > 0 |
+| All chunks are identical nav text | HTML boilerplate included | Strip `nav`/`footer` with cheerio before conversion |
+| Retrieval finds intro, never clauses | Chunks too large; query buried in 2,000 tokens | Cap at 400–512 tokens; split by structure |
+| Half-sentence citations | No overlap | Add 10–15% overlap |
+| Right doc retrieved, wrong section | Heading metadata lost | Keep `heading_path`; filter/boost on it |
+| Bot cites 2023 policy | `effective_date` never recorded | Store date at ingestion; filter at query time (next lesson) |
+| Empty string embeddings error | Whitespace-only chunks | Drop chunks under ~30 characters |
+
+## 6. Lab — Parse and chunk the six ShopCore policies
+
+1. Parse all six policy docs (`returns`, `shipping`, `security`, `privacy`, `warranty`, `accessibility`). Print per-file char counts; OCR or re-export any scan.
+2. Chunk `returns-policy.pdf` by structure; confirm ~6 chunks and that clause 4.2 appears whole in exactly one chunk (plus neighbors via overlap).
+3. Attach `heading_path`, `page`, `effective_date`, `doc_type: "policy"` to every chunk; write them to `policy_chunks_preview.jsonl` for inspection.
+4. Eyeball the file. If any chunk starts mid-word, your splitter is wrong.
+
+Verification gate: `policy_chunks_preview.jsonl` should parse line-by-line with `JSON.parse`, every line needs all six metadata fields, and no `text` longer than ~2,000 characters. Save this file — 28.1.2 consumes it directly.
+
+## 7. When to Re-Chunk Everything
+
+Chunking is not a one-time decision. Re-run the whole pipeline when: you change overlap or size (old vectors are stale), a policy is re-issued (delete old chunks by `doc_id` + `effective_date` in the same transaction as the insert), or you add tables. Always delete-then-insert per document; never upsert-blind, or you will retrieve 2024 clauses against a 2026 question.
+
+## Practice
+
+**Guided.** Reproduce the worked math on `shipping-policy.pdf` with 300-token chunks and 45-token overlap: compute the expected chunk count, then compare against reality.
+
+**Independent.** Write a structure-aware chunker for Markdown: split on `^## ` keeping the parent `#` title as `heading_path`.
+
+**Challenge.** Handle the refunds table: extract it with PyMuPDF, emit it as a Markdown table chunk, and verify it retrieves for the query "how long do I have to return an opened item?"
+
+## Assessment Checklist
+
+- [ ] I can extract text from PDF (text-layer and scanned), DOCX, HTML and Markdown.
+- [ ] I can compute chunk count for a given size/stride and explain overlap.
+- [ ] I know when to use structure-aware vs recursive-character chunking.
+- [ ] I preserve `heading_path`, `page` and `effective_date` on every chunk.
+- [ ] I can diagnose "empty retrieval" from the symptom table without guessing.
+
+</BookNodePage>

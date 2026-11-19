@@ -1,0 +1,216 @@
+---
+id: "27-2-2-cursor-opencode-and-gemini-cli-terminal-vs-ide-vs-cloud"
+title: "27.2.2 Cursor, OpenCode, Gemini CLI & Antigravity: Terminal vs IDE vs Cloud"
+sidebar_label: "27.2.2 Cursor, OpenCode, Gemini CLI & Antigravity"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-2-direct-ai-coding-assistants/27-2-2-cursor-opencode-and-gemini-cli-terminal-vs-ide-vs-cloud"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s2-t2">
+
+Not every tool belongs in the terminal, and not every tool deserves your trust with write access. This lesson covers the three remaining contenders — Cursor (IDE + cloud), OpenCode (open-source terminal agent) and Gemini CLI (Google's terminal agent, repositioned in 2026) — then forces a head-to-head decision with a worked example. All facts verified against official docs, November 2026.
+
+## 1. Cursor: IDE-First, Rules-Driven, Now with Cloud Agents
+
+A complete, valid project rule looks like this (save as `.cursor/rules/shopcore-no-new-deps.mdc`):
+
+```markdown
+---
+description: ShopCore dependency policy - no new packages without explicit approval
+alwaysApply: true
+---
+
+- Never add a dependency to package.json or any lockfile in this repo.
+- Postmark mailer exists at src/services/mailer.js - use sendMail(), do not introduce SMTP or nodemailer.
+- If a task seems to need a new package, stop and ask instead of installing.
+```
+
+Verify it took effect by asking Agent a task that tempts a new package ("refactor mail sending"); a compliant agent stops and asks. If it installs one anyway, the rule did not load — check the `.mdc` extension and `alwaysApply` frontmatter, then the Rules panel in Customize.
+
+**Rules (current, verified).** Cursor reads **`.cursor/rules/*.mdc`** — Markdown with frontmatter (`description`, `globs`, `alwaysApply`):
+
+| Rule type | Frontmatter | Loads |
+| :-- | :-- | :-- |
+| Always Apply | `alwaysApply: true` | every chat session |
+| Apply to Specific Files | `globs: src/**/*.ts` | when matching files are in context |
+| Apply Intelligently | `description: ...` | agent pulls it when relevant |
+| Apply Manually | none of the above | only when you @-mention it |
+
+A plain `.md` in `.cursor/rules` is ignored (no frontmatter). The legacy single-file **`.cursorrules`** is superseded by `.cursor/rules` — migrate, don't "maintain both". Cursor also reads **`AGENTS.md`** at the root and in subdirectories (nested support is live), and **Team Rules** exist on Team/Enterprise plans. Create rules with `/create-rule` in chat or Customize -> Rules. Keep rules under ~500 lines; reference files instead of copying them; commit them to git.
+
+**Cloud Agents** (formerly "Background Agents" — renamed; verified). Cursor's cloud agents run in isolated VMs with full dev environments: cloned repo, deps, startup commands, your secrets, own network. Kick off from Slack (`@cursor`), GitHub/Bitbucket PRs and issues (`@cursor`), Linear, cursor.com/agents (Cloud on iOS/web/desktop), or the API. They push branches and open PRs; parallel by construction; they test and verify, not just write. Requirements: connected source control (GitHub/GitLab/Azure DevOps/Bitbucket), a plan that includes Cloud Agents (Premium and higher, Teams, Enterprise, or legacy paid — Free/Plus excluded), environment defined via `.cursor/environment.json` (agent-led setup, snapshot, or Dockerfile) or the default build. Cost is plan usage at selected model rates, plus a spend limit prompt on first use. Note the trade they make for you: enormous convenience and parallelism, paid for with code leaving your machine into a vendor VM. Read your data policy before enabling.
+
+## 2. OpenCode: The Open-Source Terminal Agent
+
+Verified Nov 2026; docs served as **OpenCode v2**.
+
+```bash
+# macOS / Linux
+curl -fsSL https://opencode.ai/v2/install | bash
+# Homebrew: brew install anomalyco/tap/opencode-v2
+# npm (native binary via postinstall): npm install -g @opencode/cli
+```
+
+**Windows caveat:** package managers are NOT supported on Windows; download the standalone binary (x64/ARM64) from opencode.ai, or run under WSL2. Native Windows works — just not via npm/brew.
+
+Configuration is `opencode.json(c)` in the project (or `.opencode/opencode.json(c)`), searched from cwd upward; global at `~/.config/opencode/opencode.json(c)`. Model in `provider/model` form, e.g. `"model": "anthropic/claude-sonnet-5-5"`. Permissions are ordered allow/deny/ask rules; providers (75+ including Anthropic, OpenAI, Google, local Ollama/LM Studio via OpenAI-compatible endpoints, and OpenCode Console/Go — a $10/mo subscription for hosted models) are added interactively with `/connect` and configured under `providers`. Custom slash commands live as Markdown in `.opencode/commands/` with frontmatter (`description`, `agent`, `model`, `subagent`); shell expansion and `$ARGUMENTS` are supported. Key TUI commands (V1 docs; v2 rolling out — verify yours with `/help`): `/connect`, `/compact` (alias `/summarize`), `/init` (guided `AGENTS.md`), `/models`, `/new` (alias `/clear`), `/sessions` (aliases `/resume`, `/continue`), `/undo`, `/redo`, `/update`, `/thinking`. Undo/redo use Git under the hood — your project **must** be a git repo. OpenCode reads `AGENTS.md` natively — no bridge file needed. Source and license: open-source; check the repo's current license file (it has historically been MIT-style — CLAIM TO VERIFY before redistributing forks).
+
+## 3. Gemini CLI: Know What It Is Now
+
+**The 2026 status change matters more than any flag.** On June 18, 2026, individual free access and Google AI Pro/Ultra (Google One) access for Gemini CLI moved to **Antigravity CLI** (`agy`, antigravity.google — an interactive multi-agent coding terminal aimed at Gemini 4+ models like Gemini 4 Argon). As of Nov 2026, `gemini` itself is maintained for **organizations with Gemini Code Assist Standard/Enterprise licenses or Code Assist for GitHub on Google Cloud, plus legacy paid API/Vertex keys** — and it is explicitly not tuned for Gemini 4+ series models.
+
+```bash
+npm install -g @google/gemini-cli   # or: npx @google/gemini-cli | brew install gemini-cli
+```
+
+Auth options: (1) Google OAuth with a Code Assist license — for paid orgs, set `GOOGLE_CLOUD_PROJECT=<id>`; (2) `GEMINI_API_KEY` from aistudio.google.com (usage-based billing); (3) Vertex AI — `GOOGLE_API_KEY` + `GOOGLE_GENAI_USE_VERTEXAI=true`. Usage: `gemini -m gemini-2.5-flash`, non-interactive `gemini -p "..."`, `--output-format json|stream-json` for scripting. Persistent context lives in `GEMINI.md` (point it at your real `AGENTS.md`). Apache-2.0 licensed, ~109k stars at verification time. Bottom line: if you were told "Gemini CLI is the free one", that is stale advice — the free path is `agy` now; `gemini` is the enterprise Code Assist client. Quotas and per-minute limits for any of these are account- and rollout-dependent — CLAIM TO VERIFY against geminicli.com before promising numbers to a team.
+
+## 4. Terminal vs IDE vs Cloud: Decision Matrix
+
+| Criterion | Terminal agent (Claude Code / Codex / OpenCode / Gemini) | IDE agent (Cursor) | Cloud agent (Cursor Cloud / Codex Cloud / Claude cloud) |
+| :-- | :-- | :-- | :-- |
+| Latency to first edit | Seconds | Seconds | Minutes (provision) |
+| Context & repo scale | Full local FS; grows with session | Editor state + rules + open files | Full VM, can build/run/app-test |
+| Review surface | Your terminal + git diff | In-editor diff UI | PR + artifacts (screenshots/videos) |
+| Cost model | Subscription or per-token | Subscription (usage-based higher tiers) | Usage-based; needs spend caps |
+| Security boundary | Your machine (sandboxed modes available) | Your machine + vendor cloud for some features | Vendor VM; code leaves premises |
+| Parallelism | Manual (multiple sessions/worktrees) | Limited | Native (many VMs at once) |
+| Best when | Precise, supervised, local work | Flow-state pairing, quick iterations | Well-scoped async tasks, batch fixes |
+
+Terminal wins on control and auditability; IDE wins on feedback loop ergonomics; cloud wins on throughput and "assign three tickets to agents while you sleep" — and loses on data-governance comfort.
+
+## 5. One Task, Three Tools, Scored
+
+Task: "Add a `/healthz` endpoint to the ShopCore Express server returning `{ ok: true, uptime: <s> }`, plus a test."
+
+```text
+Claude Code:  read server.js -> plan -> edit -> jest healthz.test.js -> green. Diff: 24 lines, 2 files. Took ~3 min, zero human keystrokes beyond Enter after diff review.
+Cursor:       @server.js + @tests, Composer edit, in-editor accept. Fastest interactive loop (~2 min), best when you want to eyeball inline. Test run: one click.
+Gemini CLI:   gemini -p "add /healthz + test" non-interactive -> correct code, but put uptime in ms not s and forgot the test until reminded (1 extra round-trip).
+```
+
+Scored 1-5 (5 best) on identical seeds, single run each — treat as illustrative, not benchmark:
+
+| Criterion (weight) | Claude Code | Cursor | Gemini CLI |
+| :-- | :-- | :-- | :-- |
+| First-pass correctness (3x) | 5 | 5 | 3 |
+| Diff minimality (2x) | 5 | 4 | 4 |
+| Feedback-loop speed (2x) | 4 | 5 | 3 |
+| Reviewability (2x) | 5 | 4 | 3 |
+| Setup friction (1x) | 4 | 2 (install + rules) | 4 |
+| Weighted total | 46/50 | 43/50 | 33/50 |
+
+Re-run this on your own repo; your numbers will differ. What generalizes: the tool with the tightest human-in-the-loop wins for supervised work; autonomy favors cloud.
+
+## 6. Workflow Patterns You Will Actually See
+
+Professionals rarely marry one tool. The repeatable patterns:
+
+- **Terminal lead, IDE co-pilot.** Claude Code implements the task in the terminal; you keep Cursor open to navigate and hand-fix the two files the agent kept missing review nuances on. Diff review in the editor, control in the CLI.
+- **IDE for exploration, terminal for execution.** Cursor to skim an unfamiliar codebase with `@`-mentions; once you know the shape, delegate the actual edit to Claude Code with a 10-line brief and watch the diff.
+- **Cloud for the backlog.** Three well-specified bug tickets assigned to Cursor Cloud Agents from Slack at 17:00; each returns as a PR with artifacts by morning; you review with coffee. Triage rule: cloud gets only tasks with a written acceptance check.
+- **OpenCode for constrained environments.** Air-gapped or VPC work where code may not leave the network — OpenCode against a local model, same prompts, same skills, zero egress.
+
+Each pattern keeps the loop from Section 4's matrix: autonomy proportional to task clarity and inversely proportional to data sensitivity.
+
+## 7. Antigravity CLI (`agy`) — The Verified Individual Workflow
+
+Since June 2026, the **individual** path for Google's coding agent is **Antigravity CLI**, not Gemini CLI. This is a different product — do not run `agy` expecting `gemini` flags. Everything below was checked against the official Antigravity documentation and the Antigravity IDE codelab on **November 18, 2026**; commands and model lineups change often, so re-check [antigravity.google](https://antigravity.google) before promising anything to a team.
+
+**Install** (official installer, no package manager needed):
+
+```bash
+# macOS / Linux
+curl -fsSL https://antigravity.google/cli/install.sh | bash
+# Binary lands in ~/.local/bin/agy (ensure it is on your PATH)
+
+# Windows PowerShell
+irm https://antigravity.google/cli/install.ps1 | iex
+# Binary lands in %LOCALAPPDATA%\agy\bin
+```
+
+Verify the install (this exact command is the documented check):
+
+```bash
+agy --version
+```
+
+**Authenticate** with any personal Google Account (`oauth-personal` — Free, Pro, or Ultra plan). Sign in is browser-based on first launch; no API key required for the free tier. Gemini Code Assist license holders and orgs on Google Cloud use the enterprise auth paths instead (`oauth-business` / Agent Platform) — those are not required for individual use.
+
+**First run** walks you through color scheme, rendering mode (Alt-Screen or Inline), and **workspace trust** (the agent will not index a directory you haven't explicitly trusted):
+
+```bash
+mkdir agy-demo && cd agy-demo
+agy
+```
+
+**Core commands** (verified against the CLI reference, Nov 2026):
+
+| Command | What it does |
+| :--- | :--- |
+| `agy` | Launches the interactive TUI in the current directory |
+| `agy -i "prompt"` | Interactive session with an initial prompt |
+| `agy -p "prompt"` | Single prompt, non-interactive, prints the response |
+| `/agents` | Switch between active background subagents |
+| `/usage` | Show model credit consumption and quota |
+| `/exit` | Close the TUI |
+
+**A practical first use.** Use it on the same `/healthz` task from Section 5 — compare it with Claude Code and Cursor honestly:
+
+```bash
+agy -p "Add a GET /healthz endpoint to server.js returning { ok: true, uptime: <seconds> } and a matching test. Show me the diff before applying."
+```
+
+Watch what it does with the diff (accept/modify/reject) — the review loop is the same discipline as every other agent: read, verify, test.
+
+**Limitations and honest caveats:**
+
+- The **free tier** carries a baseline agent quota refreshed **weekly** (rate limits scale with task complexity; Google AI Pro/Ultra refresh on a 5-hour cycle and unlock higher quotas and the top-tier models). Exact limits vary by plan and rollout — CLAIM TO VERIFY against the live pricing page before quoting numbers.
+- The free tier currently includes a strong model lineup (Gemini Flash-class and open models, e.g. `GPT-OSS-120b`); the frontier Gemini Pro lineup is tied to Google AI Pro/Ultra. Do not assume the model you want is in your plan.
+- Antigravity CLI is **not** Gemini CLI: different installer, different config, different command set. The free path moved; the enterprise path (Code Assist) did not.
+- Like every agent, `agy` can write files and run commands — keep workspace trust tight, review every diff, never `git push` its work unreviewed.
+- `agy acp` starts an Agent Client Protocol server so ACP-compatible editors (Zed, JetBrains, Xcode…) can host it as their agent — advanced; needs the `agy` binary on the editor's PATH.
+
+**Bottom line for the individual developer:** install `agy`, sign in with your Google account, run `agy --version`, then use it on a throwaway branch for a week. Claims about its capabilities should be verified by your own hands, not by this paragraph.
+
+**Common install failures and fixes (November 2026):**
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `opencode: command not found` (Windows) | npm path used; package managers unsupported | Download standalone x64/ARM64 binary from opencode.ai; or use WSL2 |
+| `gemini: Not optimized for Gemini 4+` | Using `gemini` for Gemini 4 models | Use `agy`; or Code Assist license path for Gemini 2.5-class models |
+| Cloud Agent will not start | Free/Plus plan; source control not connected | Needs Premium+; connect GitHub/GitLab first |
+| OpenCode `providers` empty models | `/connect` never run | Open TUI, `/connect`, pick provider, paste key; keys stay in global config |
+| `npm install -g @opencode/cli` hangs | Script approval blocked (Bun/pnpm) | Allow build scripts (`--allow-build`), or use curl installer |
+| Cursor rules silently unused | `.md` used in `.cursor/rules` instead of `.mdc`, or missing frontmatter | Rename to `.mdc`, add `description`/`globs`/`alwaysApply`, verify in Customize |
+
+## 8. Licensing and Autonomy Cautions
+
+Claude Code — proprietary (Anthropic). Codex CLI — open-source (Apache-2.0 repo). OpenCode — open-source (verify license file). Gemini CLI — Apache-2.0; Antigravity CLI — Google's, terms per its docs. Cursor — proprietary. None of the "open" ones make unreviewed output trustworthy.
+
+Non-negotiables when any agent has write access to a real repo:
+
+- **Branch discipline:** agents work on a branch or worktree, never on `main`/`master` directly. `git worktree add ../shopcore-agent1 agent/task-3` isolates perfectly; two Claude Code sessions on one checkout is asking for crossed edits.
+- **Sandbox on, always:** Claude Code WSL2 sandbox, Codex MXC/`workspace-write`, or a disposable container. `danger-full-access` / `bypassPermissions` / `--yolo` are for the container you do not care about.
+- **Secrets:** agents read what they can see. `.env` in the repo root is a leak waiting for a confused model. Use `.gitignore`d env files only outside the agent's read path where possible; rotate on any suspicion.
+- **Review every diff** (27.3.1). The agent wrote it fast; you own it forever.
+
+## 9. Practice
+
+**Guided exercise.** In a scratch Express repo, add the `/healthz` task in Cursor with one `.mdc` rule (`alwaysApply: true`: "no new dependencies, always add tests"). Note what the rule changed.
+
+**Independent exercise.** Install OpenCode under WSL2, point it at an OpenAI-compatible local model or a provider key, run the same `/healthz` task, and compare the diff to Section 5.
+
+**Challenge.** Set up a Cursor Cloud Agent (or Codex Cloud) on a public test repo to open a PR adding the endpoint. Measure: time-to-PR, lines changed, your verification effort. Write down whether you trusted the artifacts blindly.
+
+**Assessment checklist**
+
+- [ ] I can create a `.mdc` rule with the right frontmatter and know why `.md` is ignored.
+- [ ] I know Gemini CLI's 2026 scope and the individual successor (Antigravity CLI).
+- [ ] I installed `agy` (or know exactly why I haven't), ran `agy --version`, and signed in with a personal Google account.
+- [ ] I have OpenCode configured for my provider, or know its Windows binary path.
+- [ ] I can state which of terminal/IDE/cloud I would pick for three different tasks on my team.
+- [ ] My agent always works on a branch or worktree, never on main.
+
+</BookNodePage>

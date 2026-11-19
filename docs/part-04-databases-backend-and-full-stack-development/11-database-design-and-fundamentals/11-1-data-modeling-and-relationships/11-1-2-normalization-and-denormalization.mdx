@@ -1,0 +1,109 @@
+---
+id: "11-1-2-normalization-and-denormalization"
+title: "11.1.2 Normalization and Denormalization"
+sidebar_label: "11.1.2 Normalization and Denormalization"
+slug: "/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-2-normalization-and-denormalization"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-11-s1-t2">
+
+**Normalization** is the process of organizing tables so each fact is stored **exactly once**. When one fact lives in one place, changing it is one operation — never a hunt through thousands of stale copies. **Denormalization** is the deliberate, measured exception: you duplicate a specific value on purpose to protect history or buy read performance, and you do it with eyes open.
+
+The running example is ShopCore ([canonical schema](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema)). Every example below refers to those tables.
+
+## 1. The Three Anomalies Normalization Eliminates
+
+Imagine an unnormalized "spreadsheet" table that stores everything in one place:
+
+```text
+bad_orders(order_id, customer_email, customer_city, items_list, category_name, category_discount)
+```
+
+Three bad things happen immediately:
+
+| Anomaly | What goes wrong |
+| :-- | :-- |
+| **Insert anomaly** | You cannot add a new category without creating a fake order. |
+| **Update anomaly** | A customer changes city — you must hunt down every row they ever appeared in. Miss one, and reports disagree with each other. |
+| **Delete anomaly** | The last order from a customer is cancelled and deleted — the customer's email and city vanish from your system entirely. |
+
+Normal forms are a checklist that walks this table to sanity. You rarely need to go beyond **3NF** in real applications.
+
+## 2. First Normal Form (1NF): Atomic Columns, No Repeating Groups
+
+**Rule:** every cell holds exactly one value; no repeating lists, no comma-separated items.
+
+`items_list = 'Keyboard x1, Mouse x2'` is the classic violation. You cannot filter, sum, join or index that string. **Fix:** each line item becomes its own row in `order_items`:
+
+```text
+order_id | product_id | qty | unit_price_cents
+1        | 1          | 1   | 12900
+1        | 2          | 2   | 5900
+```
+
+Now `qty` and `unit_price_cents` are typed integers the database can check, index and aggregate — not text you'd have to parse with a knife.
+
+## 3. Second Normal Form (2NF): Every Non-Key Column Depends on the Whole Key
+
+2NF only matters for tables with a **composite primary key**. ShopCore's analogous case is `order_items(order_id, product_id)` (ShopCore actually uses `id` as PK, but the dependency rule is the same for the natural key pair).
+
+**Rule:** if a non-key column depends on only *part* of the key, it doesn't belong here.
+
+`order_items(product_name)` would violate 2NF: `product_name` depends on `product_id` alone, not on `order_id`. Rename a product and you'd have to update thousands of line items. **Fix:** `product_name` lives in `products` (ShopCore calls it `title`).
+
+## 4. Third Normal Form (3NF): No Transitive Dependencies
+
+**Rule:** non-key columns may depend on the key — never on *another non-key column* (A → B → C).
+
+Suppose `products` stored `category_discount`. That gives `product_id → category_id → category_discount`. Two products in the same category could disagree on the discount; changing it requires editing every product row. **Fix:** `category_discount` belongs to `categories` — in ShopCore, `categories(name, slug)` holds category-level facts.
+
+> Memory aid: *"Every non-key attribute depends on the key, the whole key, and nothing but the key, so help me Codd."*
+
+## 5. The One Place ShopCore Intentionally Denormalizes — On Purpose
+
+Strict 3NF applied blindly would store **only** `product_id` in `order_items` and compute every total by joining `products`. That is incorrect for commerce history.
+
+Scenario: Ada buys a keyboard for **$129.00**. Two months later the store raises the price to **$149.00**. If a past receipt joined `products.price_cents`, Ada's receipt would silently change from $129 to $149. Receipts must never change.
+
+**The rule:** duplicate the fact that must never change, and reference live data only for what may change.
+
+```sql
+-- order_items intentionally snapshots the price at purchase time
+unit_price_cents INTEGER NOT NULL CHECK (unit_price_cents >= 0)
+```
+
+- `products.price_cents` → the **current catalog price** (mutable, correct to change).
+- `order_items.unit_price_cents` → the **historical price actually paid** (immutable fact, correctly duplicated).
+
+Same pattern elsewhere: invoice line descriptions, shipping address on the order (not just "current address"), product title snapshot on receipts (`orders` receipts during returns, etc.). Denormalize when **history requires immutability** or when **measured read latency** demands it (e.g., caching a `products.total_sold` counter — add it only after proving the problem exists, and maintain it inside the same transaction).
+
+## 6. Normalization in Practice — ShopCore Walkthrough
+
+Given the raw requirement *"a customer buys products; keep receipts correct"*:
+
+1. **1NF** — split repeating items into `order_items` rows. ✔
+2. **2NF** — product facts (`title`, `price_cents`, `stock_qty`) depend on product, not on the order line → keep them in `products`. ✔
+3. **3NF** — category facts (`name`, `slug`) depend on category, not on product → keep them in `categories`. ✔
+4. **Denormalize deliberately** — `order_items.unit_price_cents` (snapshot). ✔
+
+Result: exactly the canonical schema from [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema). Nothing extra, nothing missing.
+
+## 7. Practice
+
+**Guided exercise.** A colleague stores `full_address` and `city` inside `orders`. In 3NF terms, is anything violated? (No — the *shipping address at time of order* is a legitimate snapshot, like `unit_price_cents`. History wins.)
+
+**Independent exercise.** You are given a table `orders_denormalized(order_id, email, customer_city, items_text, product_names)`. Rewrite it into ShopCore-equivalent 3NF tables (name them as in the canonical schema). List the insert/update/delete anomalies the original table suffers.
+
+**Challenge.** Design a `product_reviews` table (user reviews product, 1 review per user per product, rating 1–5, review text). Apply 1NF–3NF step by step and explain your keys and constraints. Then decide whether it needs any intentional snapshot fields (e.g., should it store `product_title_snapshot`? Argue both sides).
+
+**Assessment checklist**
+
+- [ ] I can name the three anomalies and explain which normal form kills which.
+- [ ] I can apply 1NF, 2NF, 3NF to an ugly spreadsheet-style table.
+- [ ] I can state exactly when intentional denormalization is correct and why.
+- [ ] I understand why ShopCore stores `unit_price_cents` in `order_items`.
+- [ ] I will not introduce redundant columns "for convenience" without a one-line justification.
+
+</BookNodePage>

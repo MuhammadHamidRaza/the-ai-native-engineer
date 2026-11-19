@@ -1,0 +1,107 @@
+---
+id: "40-2-2-pricing-models-and-user-feedback-cycles"
+title: "40.2.2 Pricing Models and User Feedback Cycles"
+sidebar_label: "40.2.2 Pricing Models and Feedback Cycles"
+slug: "/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-2-shipping-and-iterating-with-users/40-2-2-pricing-models-and-user-feedback-cycles"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-40-s2-t2">
+
+Pricing is a feature, not a tax — it tells users who this product is for before they read a single screen. This lesson teaches you to price CareQueue (and your own product) from the value you measured in 40.2.1, test the price cheaply, and iterate from real feedback instead of spreadsheet guesses.
+
+## 1. The Four Pricing Models for AI Products
+
+| Model | How it works | When it fits | Risk |
+| :-- | :-- | :-- | :-- |
+| **Seat-based** | $X per staff seat / month | Collaborative tools, clear seat counts | Misaligns spend with value; one buyer, many seats |
+| **Usage-based** | per query / per 1k tokens / per message | Infra-style products (APIs) | Revenue unpredictable; users ration usage |
+| **Outcome-based** | per ticket deflected / per claim processed | Clear measurable outcomes (deflection, automation) | Measuring the outcome is hard; buyers dispute attribution |
+| **Hybrid (base + usage)** | flat fee + included volume + overage | Most SMB AI tools | Slightly more complex to explain |
+
+**CareQueue's fit:** a practice doesn't want to think about tokens; they want "inbox handled". Seat-based is also awkward (the office manager is the only user). **Outcome-based** ("$2 per billing question auto-resolved") is elegant but unmeasurable without their billing data. **Hybrid wins:** $99/mo includes 300 triaged messages and 100 approved billing drafts/mo; overage $0.35 per draft. Predictable for them, aligned for you.
+
+## 2. Price From the Value, Not From Cost
+
+From 40.2.1's pilot: CareQueue saves ~1.5 hours/week of Dana's time (billing triage + drafts). What's her hour worth? Practices run roughly $25–$40/hour loaded for admin staff. Value ≈ 1.5 hr × $30 × 4.33 weeks ≈ **$195/month** in recovered labor, plus fewer angry patients and faster front-desk flow (hard to quantify, real).
+
+**Anchor at 15–30% of measured value:** $59–$59 is too low; $195 is greedy. **$99/mo with a 14-day pilot absorbs the risk.** Sanity check against cost: your inference cost is ~$0.02 per message + $0.40/digest ≈ maybe $2–4/practice/mo at 300 messages (36.1.2). Margin ≈ 96%. The price point is set by willingness to pay, not by your costs — and that's healthy.
+
+Show your math to buyers. "It saves Dana ~6 hours/month at $30/hr; we charge $99. You keep ~$80 in saved time and the faster front desk." That sentence is the entire sales conversation.
+
+## 3. The Price Test (Do This Before Launch)
+
+**Van Westendorp-lite for engineers** — ask each of the 10 interviewees four questions:
+
+1. At what price would this be **too expensive to consider**?
+2. At what price would it be **so cheap you'd doubt quality**?
+3. At what price is it **getting expensive but worth considering**?
+4. At what price is it a **bargain**?
+
+Plot "too cheap" and "too expensive" distributions across the 10 answers; your acceptable band sits between the intersections (typically $79–$149 for CareQueue). If your band comes out $20–$40, your value case isn't proven and you're testing the wrong thing.
+
+**Gap check vs. competition:** a VA costs $800–$1,500/mo; Front starts ~$25/seat with AI add-ons; Gemini in Workspace is "free" but generic. $99 with dental-billing training is defensible.
+
+## 4. Pricing Your Pilot and Your GA
+
+- **Pilot (months 1–2):** $149/mo, cancel anytime, includes hands-on setup. Revenue now, proof now, reference quotes now. The pilot price is allowed to be higher than GA — you're selling white-glove onboarding, not software.
+- **GA (after 5 pilot practices):** $99/mo + included quota; annual prepay discount ($990/yr = 2 months free). Annual prepay kills churn and funds you.
+- **Do not** offer perpetual free tiers at this stage — they attract the least serious users and teach your market that the product is worth $0.
+
+## 5. The Feedback Loop
+
+**Build → ship → measure → talk → change one thing → repeat.** Weekly cadence for CareQueue:
+
+| Day | Loop step |
+| :-- | :-- |
+| Mon | Pull weekend events (activation, rejects, new labels) |
+| Tue | 10-min call with 1–2 pilot practices: "What broke? What confused you? What would you pay?" |
+| Wed–Thu | Change ONE thing (prompt tweak, label order, digest copy) |
+| Fri | Ship it; note it in the changelog; measure next week |
+
+Every week without a feedback conversation is a week your roadmap drifts from reality. The one rule: **change one variable at a time** so you can attribute any change in metrics to the change you shipped.
+
+## 6. Feedback Triage — What to Act On
+
+Raw feedback lands in four piles; act differently on each:
+
+| Pile | Example | Action |
+| :-- | :-- | :-- |
+| **Broken** | "Draft cited a policy that doesn't exist" | Fix this week; apologize; log to regression suite |
+| **Missing core** | "I need insurance EOB attached" | Valid → v1.1 candidate; scope it 40.1.2-style |
+| **Nice-to-have** | "Can it also order my supplies?" | Parking lot; remember, MVP discipline |
+| **Confused** | "Where do I find the settings?" | Onboarding/copy problem, not a feature problem |
+
+Read the `rejected` reason field in 40.2.1's taxonomy before changing prompts — prompt tweaks fix tone problems; they do not fix "draft assumed insurance when it was billing."
+
+## 7. Common Failure Modes
+
+- **Pricing by cost** — "our API costs us $3 so we'll charge $9" — value is not cost-plus.
+- **Free pilots forever** — unpaid users are not users; they're demos that never graduate.
+- **Changing price silently** — grandfather early users honestly; surprises kill trust.
+- **Feature-driven roadmap** — every "sure, we'll add that" unscoped request adds 2 weeks to a 2-week product.
+- **No feedback schedule** — shipping without talking to users is building in the dark.
+
+## 8. Exercise
+
+1. Price your MVP using the value-first method: name the alternatives, compute the buyer's $/month value in their own workflow, sit at 15–30% of it.
+2. Run the Van Westendorp-lite with 5–10 interviewees; report your band.
+3. Design your pilot offer (price, terms, setup, success definition) in one paragraph.
+4. Write your weekly feedback-loop calendar for the next 4 weeks.
+5. List your first 10 feedback items and assign each to a pile (broken/missing/nice/confused).
+
+**Acceptance criteria.**
+- [ ] Named alternative anchors for your price (buyer-side, quantitative)
+- [ ] Van Westendorp band from ≥5 responses, with the 4 questions verbatim
+- [ ] Pilot offer with setup, price, term, and a measurable success definition
+- [ ] 4-week feedback calendar with owners (it's you)
+- [ ] All 10 practice examples assigned to a pile with a one-line reason
+
+## 9. Where This Leads
+
+**40.2 ends Chapter 40.** You now have: validated demand (40.1.1), a scoped MVP (40.1.2), measurable activation (40.2.1), and a value-based price with a feedback system (40.2.2). Chapter 41 picks CareQueue up at public launch: positioning, distribution channels, early adopters, unit economics, and when to hire your first human.
+
+**Next:** [Chapter 41 — Startup, Launch & Growth](/book/part-09-career-client-work-products-and-startups/41-startup-launch-and-growth)
+
+</BookNodePage>

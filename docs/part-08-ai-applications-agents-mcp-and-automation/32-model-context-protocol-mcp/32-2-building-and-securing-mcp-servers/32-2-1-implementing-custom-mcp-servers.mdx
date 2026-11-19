@@ -1,0 +1,202 @@
+---
+id: "32-2-1-implementing-custom-mcp-servers"
+title: "32.2.1 Implementing Custom MCP Servers"
+sidebar_label: "32.2.1 Implementing Custom MCP Servers"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/32-model-context-protocol-mcp/32-2-building-and-securing-mcp-servers/32-2-1-implementing-custom-mcp-servers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-32-s2-t1">
+
+You will build the ShopCore MCP server end-to-end: scaffold, two real tools with validation, stdio run, Inspector debugging, Claude Desktop registration, then a bearer-authenticated Streamable HTTP deployment — and measure what a tool call actually costs in milliseconds. **Verified November 2026:** `mcp` 2.3.0 (Python, v2 line; `FastMCP` → `MCPServer`), spec `2026-07-28`, Claude Desktop config format as documented at modelcontextprotocol.io (Windows: `%APPDATA%\Claude\claude_desktop_config.json`; macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`).
+
+## 1. Repo Layout & Scaffold
+
+```text
+mcp/shopcore/
+  pyproject.toml          # pins mcp==2.3.0, pydantic==2.14.3 — version pinning is §7
+  server.py               # MCPServer + tools/resources/prompts
+  policy/                 # shopcore-policy.md fragments (read by resources)
+  tests/
+    test_frames.py        # in-memory client, no subprocess, no network
+  .env.example            # SHOPCORE_PG_DSN=... — never commit real DSN
+```
+
+```bash
+# Windows PowerShell, from repo root — use WSL2/bash with same commands
+mkdir mcp\shopcore && cd mcp\shopcore
+py -3.11 -m venv .venv && .\.venv\Scripts\Activate.ps1
+pip install "mcp[cli]==2.3.0" "pydantic==2.14.3" psycopg[binary]
+python -c "import mcp; print('mcp ok')"
+```
+
+`uv add "mcp[cli]"` works identically if you prefer uv. The `[cli]` extra ships `mcp dev` / `mcp install`.
+
+## 2. The Server — Policy Lookup + Order Lookup
+
+```python
+# server.py — SDK v2. Import paths verified against py.sdk.modelcontextprotocol.io
+from pathlib import Path
+from typing import Annotated, Literal
+from pydantic import Field
+import psycopg
+from mcp.server import MCPServer
+
+mcp = MCPServer("shopcore", instructions="ShopCore support data. Read-only tools; cite policy URIs.")
+
+_pg = None
+
+def get_pg():
+    # Lazy connect: module import must not require the database to be up.
+    global _pg
+    if _pg is None or _pg.closed:
+        _pg = psycopg.connect(dsn=__import__("os").environ["SHOPCORE_PG_DSN"], autocommit=True)
+    return _pg
+
+OrderId = Annotated[str, Field(pattern=r"^ORD-[0-9]{4}-[0-9]{6}$")]
+
+@mcp.tool()
+def lookup_order(order_id: OrderId) -> str:
+    """Fetch one order by exact ID. Use when the ticket names an order ID."""
+    row = get_pg().execute("SELECT status, paid_cents, placed_at FROM orders WHERE order_id=%s",
+                     (order_id,)).fetchone()
+    if row is None:
+        return "error: order not found; do NOT fabricate one"
+    return f"status={row[0]} paid_cents={row[1]} placed_at={row[2]}"
+
+@mcp.tool()
+def refund_policy_lookup(topic: Literal["returns", "shipping", "warranty", "privacy"]) -> str:
+    """Return the verbatim ShopCore policy clause for a topic. Cite, never paraphrase."""
+    text = Path(f"policy/{topic}.md").read_text(encoding="utf-8")
+    return text[:8000]
+
+_POLICY_DIR = Path(__file__).parent / "policy"
+_POLICY_TOPICS = {"returns", "shipping", "warranty", "privacy"}
+
+@mcp.resource("shopcore://policy/{topic}", mime_type="text/markdown")
+def policy_doc(topic: str) -> str:
+    """Read a policy document by topic (returns|shipping|warranty|privacy)."""
+    if topic not in _POLICY_TOPICS:
+        raise ValueError(f"unknown topic {topic!r}; expected one of {sorted(_POLICY_TOPICS)}")
+    path = (_POLICY_DIR / f"{topic}.md").resolve()
+    if not path.is_relative_to(_POLICY_DIR.resolve()):   # belt-and-braces vs traversal
+        raise ValueError("topic resolves outside policy directory")
+    return path.read_text(encoding="utf-8")
+
+@mcp.prompt()
+def triage_this_ticket(ticket_id: str) -> list[dict]:
+    """Classify a ticket and propose (never execute) next action."""
+    return [{"role": "user", "content":
+             f"Ticket {ticket_id}: classify (refund_dispute|shipping|account|other); "
+             f"extract order_id if present; quote policy clause; propose next step. Do NOT execute."}]
+
+if __name__ == "__main__":
+    mcp.run()                       # stdio transport by default
+```
+
+Async note: sync handlers run on a worker thread in v2; declare `async def` if you want the event loop. The DSN comes from the **environment**, injected by whoever spawns the server — never hard-coded, never in `.env` committed to git.
+
+## 3. stdio Run + MCP Inspector
+
+```bash
+python server.py            # stdio: waits for JSON-RPC on stdin; Ctrl-C to quit
+npx @modelcontextprotocol/inspector python server.py
+```
+
+Open the printed URL (Node/`npx` required). In **Tools**, call `lookup_order` with `order_id=ORD-2026-004417`; you get JSON back. In **Resources**, read `shopcore://policy/returns`. In **Prompts**, render `/triage-this-ticket`. The traffic pane shows raw JSON-RPC frames — screenshot it for your runbook. `mcp dev server.py` is the one-liner equivalent (pins the spawned env to your installed SDK).
+
+## 4. Register in Claude Desktop (exact config)
+
+Windows `%APPDATA%\Claude\claude_desktop_config.json` (create it if missing; quit Claude **fully** — tray icon too — and relaunch):
+
+```json
+{
+  "mcpServers": {
+    "shopcore": {
+      "command": "C:\\Users\\you\\repo\\mcp\\shopcore\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\you\\repo\\mcp\\shopcore\\server.py"],
+      "env": {
+        "SHOPCORE_PG_DSN": "postgresql://shopcore_ro:****@127.0.0.1:5432/shopcore"
+      }
+    }
+  }
+}
+```
+
+macOS: same JSON, paths like `/Users/you/repo/mcp/shopcore/.venv/bin/python` and the file at `~/Library/Application Support/Claude/claude_desktop_config.json`. Use a **read-only** Postgres role (`shopcore_ro`) — the server only reads; if it can't, you win twice. After relaunch: the tools appear under the hammer/slider icon; first call may prompt you to allow the tool — that consent is the host doing its job (32.1.1). No system prompt edit needed; MCP tools are discovered by the host.
+
+## 5. Remote Variant — Streamable HTTP + Bearer Auth
+
+For shared/team deployment, swap stdio for Streamable HTTP with an OAuth 2.1 resource-server posture (details + full OAuth in 32.2.2):
+
+```python
+# server_http.py — same tools; different transport + auth
+from pydantic import AnyHttpUrl
+from mcp.server import MCPServer
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
+import os
+
+RESOURCE = os.environ["MCP_PUBLIC_URL"]           # e.g. https://mcp.shopcore.internal/mcp
+
+class EnvTokenVerifier(TokenVerifier):            # dev-grade; production: JWT verify / RFC 7662 introspection
+    async def verify_token(self, token: str):
+        return AccessToken(token=token, client_id="shopcore-agents",
+                           scopes=["read:orders", "read:policy"], resource=RESOURCE) \
+               if token == os.environ["SHOPCORE_MCP_TOKEN"] else None
+
+mcp = MCPServer("shopcore",
+                token_verifier=EnvTokenVerifier(),
+                auth=AuthSettings(issuer_url=AnyHttpUrl(os.environ["OAUTH_ISSUER"]),
+                                  resource_server_url=AnyHttpUrl(RESOURCE),
+                                  required_scopes=["read:orders"],
+                                  validate_token_resource=True))
+# ... same @mcp.tool() definitions — factor them into tools.py imported by both files ...
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
+```
+
+Deploy behind nginx/Caddy with TLS. Unauthenticated `curl -X POST https://mcp.shopcore.internal/mcp` must return `401` with `WWW-Authenticate: Bearer …resource_metadata=…` — that is what makes clients self-discover your IdP. Put the **exact same** server image behind the LB for every replica; at 2026-07-28 modern requests carry no session, so round-robin works.
+
+## 6. Latency, Logs, Health
+
+```bash
+curl -w "time_total=%{time_total}\n" -s -o /dev/null -X POST $URL/mcp \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "MCP-Protocol-Version: 2026-07-28" -H "Mcp-Method: tools/call" -H "Mcp-Name: lookup_order" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"lookup_order","arguments":{"order_id":"ORD-2026-004417"}}}'
+```
+
+Expect p50 ≈ DB query + overhead — target < 150 ms p95 inside one AZ. Log one JSON line per tool call (`tool, run_id, ms, outcome`) to stderr; OTel middleware comes free in v2 once an exporter is configured. Alert on p95 > 500 ms or error rate > 1%.
+
+## 7. Pinning, Tests, Assessment
+
+Pin everything: `mcp==2.3.0`, `pydantic==2.14.3`, base image digest, Model IDs in evals. Test the protocol, not the vibes:
+
+```python
+# tests/test_frames.py — in-memory, no subprocess
+import anyio
+from mcp import Client
+from server import mcp
+
+def test_lookup_order_ok():
+    async def go():
+        async with Client(mcp) as client:
+            result = await client.call_tool("lookup_order", {"order_id": "ORD-2026-004417"})
+            assert "status=" in result.content[0].text
+    anyio.run(go)
+```
+
+**Practice.** (1) Build and Inspector-test the stdio server. (2) Register it in Claude Desktop; run a real triage on a test ticket. (3) Deploy the HTTP variant locally with a token; measure p50/p95 with ten calls; write down both numbers. (4) Add a red test: bad `order_id` must return `error:` / validation failure, never a stack trace.
+
+**Assessment checklist**
+
+- [ ] My server is a pinned, reviewable `./mcp/shopcore/` folder — not `pip install` at random.
+- [ ] I can show the exact Claude Desktop JSON entry and say why the Postgres role is read-only.
+- [ ] Unauthenticated HTTP requests get 401 with `resource_metadata`, and I can demo it.
+- [ ] I have measured p95 tool-call latency and wired an alert.
+- [ ] Protocol-frame tests run in CI without an LLM.
+
+</BookNodePage>

@@ -1,0 +1,84 @@
+---
+id: "06-2-2-flexbox-and-css-grid-systems"
+title: "06.2.2 Flexbox and CSS Grid Systems"
+sidebar_label: "06.2.2 Flexbox and CSS Grid Systems"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-2-modern-css-and-responsive-layout/06-2-2-flexbox-and-css-grid-systems"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s2-t2">
+
+Stop reaching for `position: absolute` or negative margins to line up cards and navigation bars. Modern CSS layout comes down to two complementary engines: **Flexbox** for **one-dimensional** rows or columns, and **CSS Grid** for **two-dimensional** page tracks and responsive card grids.
+
+## 1. Flexbox (1D Alignment: Navbars, Toolbars, Button Rows)
+
+```css
+.navbar {
+  display: flex;
+  align-items: center;       /* Cross-axis centering (vertical in row) */
+  justify-content: space-between; /* Main-axis spacing (horizontal) */
+  gap: 1rem;                 /* Consistent space WITHOUT fragile child margins */
+  flex-wrap: wrap;           /* Prevents overflow on narrow mobile screens */
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+```
+
+**Flexbox Mental Model:**
+- `justify-content` aligns items along the **main axis** (horizontal by default).
+- `align-items` aligns items along the **cross axis** (vertical by default).
+- Always prefer `gap` over `margin-right` on children—`gap` never leaves dangling extra margin on the last item!
+
+## 2. CSS Grid (2D Responsive Card Grids in 3 Lines)
+
+```css
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 1.25rem;
+}
+```
+
+Look closely at `minmax(min(260px, 100%), 1fr)`:
+- On a 1200px desktop, it packs as many ~260px+ equal-width columns as fit (`4` columns).
+- On a tablet, it automatically drops to `2` columns.
+- Even on a 240px viewport, `min(260px, 100%)` guarantees zero horizontal overflow!
+
+## 3. Page Shell with Grid (`Sidebar + Main Content`)
+
+```css
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 1fr; /* Single column on mobile by default */
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .workspace-layout {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+```
+
+*(Pro tip: `minmax(0, 1fr)` prevents long code blocks inside `<main>` from blowing past `1fr` and causing horizontal scrollbars!)*
+
+## 4. Practice Exercises
+
+1. Build a responsive top navbar with logo on the left, links on the right, and clean wrapping on `375px` mobile screens.
+2. Build a 6-card grid using `repeat(auto-fit, minmax(min(260px, 100%), 1fr))` and resize Chrome DevTools Device Toolbar from `375px` to `1280px` with zero horizontal scrollbars.
+
+## Mastery Checklist
+
+- [ ] Chooses Flexbox for 1D bars/toolbars and CSS Grid for 2D grids/page layouts.
+- [ ] Uses `gap` instead of brittle margin hacks.
+- [ ] Uses `minmax(0, 1fr)` and `min(..., 100%)` to prevent horizontal overflow bugs.
+
+</BookNodePage>

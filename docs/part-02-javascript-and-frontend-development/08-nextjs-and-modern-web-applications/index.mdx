@@ -1,0 +1,52 @@
+---
+id: "index"
+title: "Chapter 08: Next.js & Modern Web Applications"
+sidebar_label: "Chapter 08: Next.js & Modern Web Applications"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08">
+
+Plain React with Vite (`Chapter 07`) builds Client-Side Single-Page Applications (`SPAs`): the browser downloads an empty HTML shell, downloads JavaScript, executes it, and only *then* starts fetching data. **Next.js (App Router)** adds a server layer on top of React—giving you file-based routing, fast HTML rendering, SEO metadata, secure server-only data access, and built-in API/mutation endpoints inside one project.
+
+**Chapter 08 (`14 Focused Hours`)** walks from creating a fresh Next.js App Router application all the way through Server vs. Client Components, streaming, Route Handlers, Server Actions, asset optimization, middleware, production builds, and troubleshooting.
+
+## Setup: Zero to a Running Next.js App Router Project
+
+Make sure Node.js `v20.19+` or `v22+` LTS is installed (`node -v`). Run the official Next.js scaffolding CLI:
+
+```bash
+npx create-next-app@latest shopcore-web --typescript --tailwind --eslint --app --src-dir
+```
+
+*(If run without flags, `create-next-app` asks interactively about TypeScript, ESLint, Tailwind CSS, `src/` directory, and App Router—select **Yes** / **App Router**.)*
+
+Start the local development server:
+
+```bash
+cd shopcore-web
+npm run dev
+```
+
+Open `http://localhost:3000`. Edit `src/app/page.tsx`, save, and watch the browser refresh cleanly. Press `Ctrl+C` to stop the server.
+
+### Important Generated Files
+
+- `package.json`: `dev` (development server), `build` (`next build`), `start` (`next start` production server), `lint`.
+- `next.config.ts`: Framework settings (`images.remotePatterns`, headers, redirects).
+- `src/app/layout.tsx`: Root HTML shell (`<html>`, `<body>`, fonts, shared metadata).
+- `src/app/page.tsx`: Home route (`/`).
+
+### Common Setup Troubleshooting
+
+- **`EADDRINUSE: port 3000 already in use`:** Stop the older terminal running port 3000 or start on another port: `npm run dev -- -p 3001`.
+- **Node version error (`Node.js >= 20.9 required`):** Upgrade Node.js LTS before scaffolding.
+
+## Chapter 08 Roadmap
+
+- **08.1 App Router & Rendering Strategies:** File-based routes, dynamic segments, nested layouts, Server vs. Client Components, streaming `<Suspense>`, and static vs. dynamic rendering.
+- **08.2 Server Actions, Route Handlers & SEO:** `route.ts` HTTP endpoints, `"use server"` form mutations, `.env` secrets vs. `NEXT_PUBLIC_`, Metadata/Fonts/`next/image`, middleware, `next build`, and debugging hydration mismatches.
+
+</BookNodePage>

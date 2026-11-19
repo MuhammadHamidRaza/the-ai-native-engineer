@@ -1,0 +1,185 @@
+---
+id: "19-3-2-server-configuration-automation-with-ansible"
+title: "19.3.2 Server Configuration Automation with Ansible"
+sidebar_label: "19.3.2 Server Config Automation with Ansible"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-3-infrastructure-as-code-terraform-and-ansible/19-3-2-server-configuration-automation-with-ansible"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s3-t2">
+
+Terraform builds the machine; Ansible configures *inside* it. This lesson uses the VPS from [Chapter 17](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration) (or the 19.1.2 lab box — your choice) as the target, and proves Ansible's core promise: the same playbook run twice changes nothing the second time.
+
+## 1. Install Ansible (Control Node = Your Machine)
+
+Ansible runs from your laptop over SSH — **no agent on the target**, ever. That is its whole selling point vs Chef/Puppet.
+
+| Platform | Command |
+| :-- | :-- |
+| Windows | Use **WSL2 Ubuntu**; install inside it: `sudo apt update && sudo apt install -y pipx && pipx install ansible` (then `pipx ensurepath`) |
+| macOS | `brew install pipx && pipx install ansible` |
+| Linux | Same pipx flow, or distro package (`sudo apt install ansible-core`) — pipx gets you a newer core |
+
+Verify (**where to run:** your control node — WSL2/Ubuntu, or the VPS itself for a self-contained demo):
+
+```bash
+ansible --version
+ansible-playbook --version
+# ansible-core 2.22.x as of Nov 2026 — confirm current at docs.ansible.com
+```
+
+Python 3.13+ is the supported controller floor for current ansible-core (2.22.x, released Nov 2026 — check docs.ansible.com for the current floor; 3.12 is no longer supported).
+
+## 1.5 Ad-hoc Commands vs Playbooks — and the Safety Check Mode
+
+`ansible all -m ping`, `ansible all -a "df -h"`, `ansible web -m apt -a "name=nginx state=present"` — great for quick reads and one-liners. Anything you would want to repeat, review or run against several servers belongs in a playbook instead. Ad-hoc is for reconnaissance and emergencies; playbooks are for everything you might ever re-run.
+
+**Check mode** (`--check`) performs a dry run and reports what *would* change without touching the target; **`--diff`** shows the line-level change for templated files:
+
+```bash
+ansible-playbook -i inventory.ini deploy-site.yml --check --diff
+```
+
+Not every module supports check mode (file copies do; some shell commands cannot predict), but when it works it is the safest possible review of a production run. Use it before your first real deploy.
+
+## 2. Inventory — Telling Ansible Who Exists
+
+`inventory.ini` (this repo target: your Ch17 VPS):
+
+```ini
+[web]
+shopcore-vps ansible_host=YOUR_VPS_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_ed25519
+
+[web:vars]
+ansible_python_interpreter=/usr/bin/python3
+```
+
+Test connectivity — the first thing that must work before any playbook:
+
+```bash
+ansible -i inventory.ini all -m ping
+```
+
+Expected: `shopcore-vps | SUCCESS => { "changed": false, "ping": "pong" }`. A `UNREACHABLE` here means SSH/keys/inventory — fix it now, not inside a debugging session on a 200-line playbook.
+
+## 3. The Playbook — nginx + Static Site, End to End
+
+`deploy-site.yml` (place next to `inventory.ini` and your built `dist/`):
+
+```yaml
+- name: ShopCore static site on the VPS
+  hosts: web
+  become: true
+  vars:
+    site_dir: /var/www/shopcore
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:                 # Ubuntu/Debian targets; on Amazon Linux 2023 use ansible.builtin.dnf (see note)
+        name: nginx
+        state: present
+        update_cache: true
+
+    - name: Create web root
+      ansible.builtin.file:
+        path: "{{ site_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Deploy the built site
+      ansible.builtin.copy:
+        src: dist/
+        dest: "{{ site_dir }}/"
+        owner: www-data
+        group: www-data
+
+    - name: Configure nginx site
+      ansible.builtin.copy:
+        src: shopcore.nginx.conf
+        dest: /etc/nginx/sites-available/shopcore
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Enable site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/shopcore
+        dest: /etc/nginx/sites-enabled/shopcore
+        state: link
+      notify: Reload nginx
+
+    - name: Remove default site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+```
+
+`shopcore.nginx.conf`: a minimal static-site block (`root /var/www/shopcore; listen 80; server_name _; location / { try_files $uri /index.html; }`). **Amazon Linux 2023 target?** Swap the `apt:` task for `ansible.builtin.dnf`, `www-data` for `nginx`, and site paths to `/etc/nginx/conf.d/shopcore.conf` + `nginx -t` semantics — same tasks, different module names, which is precisely the portability point.
+
+Run (**where to run:** your control node):
+
+```bash
+ansible-playbook -i inventory.ini deploy-site.yml
+```
+
+Expected recap, first run: `ok=6  changed=5  unreachable=0  failed=0` (numbers may vary). Open `http://YOUR_VPS_IP` — the ShopCore SPA renders.
+
+## 4. Idempotency — Run It Again and Stare at the Recap
+
+```bash
+ansible-playbook -i inventory.ini deploy-site.yml
+```
+
+Expected: `ok=6  changed=0`. **That is the point of Ansible**: operations are described, not steps executed. A config drift gets corrected to declared state; a matching machine is untouched. If you see `changed` on a no-op run, a task is badly written (usually a shell command without a guard like `creates:`/`removes:` — avoid `shell` where a purpose-built module exists).
+
+**Handlers** run only when notified by a changed task — nginx reloads only if the conf actually changed; five notifications collapse into one reload. Peek at http status before/after with `curl -I`.
+
+## 4.5 Facts — Ansible Already Knows Your Server
+
+Every play gathers **facts** automatically: OS, memory, CPUs, IP addresses. Print them or branch on them:
+
+```yaml
+- name: Show target basics
+  ansible.builtin.debug:
+    msg: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}, {{ ansible_facts['memtotal_mb'] }} MB RAM"
+```
+
+Conditional tasks use them too: `when: ansible_facts['os_family'] == 'Debian'` — the principled alternative to hand-maintaining per-distro playbooks. Disable gather (`gather_facts: false`) only when speed matters more than conditionals.
+
+## 5. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `UNREACHABLE` on ping | SSH/key/inventory wrong | Test `ssh -i key user@host` manually first; match `ansible_user` |
+| `Permission denied` on become | Passwordless sudo not set | Add user to sudoers NOPASSWD for lab, or `ansible_become_password` (vault it — never plain in yaml) |
+| `apt` task fails on AL2023 | Wrong module | Use `ansible.builtin.dnf` (and RHEL paths) |
+| Handler didn't run | No task "changed" | That's handlers working; force with `--force-handlers` or fix the copy task |
+| Site 404 after enable | Stale default site link wins | Removed in the playbook above; check `sites-enabled` |
+| Secrets visible in output | No `no_log: true` on secret tasks | Add `no_log: true`; use `ansible-vault` for real secrets |
+
+## 6. Practice
+
+**Guided.** Run the playbook twice; record both recaps; confirm `changed=0` on the re-run and that nginx did not restart the second time (`systemctl status nginx | grep Active` uptime).
+
+**Independent.** Add a task `Ensure curl is installed` and a task printing `{{ ansible_facts['distribution'] }}` — use `setup`/facts in a template to render a `version.html` page.
+
+**Challenge.** Encrypt a token with `ansible-vault create vars.yml` and use it in a task (e.g., templating a config file containing it). Then extend the playbook to also ensure `ufw` allows 80/443 — idempotently, as a task, not a one-off shell call.
+
+**Assessment checklist**
+
+- [ ] `ansible --version` works and I understand control node vs target.
+- [ ] `inventory.ini` is correct and `ansible … -m ping` returns `pong`.
+- [ ] My playbook deploys nginx + the static site to the VPS.
+- [ ] I verified idempotency: second run → `changed=0`.
+- [ ] I know how handlers trigger and why they batch.
+- [ ] I never put plaintext secrets in YAML/logs; I know `ansible-vault` exists.
+
+</BookNodePage>

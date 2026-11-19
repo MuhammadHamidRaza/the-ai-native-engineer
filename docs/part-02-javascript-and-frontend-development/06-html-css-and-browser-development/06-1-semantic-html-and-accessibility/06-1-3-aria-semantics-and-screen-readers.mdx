@@ -1,0 +1,64 @@
+---
+id: "06-1-3-aria-semantics-and-screen-readers"
+title: "06.1.3 ARIA Semantics and Screen Readers"
+sidebar_label: "06.1.3 ARIA Semantics and Screen Readers"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-1-semantic-html-and-accessibility/06-1-3-aria-semantics-and-screen-readers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s1-t3">
+
+**ARIA (Accessible Rich Internet Applications)** attributes add semantic roles, states, and live announcements when native HTML alone cannot express a custom interactive widget (such as an expandable accordion, tab bar, or toast alert). Used carefully, ARIA bridges complex dynamic UIs cleanly; used carelessly, it breaks assistive tech worse than using no ARIA at all.
+
+## 1. The First Rule of ARIA
+
+> **If you can use a native HTML element or attribute with the semantics and behavior you need already built in, do that instead of repurposing a `<div>` and adding ARIA.**
+
+`<button>` already gives you Enter/Space activation, `Tab` focus, disabled state, and `"button"` role. Writing `<div role="button" tabindex="0">` forces you to re-implement keyboard handlers manually.
+
+## 2. High-Value ARIA Attributes You Actually Need
+
+```html
+<!-- 1. Icon-only buttons MUST have an accessible name -->
+<button type="button" aria-label="Close settings dialog">✕</button>
+
+<!-- 2. Expandable panels communicate open/closed state -->
+<button
+  type="button"
+  aria-expanded="false"
+  aria-controls="filter-panel"
+  id="filter-toggle"
+>
+  Filter Tasks
+</button>
+<div id="filter-panel" hidden>
+  <!-- filter controls -->
+</div>
+
+<!-- 3. Dynamic notifications announce themselves without stealing focus -->
+<div role="status" aria-live="polite" id="toast-region">
+  Saved 3 changes.
+</div>
+```
+
+- **`aria-live="polite"`** waits until the screen reader finishes its current sentence before announcing status updates (`"Task created"`, `"3 results found"`). Reserve `aria-live="assertive"` (`role="alert"`) strictly for urgent errors.
+- **`aria-hidden="true"`** hides decorative icons or SVG flourishes so screen readers do not read raw glyph names.
+
+## 3. Testing Accessibility Quickly in Chrome DevTools
+
+1. Press `F12` -> open the **Lighthouse** tab -> check **Accessibility** -> click **Analyze page load** to catch missing labels, low color contrast, and skipped headings automatically.
+2. In the **Elements** inspector, switch the side tab from *Styles* to **Accessibility** to inspect the computed `Name` and `Role` of any selected button or input.
+
+## 4. Practice Exercises
+
+1. Wire `#filter-toggle` in JavaScript so clicking it toggles both `panel.hidden` and `button.setAttribute("aria-expanded", String(isOpen))`.
+2. Run Chrome Lighthouse Accessibility on your local page and resolve any contrast or missing-label warnings to hit 100/100.
+
+## Mastery Checklist
+
+- [ ] Applies the First Rule of ARIA (native HTML first, ARIA second).
+- [ ] Gives icon-only buttons `aria-label` and hides decorative icons with `aria-hidden="true"`.
+- [ ] Uses `aria-live="polite"` for dynamic status updates and verifies with DevTools/Lighthouse.
+
+</BookNodePage>

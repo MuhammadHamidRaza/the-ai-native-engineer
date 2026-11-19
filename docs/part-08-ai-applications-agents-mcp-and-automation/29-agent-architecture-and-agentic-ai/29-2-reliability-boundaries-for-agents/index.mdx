@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "29.2 Reliability Boundaries for Agents"
+sidebar_label: "29.2 Reliability Boundaries for Agents"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai/29-2-reliability-boundaries-for-agents"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-29-s2">
+
+**Subchapter 29.2** is the chapter your future incident reviewer will thank you for. An agent without hard boundaries is a process you cannot kill gracefully, an invoice you cannot predict, and an action you cannot explain. This subchapter defines the boundaries: when the agent must stop, who must approve, and where it lands when everything fails.
+
+## Lessons in Subchapter 29.2
+
+1. **[29.2.1 Stopping Criteria, Budgets and Human Approvals](/book/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai/29-2-reliability-boundaries-for-agents/29-2-1-stopping-criteria-budgets-and-human-approvals):** The five stopping criteria, a worked budget derivation, tiered approval gates, dormant-agent risk, `max_turns` in the SDK plus a watchdog, and the Postmaster forbidden-actions checklist.
+2. **[29.2.2 Failure Recovery and Deterministic Fallbacks](/book/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai/29-2-reliability-boundaries-for-agents/29-2-2-failure-recovery-and-deterministic-fallbacks):** The failure taxonomy, the retry → narrow → escalate ladder, the always-available deterministic fallback, state snapshots, idempotency keys, and the postmortem template.
+
+Work 29.2.1 before 29.2.2 — budgets and gates define what "failure" means for the recovery design.
+
+</BookNodePage>

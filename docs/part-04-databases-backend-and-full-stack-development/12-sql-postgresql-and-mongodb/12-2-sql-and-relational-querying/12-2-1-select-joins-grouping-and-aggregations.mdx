@@ -1,0 +1,183 @@
+---
+id: "12-2-1-select-joins-grouping-and-aggregations"
+title: "12.2.1 SELECT, JOINs, Grouping and Aggregations"
+sidebar_label: "12.2.1 SELECT, JOINs & Aggregations"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-1-select-joins-grouping-and-aggregations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s2-t1">
+
+Every business question your store will ever ask — *"Who spent what? Which products sell? What's out of stock?"* — is answered by `SELECT`. This lesson builds the pattern from `SELECT` basics to multi-table joins and aggregations. All examples run against the ShopCore database you prepared in 12.1 — schema and seed from [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema).
+
+## 1. Anatomy of a SELECT Statement
+
+```sql
+SELECT column1, column2       -- 1. WHAT to return
+FROM   table                  -- 2. FROM where
+WHERE  condition              -- 3. Filter rows BEFORE grouping
+GROUP BY column               -- 4. Collapse rows per group
+HAVING group_condition        -- 5. Filter groups AFTER aggregation
+ORDER BY column DESC          -- 6. Sort the final result
+LIMIT 10 OFFSET 0;            -- 7. Page the result
+```
+
+Remember the execution order (it's not the order written): `FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT`. This is why `WHERE` and `HAVING` cannot use an alias defined in `SELECT` (the alias does not exist yet at those stages), while `GROUP BY` and `ORDER BY` can.
+
+## 2. First Queries Against the Real Data
+
+Open psql (`\c shopcore`) or pgAdmin's Query Tool — same output either way.
+
+```sql
+-- All rows, all columns (exploration)
+SELECT * FROM products;
+-- id | category_id | sku   | title               | price_cents | stock_qty
+-- 1  | 1           | KB-01 | Mechanical Keyboard | 12900       | 15
+-- 2  | 1           | MS-02 | Ergonomic Mouse     |  5900       | 30
+-- 3  | 2           | BK-03 | Systems Architecture|  4500       | 20
+
+-- Specific columns, filtered rows, sorted
+SELECT sku, title, price_cents
+FROM products
+WHERE price_cents >= 5000          -- cents! $50.00
+ORDER BY price_cents DESC;
+
+-- Aliases make output and later reuse readable
+SELECT p.title AS product, p.price_cents AS cents
+FROM products AS p
+WHERE p.stock_qty > 0;
+```
+
+Every string comparison is case-sensitive in Postgres — use `ILIKE` for case-insensitive matching: `WHERE title ILIKE '%keyboard%'`.
+
+## 3. JOINs: Combining Tables
+
+ShopCore splits facts across tables (`users`, `orders`, `order_items`, `products`). A `JOIN` stitches them back together using foreign keys.
+
+### INNER JOIN — Only Matching Rows
+
+```sql
+-- Every order item with its product name and price
+SELECT oi.order_id, p.title, oi.qty, oi.unit_price_cents
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+ORDER BY oi.order_id;
+```
+
+Products without lines (none — all seeded products appear) and lines without products (impossible — FK enforces it) simply disappear. That's the `INNER` semantics: the intersection.
+
+### LEFT JOIN — All Left Rows, Matched or Not
+
+```sql
+-- ALL users, and any orders they may have (Linus: none)
+SELECT u.full_name, o.id AS order_id, o.status
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+ORDER BY u.full_name, o.id;
+```
+
+Linus appears once with `order_id NULL`. This is how you answer "which users have never ordered?":
+
+```sql
+SELECT u.full_name
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE o.id IS NULL;      -- exclude matched rows → keep only never-ordered users
+```
+
+> **The LEFT JOIN trap:** putting a right-table filter in `WHERE` silently kills the outer join's left rows. Example: `WHERE o.status = 'paid'` drops Linus, because `NULL = 'paid'` is false. Keep the predicate on the `ON` clause instead: `ON o.user_id = u.id AND o.status = 'paid'` — then Linus still appears, with `NULL` for the order side.
+
+### The Three-Way Join: Who Bought What, How Much?
+
+```sql
+SELECT u.full_name,
+       o.id          AS order_id,
+       p.title       AS product,
+       oi.qty,
+       oi.unit_price_cents
+FROM users u
+JOIN orders o      ON o.user_id   = u.id
+JOIN order_items oi ON oi.order_id = o.id
+JOIN products p     ON p.id        = oi.product_id
+ORDER BY o.id, p.title;
+```
+
+Read it top-down: start with users → keep those with orders → attach their line items → attach product details. Each `JOIN ... ON` adds exactly the rows matching the key pair.
+
+## 4. Aggregations: GROUP BY, COUNT, SUM, AVG
+
+```sql
+-- Total paid revenue per user (users with zero paid spend still appear — LEFT JOIN!)
+SELECT u.id,
+       u.full_name,
+       COUNT(DISTINCT o.id)              AS paid_orders,
+       COALESCE(SUM(oi.qty * oi.unit_price_cents), 0) AS total_spent_cents
+FROM users u
+LEFT JOIN orders o      ON o.user_id = u.id AND o.status = 'paid'
+LEFT JOIN order_items oi ON oi.order_id = o.id
+GROUP BY u.id, u.full_name
+ORDER BY total_spent_cents DESC;
+```
+
+Expected results on the seeded data: Ada `24700`, Grace `0`, Linus `0`.
+
+- `COUNT(DISTINCT o.id)` counts paid orders — without `DISTINCT` you'd count joined line items (2 for Ada).
+- `COALESCE(x, 0)` converts SQL `NULL` (no paid order → SUM of nothing) into `0`.
+- `GROUP BY u.id` — group by the key; selecting non-aggregated columns that aren't grouped is a SQL error.
+
+### Per-Product Sales Report
+
+```sql
+SELECT p.sku,
+       p.title,
+       COALESCE(SUM(oi.qty), 0)              AS units_sold,
+       COALESCE(SUM(oi.qty * oi.unit_price_cents), 0) AS revenue_cents
+FROM products p
+LEFT JOIN order_items oi ON oi.product_id = p.id
+GROUP BY p.id, p.sku, p.title
+ORDER BY revenue_cents DESC;
+```
+
+### HAVING — Filter After Aggregation
+
+`WHERE` filters rows; `HAVING` filters groups:
+
+```sql
+-- Users who placed at least 2 orders (any status)
+SELECT u.full_name, COUNT(o.id) AS order_count
+FROM users u
+JOIN orders o ON o.user_id = u.id
+GROUP BY u.id, u.full_name
+HAVING COUNT(o.id) >= 2;
+```
+
+## 5. CASE Expressions and Conditional Logic in SQL
+
+```sql
+SELECT title,
+       CASE
+         WHEN stock_qty = 0  THEN 'Out of stock'
+         WHEN stock_qty < 10 THEN 'Low stock'
+         ELSE 'In stock'
+       END AS availability
+FROM products;
+```
+
+## 6. Practice
+
+**Guided exercise.** Write queries for: (a) total revenue from `paid` orders only; (b) all customers with zero orders; (c) the best-selling product by units. Verify against the seed data (Ada 24700, Linus has none, etc.).
+
+**Independent exercise.** Write the "low stock report": products with `stock_qty < 10`, shown as `sku | title | stock_qty`, sorted with lowest stock first — then modify it to exclude books category (hint: join `categories`, filter on `slug = 'hardware'`).
+
+**Challenge.** Produce a single report row per user: `email | total_orders | paid_total_cents | pending_orders`. Use conditional aggregation: `COUNT(*) FILTER (WHERE o.status='paid')` or `SUM(CASE WHEN o.status='paid' THEN 1 ELSE 0 END)`.
+
+**Assessment checklist**
+
+- [ ] I know why `WHERE ILIKE` and `WHERE UPPER(x) = UPPER('abc')` behave differently on indexes (see 12.2.3).
+- [ ] I can INNER/LEFT JOIN across ShopCore's five core tables without a reference.
+- [ ] I can explain when a predicate must live in `ON` versus `WHERE`.
+- [ ] I can write GROUP BY + HAVING end-to-end and predict the output rows.
+- [ ] I know `COALESCE`, `COUNT(DISTINCT …)`, and `CASE` cold.
+
+</BookNodePage>

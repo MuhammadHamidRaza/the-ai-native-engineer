@@ -1,0 +1,48 @@
+---
+id: "13-2-2-restful-resource-design-and-status-codes"
+title: "13.2.2 RESTful Resource Design and Status Codes"
+sidebar_label: "RESTful Resource Design and Status Codes"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-2-restful-resource-design-and-status-codes"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s2-t2">
+
+Returning `HTTP 200 OK` with `{ error: "User not found" }` forces every frontend client and monitoring alert to parse custom strings instead of relying on standard HTTP semantics. Clean REST APIs let HTTP methods and status codes speak consistently.
+
+## 1. Resource URLs & HTTP Verbs
+
+Model URLs around **plural noun resources** (`/api/v1/products`, `/api/v1/products/:productId/reviews`), letting the HTTP verb carry the action:
+
+| Method + Path | Meaning | Safe? | Idempotent? | Typical Success Status |
+| :--- | :--- | :---: | :---: | :--- |
+| `GET /products?limit=20&cursor=...` | List paginated products | Yes | Yes | `200 OK` |
+| `POST /products` | Create a new product | No | No | `201 Created` |
+| `GET /products/:id` | Fetch single product | Yes | Yes | `200 OK` (or `404`) |
+| `PATCH /products/:id` | Partial update (`price_cents`, `title`) | No | **Only if the patch is idempotent** (set this field to value X — yes; increment stock by 1 — no) | `200 OK` |
+| `DELETE /products/:id` | Remove product | No | Yes | `204 No Content` |
+
+## 2. Error Status Codes You Must Distinguish Accurately
+
+- **`400 Bad Request` / `422 Unprocessable Entity`:** Malformed JSON or failed Zod schema validation (return clear field issues).
+- **`401 Unauthorized`:** Caller is **not logged in** (missing/expired/invalid session or token).
+- **`403 Forbidden`:** Caller **is logged in**, yet lacks permission for that workspace or resource!
+- **`404 Not Found`:** Record does not exist (often also returned for unauthorized IDs to avoid leaking whether another tenant's record exists).
+- **`409 Conflict`:** Unique constraint clash (email already registered) or stale optimistic version conflict.
+- **`429 Too Many Requests`:** Rate limit exceeded (include `Retry-After` header).
+- **`500 Internal Server Error`:** Unexpected bug—log full stack trace on the server, return only a generic safe message + `requestId` to the client!
+
+## 3. Express 5 Routing Breaking Changes to Know
+
+Express 5 (`path-to-regexp` v8) rejects vulnerable regexes and bare `*` wildcards:
+- Bare `*` fails -> use named wildcard `app.get("/*splat", ...)`.
+- Optional `:id?` fails -> use braces `app.get("/users{/:id}", ...)`.
+- Two-arg `res.json(obj, status)` removed -> always chain `res.status(201).json(obj)`.
+
+## Mastery Checklist
+
+- [ ] Uses plural noun routes, accurate HTTP verbs, and never returns `200 OK` for failures.
+- [ ] Distinguishes `401` (unauthenticated) from `403` (unauthorized) cleanly.
+
+</BookNodePage>

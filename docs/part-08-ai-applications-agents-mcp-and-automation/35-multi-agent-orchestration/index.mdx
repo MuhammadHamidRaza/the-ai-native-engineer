@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "35. Multi-Agent Orchestration"
+sidebar_label: "35. Multi-Agent Orchestration"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35">
+
+Chapters 29–34 built ShopCore one agent, one worker at a time. This chapter handles the moment two or more agents must cooperate — and the uncomfortable truth that most teams reach for multi-agent far too early. **One agent with good tools beats three agents arguing.** Multi-agent orchestration earns its complexity only when the task genuinely decomposes into roles with distinct context, tools or incentives.
+
+## What This Chapter Teaches
+
+The topology patterns, the shared-state and contract machinery that keeps cooperating agents coherent, and the verification patterns that keep their output trustworthy — all in service of ShopCore's agent arc (Postmaster triage, refund verification, research briefs).
+
+The honest framing, up front:
+
+- **Use one agent with good tools when** the task fits one context window, one tool belt and one pass of reasoning. Most work does.
+- **Reach for multi-agent when** subtasks need different models/tools, different permission scopes, parallel independent research, adversarial checking (generate vs critic), or separate lifecycles (one plans, one executes, one audits).
+- **Never because** "agents are the future" or because one demo looked cool.
+
+## Chapter Contents
+
+- **35.1 Coordination Topologies** ([35.1.1 Supervisor, Router and Pipeline Patterns](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies/35-1-1-supervisor-router-and-pipeline-patterns), [35.1.2 Shared State and Inter-Agent Contracts](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-1-coordination-topologies/35-1-2-shared-state-and-inter-agent-contracts)) — the five topologies (supervisor, router, pipeline, map-reduce, swarm), the blackboard pattern, optimistic concurrency and versioned message contracts.
+- **35.2 Verification & Consensus Patterns** ([35.2.1 Critics, Evaluators and Quality Gates](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns/35-2-1-critics-evaluators-and-quality-gates), [35.2.2 Debugging Multi-Agent Deadlocks and Cost](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns/35-2-2-debugging-multi-agent-deadlocks-and-cost)) — generate→evaluate→regenerate loops with stop conditions, 2-of-3 consensus, deadlock detection and an honest multi-agent cost model.
+
+## Framework Landscape (Names Only — No SDK Internals)
+
+You will hear: **OpenAI Agents SDK** (handoffs, tracing — Ch 30), **LangGraph** (stateful graph orchestration), **CrewAI** (role-crew abstractions), **Microsoft AutoGen/Agent Framework**, **Google ADK**, **Mastra**, **LlamaIndex Agents**, and MCP (Ch 32) as the tool interop layer. This chapter deliberately teaches the *patterns*, not any one SDK — patterns survive framework churn; APIs don't. Where a framework genuinely matters for a pattern, it is named inline.
+
+## Prerequisites and Outcomes
+
+Prerequisites: Chapters 29–33 solid (agent loop, tools, n8n orchestration), Part 06 (testing/observability instincts). After this chapter you will be able to pick a topology deliberately, keep shared state consistent, contract messages between agents, gate outputs through critics, detect deadlocks, and compute whether a multi-agent design will cost 10× or 3× a single agent — with numbers.
+
+Frameworks and model availability verified November 2026; APIs drift — re-check official docs before implementing.
+
+</BookNodePage>

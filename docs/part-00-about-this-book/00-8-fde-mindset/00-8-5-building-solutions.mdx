@@ -1,0 +1,130 @@
+---
+id: "00-8-5-building-solutions"
+title: "00.8.5 Building Solutions"
+sidebar_label: "00.8.5 Building Solutions"
+slug: "/part-00-about-this-book/00-8-fde-mindset/00-8-5-building-solutions"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-8-5">
+
+By the time a Forward Deployed Engineer or AI-Native Engineer reaches **Build** (`Listen → Map → Measure → Slice → Build → Verify → Handover`), you never stare blankly at an editor guessing what database columns might be handy or how operators expect to review edge cases. You arrive at **Build** holding four clear assets: a verified Problem Brief (`00.8.1`), operator-checked As-Is and To-Be workflow maps (`00.8.2`), pre-launch baselines and telemetry definitions (`00.8.3`), and a razor-sharp vertical slice (`00.8.4`).
+
+Inside production AI-native engineering, **Building Solutions** means synthesizing three layers cleanly inside every slice: **boring deterministic core engineering**, **narrowly bounded probabilistic AI modules**, and **high-clarity operator control surfaces**.
+
+## 1. The Three-Layer FDE Build Architecture
+
+| Build Layer | Core Engineering Responsibilities | Non-Negotiable Production Standards |
+| :--- | :--- | :--- |
+| **1. Deterministic Backbone** | Auth & RBAC (`session`/`OAuth`), tenant isolation (`WHERE workspace_id = $1`), PostgreSQL transactions & `UNIQUE` constraints, idempotency keys, explicit state machines (`queued → extracted → needs_review → synced`), input bounds | Probabilistic AI outputs **never** bypass schema validation, permission checks, financial math, or database constraints |
+| **2. Bounded AI & Integration Layer** | Typed structured extraction (`Zod`/`Pydantic`), permission-filtered hybrid RAG (`Ch 28`), typed API/MCP tool adapters (`Ch 32`), explicit timeouts & exponential backoff retries | Prompts & schemas version-controlled in Git, pinned model IDs, hard `max_tokens`/`max_turns` budgets, structured `run_id` logs |
+| **3. Operator Control Surface** | Clean React/Next.js review console displaying queue status, extracted values beside clickable PDF/source citations, confidence flags, failure reasons, and one-click Approve/Override controls | Built for speed and auditability—clear keyboard shortcuts, instant filter tabs, visible errors, zero cosmetic bloat |
+
+## 2. Speed Through Engineering Discipline (Never Quick-and-Dirty Scripts)
+
+A widespread myth about Forward Deployed Engineers holds that rapid delivery requires hacking together fragile scripts with hardcoded credentials and skipped validation. In field operations, **sloppy Slice 1 code kills Slice 2 momentum and destroys Slice 3 reliability**. Top FDEs move quickly *because* they rely on crisp, repeatable engineering defaults from commit one:
+
+1. **Shared runtime contracts across boundaries (`Zod` / `Pydantic`):** Define payload schemas cleanly at system edges so browser forms, API routes, background workers, and structured LLM extractions validate against one canonical contract.
+2. **Idempotent triggers from hour one:** Assign deterministic deduplication keys (`source_system + external_id` or `sha256(raw_bytes)`) persisted with PostgreSQL `UNIQUE` constraints so webhook retries or accidental double uploads never duplicate invoices, emails, or downstream ERP writes.
+3. **Configuration outside code:** API credentials, threshold values, tenant feature toggles, and model identifiers reside strictly in validated server environment config or database settings tables—never buried in conditional source branches.
+4. **End-to-end correlation IDs:** Propagate a single `trace_id` / `run_id` from HTTP entry → background worker → SQL audit row → LLM call log. When an operator reports *"Invoice #8812 stuck,"* retrieving the complete execution history takes ten seconds.
+
+## 3. Concrete Walkthrough: Building Slice 1 of a Vendor Invoice Triage Console
+
+Notice how clean code architecture looks in practice when implementing Slice 1 of a vendor invoice triage system using **Next.js + FastAPI + PostgreSQL**:
+
+```ts
+// Shared TypeScript contract for operator review queue & structured AI output
+export const InvoiceExtractionSchema = z.object({
+  vendorName: z.string().min(1),
+  invoiceNumber: z.string().min(1),
+  poNumber: z.string().nullable(),
+  currency: z.enum(['USD', 'CAD', 'EUR']),
+  lineItems: z.array(z.object({
+    description: z.string().min(1),
+    quantity: z.number().positive(),
+    unitPriceCents: z.number().int().nonnegative(),
+  })),
+  totalCents: z.number().int().nonnegative(),
+  sourcePageRefs: z.array(z.number().int().positive()),
+});
+```
+
+Look closely at the engineering hygiene packed into that short slice design:
+- **Integer minor units (`Cents`):** Avoids binary floating-point rounding drift (`0.1 + 0.2`) completely.
+- **Deterministic post-LLM reconciliation:** Pure backend Python/TypeScript code sums `quantity * unitPriceCents` and compares against `totalCents`. If they disagree by even 1 cent, the state machine forces `status = 'needs_review'` automatically instead of trusting the model's extracted total blindly.
+- **Provenance preserved:** `sourcePageRefs` lets the React UI open directly to the cited invoice page so Finance operators verify figures in three seconds.
+
+## 4. Supervising AI Coding Assistants Inside Build (`Part 07`)
+
+Because **Slice (`00.8.4`)** gave you crisp file boundaries, schemas, and failure paths, **Part 07 (`Chapter 27`)** AI coding assistance reaches peak productivity here:
+
+- Pass your exact schema contract + exemplar route conventions (`00.7.2`) to scaffold CRUD endpoints, worker boilerplate, UI tables, and exhaustive negative test suites rapidly.
+- Audit every diff strictly for tenant scoping, SQL parameters, secret isolation, and swallowed errors (`00.7.3`) before merging.
+- Keep your focus on **business edge cases and integration contracts** rather than hand-typing repetitive validation plumbing.
+
+## 5. Mini Practice Exercise
+
+Suppose you are in the **Build** phase for a Slice 1 **Support Policy Assistant** retrieving company markdown/PDF guides:
+
+1. Write the **five PostgreSQL columns** you need on a `policy_documents` table so expired documents and department-restricted guides can be excluded *before* AI generation runs.
+2. Name **two explicit server-side protections** you will implement around external LLM calls inside your API handler (think: timeout budget, empty-retrieval deterministic refusal, rate-limit backoff, or server-only API key isolation).
+
+## Concrete Reference Implementation for Section 3 & Section 5
+
+Notice how crisp deterministic validation + PostgreSQL boundary enforcement look right beside the Zod contract from Section 3—never delegating financial truth or tenant security to probabilistic model prose:
+
+```typescript
+// Deterministic arithmetic verification & safe DB status transition
+export function reconcileInvoiceExtraction(parsed: z.infer<typeof InvoiceExtractionSchema>) {
+  const computedTotalCents = parsed.lineItems.reduce(
+    (acc, line) => acc + Math.round(line.quantity * line.unitPriceCents),
+    0
+  );
+  const mathMismatch = Math.abs(computedTotalCents - parsed.totalCents) > 0;
+  return {
+    ...parsed,
+    computedTotalCents,
+    status: mathMismatch ? ("needs_review" as const) : ("ready_for_approval" as const),
+  };
+}
+```
+
+And for the `policy_documents` table in Question 1, enforce lifecycle and access filtering directly in relational columns (`id, workspace_id, department_role, effective_from, expires_at`) so expired 2023 drafts or executive-only policies are filtered *inside the SQL `WHERE` clause before vector similarity scoring ever executes* (`Ch 28`). Combined with an `AbortSignal.timeout(15_000)` guard and server-only `GEMINI_API_KEY`, even Slice 1 launches cleanly with enterprise-grade boundaries.
+
+## End-to-End Traceability Across API, Worker, and AI Gateway
+
+To keep Build velocity cleanly debuggable when an unexpected payload stalls mid-flight, tie HTTP entry, SQL writes, and LLM gateway metrics together under one shared `runId`:
+
+```typescript
+// Emit uniform structured telemetry across deterministic + AI boundaries (Ch 22)
+logger.info({
+  runId,
+  workspaceId: session.workspaceId,
+  stage: "invoice_reconcile",
+  model: "gemini-3.8-flash",
+  inputTokens: usage.promptTokens,
+  outputTokens: usage.candidatesTokens,
+  durationMs: Math.round(performance.now() - startedAt),
+  outcome: reconciled.status,
+}, "Completed Slice 1 extraction pass");
+```
+
+With one JSON field (`runId`), you eliminate blind log hunting completely during **Verify (`00.8.6`)** and production support (`00.8.7`), tracing any disputed operator row back to exact tokens, duration, and validation branches in seconds.
+
+Before closing any **Build** sprint and handing a slice into **Verify**, verify one final discipline check: every database schema migration, seed script, and environment variable in `.env.example` runs cleanly against a wiped local test database (`pytest` / `vitest`). Reproducible builds ensure teammate code reviews, Shadow Mode deployments (`00.8.6`), and future client handovers (`00.8.7`) never stall on hidden manual database state left over from interactive debugging.
+
+## Key Takeaways
+
+- **Building Solutions** combines boring deterministic reliability, narrowly bounded AI modules, and high-trust operator interfaces inside every vertical slice.
+- Typed contracts, idempotency constraints, server-only secrets, and `run_id` correlation logging keep rapid field delivery clean and extensible across Slice 2 and Slice 3.
+- Spec-first AI coding (`00.6.4`, `00.7.2`) accelerates Build safely when backed by strict PR review and deterministic guards.
+
+## References and Further Reading
+
+- [Zod Schema Validation Documentation](https://zod.dev/)
+- [PostgreSQL Documentation — Constraints & Unique Indexes](https://www.postgresql.org/docs/current/ddl-constraints.html)
+- [Next Step — 00.8.6 Verifying Results](/book/part-00-about-this-book/00-8-fde-mindset/00-8-6-verifying-results)
+
+</BookNodePage>

@@ -1,0 +1,140 @@
+---
+id: "28-2-2-citations-hallucination-mitigation-and-ux"
+title: "28.2.2 Citations, Hallucination Mitigation and UX"
+sidebar_label: "28.2.2 Citations, Hallucination Mitigation and UX"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/28-ai-powered-applications-and-rag/28-2-retrieval-quality-and-grounded-generation/28-2-2-citations-hallucination-mitigation-and-ux"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-28-s2-t2">
+
+Retrieval quality (28.2.1) decides what the model *sees*. This lesson decides what the customer *believes* — and it is the difference between a demo and a system legal will sign off on. HelpBot's contract: every factual sentence in a policy answer carries a citation marker, citations resolve to real retrieved chunks, and when retrieval is silent the bot says "I don't know" and hands the customer to a human.
+
+## 1. Quote-of-Quote Citation Discipline
+
+The rule is absolute: **the model may only cite chunks it was given, and nothing else.** The prompt hands the model a numbered source list — `[1] returns-policy.pdf#p.2 — "4.2 Refund window..."` — and demands inline markers of the form `[n:file#page]`. The renderer validates every `[n]` against the actual retrieved set; an out-of-range marker is a build-breaking bug, not a style issue. Quoting the *quote* — not paraphrasing "the policy says you can return things" — is what makes answers auditable by support agents and customers alike.
+
+## 2. The Grounded-Answer Template
+
+```text
+SYSTEM: You are ShopCore HelpBot. Answer ONLY using the numbered sources below.
+- Every factual claim MUST end with a marker [n:file#page].
+- If the sources do not support the answer, reply exactly:
+  "I don't know — I could not find this in ShopCore's policy documents."
+  and make no other claims.
+- Never quote prices, windows or exceptions from memory.
+
+SOURCES
+[1] returns-policy.pdf#p.2 — "4.2 Refund window. Customers may return physical
+    goods within 30 calendar days of delivery..."
+[2] returns-policy.pdf#p.2 — table: "| Unused, original packaging | 45 days | ..."
+
+USER: Can I return an opened item?
+```
+
+Expected shape of a compliant answer: *"Yes — opened items may be returned within 30 calendar days of delivery, provided the item is in sellable condition [1:returns-policy.pdf#p.2]. If it is unused in original packaging, you have 45 days [2:returns-policy.pdf#p.2]."* Anything without markers is rejected by your output validator before it reaches the UI.
+
+## 3. A Taxonomy of Hallucinations in RAG Systems
+
+| Failure | What it looks like | Guard |
+| :-- | :-- | :-- |
+| **Invented citation** | Answer cites `[3:...]` but only 2 chunks were retrieved | Validator rejects out-of-range markers |
+| **Right context, wrong answer** | Refund window exists in sources, model answers 60 days | Low temperature (0–0.2); "quote the clause" instruction |
+| **Right call, wrong rationale** | Correct 30-day answer, invented reasoning ("because Section 9...") | Rationale must quote text with its marker |
+| **Adjacent-page citation** | Claim is true-ish but marker points at the refunds *intro*, not 4.2 | Chunk-level `page` + `heading_path`; support tooling shows the exact chunk |
+| **Confident refusal inversion** | Model refuses despite strong sources | Log refusal rate; tighten refusal threshold |
+| **Parametric leak** | "Typically retailers allow 90 days..." — market averages, not ShopCore | Explicit "never answer from general knowledge" in system prompt |
+
+The last one is the most common customer-facing embarrassment: the model "helpfully" generalizing. It is why grounding is enforced at the prompt boundary, not requested politely.
+
+## 4. The Refusal Pattern — When the LLM Must Say "I Don't Know"
+
+Refuse (no answer, human CTA) when **any** of these hold:
+
+1. Top reranker score below the floor — for Cohere v2, `relevance_score` close to 0 (start with 0.20; calibrate on 50 hand-labeled queries, verify Nov 2026 API semantics at docs.cohere.com/reference/rerank).
+2. Fewer than 2 chunks above a mid threshold (0.35) for a high-stakes topic (refunds, payment data).
+3. The question asks for legal/medical/financial advice, or about an order/customer record the retrieval layer cannot see.
+4. The user asks for PII (their own or someone else's address, card, health data) — HelpBot never touches those fields.
+
+Refusal is a **feature**, and its copy matters: *"I don't know — I could not find this in ShopCore's policy documents. Want me to connect you with a human?"* Log every refusal with the query and top score; it is your missing-document backlog.
+
+**Calibrating the refusal threshold honestly:** build a 50-question golden set — 40 questions your six policies *do* answer, 10 they do not. Sweep the score floor (0.10 → 0.40), plot recall on answerable questions against refusal-rate on unanswerable ones, and pick the lowest floor that keeps harmful-confident answers near zero. For policy bots, asymmetry rules: one wrong refund answer costs more than ten honest refusals. Record the chosen threshold and date in your ops runbook; re-calibrate whenever policies or models change.
+
+## 5. HelpBot UI — Citation Chip, Confidence Band, Human CTA
+
+- **One citation chip per answer** (expandable): label = document title + page (e.g. `Returns Policy · p.2`); click expands the quoted text. One chip, not five — the answer is grounded, not a bibliography.
+- **Confidence band** next to it: green (top score ≥ 0.5), amber (0.2–0.5, "Please double-check" hint), red (refusal — no chip shown, CTA prominent).
+- **"Contact a human" CTA** always visible; on refusal it is the primary button. Amber answers append *"Not sure this covers your case? Chat with our team."*
+- **No streaming of unvalidated citations**: buffer the answer, validate markers, then render. Streaming raw tokens to the UI defeats the guard.
+
+```tsx
+{answer.kind === "refused" ? (
+  <RefusalCard query={q} onContactHuman={escalate} />
+) : (
+  <>
+    <p>{answer.text}</p>
+    <CitationChip title={top.docTitle} page={top.page} quote={top.quote} />
+    <ConfidenceBand score={top.score} />
+  </>
+)}
+```
+
+## 6. The Marker Validator — 15 Lines That Save You
+
+```ts
+const MARKER = /\[(\d+):[^\]]+\]/g;
+
+export function validateMarkers(text: string, sourceCount: number) {
+  const found = [...text.matchAll(MARKER)].map(m => Number(m[1]));
+  const invalid = found.filter(n => n < 1 || n > sourceCount);
+  const cited = new Set(found);
+  return { ok: invalid.length === 0 && cited.size > 0, invalid, cited };
+}
+
+if (!validateMarkers(answer, sources.length).ok) {
+  return refusalResponse(query); // never render unvalidated text
+}
+```
+
+Every answer passes this gate. Log `ok: false` events — a spike means prompt drift or a model swap, and you want to know before customers do. Order of operations: retrieve → generate → validate → render → log.
+
+## 7. Red Flags — Dangerous Answers That Must Never Ship
+
+- **Refunds/promises of money**: any answer committing ShopCore to a refund, discount, voucher or fee waiver. HelpBot informs; only humans commit. Wording like "you are entitled to" is banned — use "our policy states...".
+- **PII handling**: confirming, repeating, or looking up names/addresses/cards/health data. Response: refusal + CTA.
+- **Account security**: password reset, lockout, suspected fraud. These route to the human security channel; HelpBot never authenticates or instructs on credentials.
+- **Legal/medical/warranty injury**: disclaimers and a human transfer.
+- **Policy version skew**: citing a clause that existed in 2024 but not now — prevented by the `effective_date` filter from 28.1.2; re-verify chips against the live chunk store, never against a cached render.
+
+Banned vs required phrasing, pinned to ShopCore:
+
+| Banned (commits the company) | Required (states the policy) |
+| :-- | :-- |
+| "You are entitled to a full refund." | "Our policy states eligible items may be returned within 30 days [1:returns-policy.pdf#p.2]." |
+| "We'll definitely waive the restocking fee." | "The restocking fee applies unless the item arrived defective [2:returns-policy.pdf#p.3]." |
+| "Your card ending 4242 is on file." | (Never confirms payment details — refusal + CTA.) |
+| "That happens to everyone, it's fine." | "I don't know — I could not find that in our documents. Contact support: [link]." |
+
+## 8. Log Everything — Retrieval Is Your Audit Trail
+
+Persist per request: query text (hash if sensitive), retrieved chunk IDs + scores (dense/BM25/RRF/rerank), model + token usage, markers emitted, validator pass/fail, refusal flag, latency per stage. Retention: 90 days hot, 1 year cold. These logs are what Chapter 36 turns into an evaluation suite — and what you hand a customer (or a regulator) when they ask "why did your bot tell me that?"
+
+## Practice
+
+**Guided.** Wire the validator: given mock sources `[1, 2]`, answers containing `[3:...]` must render the refusal template instead of the answer. Unit-test it.
+
+**Independent.** Build the refusal path end-to-end: ask HelpBot "Does ShopCore bury toxic waste?" (absent policy) — confirm refusal, correct copy, CTA, and a log row with the top rerank score.
+
+**Challenge.** Red-team your own bot for 30 minutes: invented citations, adjacent-page claims, PII bait, refund commitments. File a one-paragraph report per exploit and the guard that closes it.
+
+## Assessment Checklist
+
+- [ ] I can state the quote-of-quote rule and validate `[n:file#page]` markers out of bounds.
+- [ ] I can write a grounded system prompt with a refusal template.
+- [ ] I can name at least four hallucination failure modes and their guards.
+- [ ] My UI shows one chip, a confidence band and a human CTA — refusal shows no chip.
+- [ ] I know the red-flag list (refunds, PII, security, legal) and what HelpBot must do instead.
+- [ ] Every interaction logs retrieval scores and marker validation results.
+
+</BookNodePage>

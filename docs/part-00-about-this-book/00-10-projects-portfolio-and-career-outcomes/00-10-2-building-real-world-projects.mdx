@@ -1,0 +1,148 @@
+---
+id: "00-10-2-building-real-world-projects"
+title: "00.10.2 Building Real-World Projects"
+sidebar_label: "00.10.2 Building Real-World Projects"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-2-building-real-world-projects"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-2">
+
+Ask ten senior hiring engineers what wears out their patience fastest when scanning candidate profiles and you hear the exact same list: *"I keep clicking through the same five tutorial clones—a Netflix UI shell with static thumbnails, a raw chat box wrapping an API key, a basic weather card, and a todo list storing items in browser `localStorage`."*
+
+Cookie-cutter clones signal that a learner followed a step-by-step tutorial smoothly without ever confronting messy data shapes, multi-user authorization boundaries, failing network boundaries, or genuine trade-offs. **Building Real-World Projects** means choosing concrete operational domains where awkward inputs, permission isolation, partial failures, and auditability matter—and engineering them to hold up when an independent engineer tries to break them.
+
+## Tutorial Clone vs. Real-World Engineering System
+
+| Dimension | Shallow Tutorial Clone | Real-World Engineering Build |
+| :--- | :--- | :--- |
+| **Problem definition** | Mimics a famous consumer brand with placeholder images and filler text | Attacks a concrete workflow bottleneck (vendor invoice reconciliation, support triage console, internal runbook RAG) |
+| **Data & integrity** | Hardcoded arrays, single JSON blob, or single `items` table with zero constraints | Multi-entity relational schema (`workspaces`, `memberships`, `documents`, `jobs`, `audit_logs`) with foreign keys and migrations |
+| **AI integration** | Unbounded chat `<textarea>` sending user prompt straight to an LLM | Grounded hybrid retrieval with clickable source snippets, Pydantic/Zod extraction contracts, confidence routing, and eval scores |
+| **Edge-case behavior** | Crashes or doubles writes on page refresh, empty upload, double-click, or missing field | Enforces strict input validation (`400`/`422`), tenant `403` isolation, timeout recovery, and idempotency keys |
+| **Verification signal** | One cheerful homepage screenshot | Automated integration tests, golden AI eval report, structured request logs, seed script, and working deployed demo |
+
+## Three High-Signal Real-World Project Archetypes
+
+Whenever choosing custom themes inside [Part 08](/book/part-08-ai-applications-agents-mcp-and-automation) or scoping your **Chapter 42 Capstone**, anchor around operational problems where messy reality replaces toy scripts:
+
+### 1. Operational Document & Discrepancy Workbench
+Ingest irregular real-world files—vendor invoices, purchase orders, insurance intake PDFs, lease schedules, or onboarding CSVs—extract structured line items via typed AI extraction, run **deterministic reconciliation math in code** (`sum(line_items) === invoice_total`), highlight flagged discrepancies right beside the original source excerpt, and preserve human edits cleanly in an audit log before export.
+
+### 2. Permission-Scoped Knowledge & Support Engine
+Index living internal policies, API docs, release changelogs, and ticket histories into PostgreSQL + `pgvector`. Enforce strict `workspace_id` and role clearance filters inside SQL *before* vector ranking so restricted finance or HR chunks never surface to unauthorized users, render exact clickable citations (`Document + Section`), and measure retrieval recall + answer faithfulness across a 30-case golden suite (**Ch 28 & Ch 36**).
+
+### 3. Bounded Agent & MCP Integration Pipeline
+Connect signed inbound webhooks (`HMAC`), a typed internal **Model Context Protocol (MCP)** server (**Ch 32**), durable PostgreSQL background queues (**Ch 33–34**), and an operator approval console. When an event arrives, the system investigates safely using read-only tools, stages draft actions (`draft_reply`, `proposed_refund`, `ticket_escalation`), pauses cleanly for one-click human sign-off on sensitive writes, and protects against webhook redelivery via unique `idempotency_key` constraints.
+
+## Stress-Testing Any Project With Five Adversarial Checks
+
+Before calling a milestone project "production-caliber," walk through this 10-minute adversarial QA script—trying deliberately to break your own app:
+
+```text
+[1] Refresh mid-action    --> Does browser reload lose approved draft state or re-fire a POST charge?
+[2] Double-click Submit   --> Do rapid clicks create two database rows, two jobs, or duplicate emails?
+[3] Cross-tenant ID swap  --> Does swapping doc_id in curl with User B's cookie return HTTP 403/404?
+[4] Garbage upload / JSON --> Does sending a corrupt 0-byte PDF or invalid currency fail cleanly as 422?
+[5] Upstream timeout      --> If the AI endpoint stalls or returns 429, does the UI recover gracefully?
+```
+
+Every flaw uncovered during those five tests becomes one more concrete line of reliability proof inside your repository tests and case study (`00.10.3`).
+
+## Six Non-Negotiable Quality Standards Before Marking Any Project Done
+
+1. **Zero hardcoded secrets or laptop paths:** Clean `.env.example` documenting every needed key cleanly; zero `C:\Users\...` strings or checked-in credentials.
+2. **Five-minute boot from a fresh clone:** Anyone cloning your repo can start it cleanly via documented `docker compose up` or `npm`/`uv` commands.
+3. **Realistic seed data (`db:seed`):** Never leave reviewers staring at blank empty tables—include an instant sandbox seed script with realistic sample documents, roles, and history.
+4. **Honest non-happy-path UI states:** Design crisp empty states, streaming/loading feedback, field-level validation diagnostics, and actionable upstream retry states.
+5. **Automated tests over core invariants:** Prove auth isolation, balance/reconciliation math, schema validation, and critical API endpoints pass deterministically (`npm test` / `pytest`).
+6. **Accessible public deployment (or single-command container stack):** Zero dead links, zero sleeping `502` database landing screens, and clean mobile viewport layout.
+
+## Practical Exercise: Reject and Upgrade a Toy Idea
+
+Take one tired tutorial idea—for example, *"a generic AI blog post generator"*—and transform it using the table above into a genuine operational system. Write down: (a) a specific target operator and workflow bottleneck, (b) three relational PostgreSQL tables it now requires, (c) one deterministic verification check code must enforce regardless of what the LLM outputs, and (d) two adversarial edge cases your test suite would assert before release.
+
+## Coding Real-World Reliability: Concrete Adversarial Guard Example
+
+Notice why technical reviewers inspect your backend routes and integration tests rather than stopping at screenshots. Real-world projects embed defensive guards cleanly inside request handlers and assert negative paths automatically:
+
+```typescript
+// Real-world API route guard: Auth + Tenant Scope + Idempotency + File Sanity
+import { z } from "zod";
+
+const ClaimSubmitSchema = z.object({
+  workspaceId: z.string().uuid(),
+  idempotencyKey: z.string().min(16).max(128),
+  fileSizeBytes: z.number().int().positive().max(10 * 1024 * 1024), // 10 MB cap
+  mimeType: z.literal("application/pdf"),
+});
+
+export async function handleClaimUpload(reqUserId: string, body: unknown) {
+  const parsed = ClaimSubmitSchema.safeParse(body);
+  if (!parsed.success) {
+    return { status: 422, error: "INVALID_UPLOAD_METADATA", issues: parsed.error.issues };
+  }
+
+  const isMember = await db.checkWorkspaceMembership(reqUserId, parsed.data.workspaceId);
+  if (!isMember) {
+    return { status: 403, error: "FORBIDDEN_WORKSPACE_ACCESS" }; // Blocks tenant ID swapping
+  }
+
+  return await db.insertClaimIdempotently(parsed.data); // Unique (workspace_id, idempotency_key)
+}
+```
+
+Pair handlers like that with explicit integration tests firing invalid payloads (`422`), unauthorized workspace IDs (`403`), and identical duplicate keys (`200` returning the original record without creating a duplicate job). Even a compact project built with this discipline communicates far stronger production engineering judgment than a massive UI demo lacking negative-path checks.
+
+## Designing Authentic Dirty Data Fixtures
+
+Never test a real-world system exclusively on two clean paragraphs typed by yourself. Create a `tests/fixtures/` folder containing at least five ugly variations early:
+- An unexpectedly short or empty input (0-byte file, whitespace-only submission).
+- A formatting anomaly (broken date strings like `13/32/2026`, mixed currency symbols, rotated PDF scans).
+- A permission boundary case (same record ID requested under a neighboring workspace's session token).
+- An upstream slow-response or `429 Rate Limit` simulation proving the UI displays clean recovery controls.
+
+## Paired Integration Test Proving Those Boundaries Automatically
+
+Real-world projects do not just claim `403` and `422` guards inside prose—they prove them with automated tests executed on every commit:
+
+```typescript
+// tests/claims.integration.test.ts
+import { describe, expect, it } from "vitest";
+import { handleClaimUpload } from "../src/handlers/claims";
+
+describe("Claim submission security & idempotency", () => {
+  it("blocks cross-workspace ID substitution with 403", async () => {
+    const res = await handleClaimUpload("user_alice", {
+      workspaceId: "00000000-0000-4000-8000-000000000099", // Bob's workspace
+      idempotencyKey: "idem_cross_tenant_probe_01",
+      fileSizeBytes: 2048,
+      mimeType: "application/pdf",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns identical record on duplicate idempotency key", async () => {
+    const payload = {
+      workspaceId: "00000000-0000-4000-8000-000000000001",
+      idempotencyKey: "idem_double_click_safe_01",
+      fileSizeBytes: 4096,
+      mimeType: "application/pdf" as const,
+    };
+    const first = await handleClaimUpload("user_alice", payload);
+    const second = await handleClaimUpload("user_alice", payload);
+    expect(second.claimId).toBe(first.claimId);
+  });
+});
+```
+
+Writing even six targeted integration assertions like this elevates an ordinary portfolio repo immediately into verifiable engineering proof.
+
+## Official Primary References
+
+- [OWASP Top Ten API Security Risks (`owasp.org`)](https://owasp.org/API-Security/)
+- [Zod TypeScript Schema Validation (`zod.dev`)](https://zod.dev/)
+- [Vitest Testing Framework Documentation (`vitest.dev`)](https://vitest.dev/)
+
+</BookNodePage>

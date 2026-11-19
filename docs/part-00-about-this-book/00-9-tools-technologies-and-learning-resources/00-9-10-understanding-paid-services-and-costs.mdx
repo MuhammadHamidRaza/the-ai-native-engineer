@@ -1,0 +1,142 @@
+---
+id: "00-9-10-understanding-paid-services-and-costs"
+title: "00.9.10 Understanding Paid Services and Costs"
+sidebar_label: "00.9.10 Understanding Paid Services and Costs"
+slug: "/part-00-about-this-book/00-9-tools-technologies-and-learning-resources/00-9-10-understanding-paid-services-and-costs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-9-10">
+
+Transparency around tooling costs matters—especially for self-funded students, career switchers, and independent builders watching budgets carefully. The practical reality is encouraging: **nearly every layer of this 638-hour curriculum executes at zero mandatory software cost on your personal computer.**
+
+You never need paid proprietary IDEs, expensive always-on enterprise cloud clusters during fundamentals study, or multiple overlapping AI coding subscriptions to master JavaScript, TypeScript, React, Python, PostgreSQL, Docker, or evaluation engineering. However, the moment you integrate **live hosted cloud databases (`Parts 05 & 10`)** and **metered LLM APIs (`Part 08`)**, understanding usage-based billing, free-tier limits, and cost-control circuit breakers protects both your personal wallet and future client cloud accounts from surprise bills.
+
+## What Costs $0 vs. Where Optional Metered Costs Appear
+
+| Curriculum Stage | Cost Profile During Study | Practical Cost-Control Strategy |
+| :--- | :--- | :--- |
+| **Parts 01–04 & 06** (`1–15, 21–24`: Git, HTML/CSS/TS, React/Next.js, Python/FastAPI, Postgres, Testing) | **$0** (100% open-source local runtimes & Docker PostgreSQL containers) | Everything runs locally inside your own workstation with zero network billing |
+| **Parts 05 & 10** (`16–20, 42`: Public Cloud Deploy, Managed Postgres, Object Storage, Custom Domains) | **Free starter tiers or tiny metered usage** depending on provider & always-on compute | Start cleanly inside provider hobby/starter tiers (`pause/destroy` unused staging environments after deployment checks) |
+| **Part 07** (`25–27`: AI-Assisted Software Engineering) | **Free web/IDE tiers available** across major coding tools; paid tiers increase quotas | Follow [00.6.3 Manual Practice](/book/part-00-about-this-book/00-6-teaching-and-practice-method/00-6-3-manual-practice)—build core mastery locally without subscribing to five overlapping tools |
+| **Part 08** (`28–36`: Model APIs, RAG Embeddings, Agents, Evals) | **Free-tier developer API quotas** exist on major platforms (e.g., Google AI Studio dev free tier); high-throughput or production tiers bill per token | Configure hard monthly spend caps & billing alerts *before* creating API keys; test workflows with small fixture docs before running full eval sweeps |
+
+## Understanding Token Billing Math Before Calling APIs
+
+Unlike traditional SaaS subscriptions charging a flat monthly fee, foundation model APIs bill primarily per **million tokens** (`input tokens`, optional `cached input tokens`, and `output tokens`—where output tokens typically cost more per token than input tokens because sequential decoding is memory-bandwidth intensive).
+
+Consider a concrete developer sanity calculation before writing an ingestion or agent script:
+
+```text
+Workflow: Support Ticket + RAG Analysis
+  Average input prompt + system rules + 4 retrieved chunks = ~2,500 input tokens
+  Average structured JSON + draft reply                    =   ~350 output tokens
+
+If your local integration test script accidentally loops 400 times overnight due to
+an unguarded retry bug:
+  400 calls x 2,500 input tokens  = 1,000,000 input tokens
+  400 calls x   350 output tokens =   140,000 output tokens
+
+If each test run INSTEAD validates against a lightweight fixture (10 tickets)
+and enforces a code-level step + daily budget cap, waste drops by >95%.
+```
+
+## Five Golden FinOps Habits Every Engineer Must Practice Early
+
+Treat cloud and token hygiene as day-one engineering habits rather than enterprise bureaucracy:
+
+1. **Configure hard spend limits and threshold alerts before generating any key:** Inside every cloud or AI console, enable billing email alerts (for example at modest incremental milestones) and hard monthly caps *prior* to testing scripts locally.
+2. **Embed programmatic loop and token circuit breakers directly in code:** Every recursive agent loop or retry wrapper must enforce `MAX_STEPS` and an absolute token/call counter—so a logic bug terminates cleanly in seconds rather than burning API quota overnight:
+
+```typescript
+// Minimal safety budget guard around any iterative AI workflow
+const MAX_CALLS_PER_RUN = 8;
+const MAX_TOTAL_TOKENS_PER_RUN = 32_000;
+
+let callsUsed = 0;
+let tokensUsed = 0;
+
+function assertWithinRunBudget(estimatedNextTokens: number) {
+  if (callsUsed >= MAX_CALLS_PER_RUN) {
+    throw new Error(`Budget guard: reached max ${MAX_CALLS_PER_RUN} model calls.`);
+  }
+  if (tokensUsed + estimatedNextTokens > MAX_TOTAL_TOKENS_PER_RUN) {
+    throw new Error(`Budget guard: projected token cap ${MAX_TOTAL_TOKENS_PER_RUN} exceeded.`);
+  }
+}
+```
+
+3. **Develop and test schemas on fast, lightweight model tiers first:** Use lighter/faster model tiers while verifying JSON parsing, streaming React UI layout, SSE disconnect recovery, and RAG chunk formatting—promoting to heavier reasoning tiers strictly after tests pass cleanly.
+4. **Protect `.env` secrets relentlessly (`00.11.2`):** Automated scanners continuously harvest accidentally committed API keys from public GitHub repositories within seconds of a `git push`, running unauthorized inference at your expense. Confirm `.gitignore` covers `.env*` before `git add .` and keep keys strictly server-side.
+5. **Instrument per-workflow unit economics (`Ch 36`):** Record `prompt_tokens`, `cached_tokens`, `completion_tokens`, and database latency per workflow trace. When proposing a client solution or pricing a startup product (`Part 09`), you compute gross margins cleanly from measured telemetry rather than guesswork.
+
+## Separating Free Deterministic CI From Metered AI Evals
+
+One fast way student builders accidentally drain API credits is triggering real LLM API calls inside every routine GitHub Actions test run. Separate your verification suites intentionally:
+
+```typescript
+// tests/extraction.unit.test.ts — runs free in CI on every commit
+import { validateWarrantyLineItems } from "../src/reconcile";
+
+test("rejects mismatched invoice line totals deterministically", () => {
+  const mockedModelJson = {
+    sku: "BRG-402",
+    qty: 4,
+    unit_price_cents: 1250,
+    line_total_cents: 9999, // Wrong math! Must flag without extra LLM tokens
+  };
+
+  const verdict = validateWarrantyLineItems([mockedModelJson]);
+  expect(verdict.status).toBe("NEEDS_HUMAN_REVIEW");
+  expect(verdict.discrepancies).toContain("LINE_TOTAL_MATH_MISMATCH");
+});
+```
+
+With that clean architectural boundary, **95%+ of your daily engineering verification runs offline for $0**, while live golden model evaluations run deliberately on prompt/model changes against a versioned fixture set.
+
+## Persisting Usage Telemetry for Real Unit Economics
+
+Whenever an application moves into **Part 08** (`Ch 36`) or **Part 10** (`Ch 42`), log every model invocation inside PostgreSQL using integer micro-units or exact token counters so an operator dashboard can detect sudden context-window bloat immediately:
+
+```sql
+CREATE TABLE ai_usage_events (
+  id              BIGSERIAL PRIMARY KEY,
+  workspace_id    UUID NOT NULL,
+  workflow_name   TEXT NOT NULL,
+  model_name      TEXT NOT NULL,
+  input_tokens    INTEGER NOT NULL CHECK (input_tokens >= 0),
+  cached_tokens   INTEGER NOT NULL DEFAULT 0 CHECK (cached_tokens >= 0),
+  output_tokens   INTEGER NOT NULL CHECK (output_tokens >= 0),
+  latency_ms      INTEGER NOT NULL CHECK (latency_ms >= 0),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Detect workflows creeping upward in token size week over week
+SELECT workflow_name,
+       COUNT(*) AS runs,
+       ROUND(AVG(input_tokens)) AS avg_in,
+       ROUND(AVG(output_tokens)) AS avg_out
+FROM ai_usage_events
+WHERE created_at >= NOW() - INTERVAL '7 days'
+GROUP BY workflow_name
+ORDER BY avg_in DESC;
+```
+
+## Cleaning Up Cloud Resources Safely (`Teardown Discipline`)
+
+When practicing cloud deployments in **Part 05**, spin up a staging server or managed database to verify HTTPS routing, environment secrets, and migrations—then verify whether idle compute bills per hour. Whenever a practice lab is complete and documented (`README.md` + verification log), tear down non-essential cloud instances intentionally rather than accumulating forgotten "zombie" databases or load balancers across five student projects.
+
+> **Current Pricing Note:** Cloud provider free tiers, regional allowances, and AI API per-token rates update frequently across providers. Always verify current quotas, free-tier terms (including whether free-tier API logs have different data retention/training policies than paid tiers!), and spend limits directly on the official provider pricing documentation before deploying sensitive or high-volume workloads.
+
+## Practical Exercise: Design a Runaway-Cost Protection Plan
+
+Before enabling your first live AI API key in **Part 08**, write a 6-item pre-flight checklist covering: (1) billing console cap setup, (2) `.gitignore` verification, (3) server-only proxy enforcement, (4) per-request `max_output_tokens` ceiling, (5) `MAX_STEPS` + duplicate-call agent breaker, and (6) automated test strategy using mocked JSON responses for unit CI tests so every `git push` does not hit live paid APIs.
+
+## Official Primary References
+
+- [Google AI for Developers — Gemini API Pricing & Rate Limits (`ai.google.dev/pricing`)](https://ai.google.dev/pricing)
+- [Twelve-Factor App — Environment Config Hygiene (`12factor.net/config`)](https://12factor.net/config)
+- [GitHub Secret Scanning Documentation (`docs.github.com`)](https://docs.github.com/en/code-security/secret-scanning)
+
+</BookNodePage>

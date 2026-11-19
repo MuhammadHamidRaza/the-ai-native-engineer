@@ -1,0 +1,199 @@
+---
+id: "30-1-2-runners-streaming-events-and-context-objects"
+title: "30.1.2 Runners, Streaming Events and Context Objects"
+sidebar_label: "30.1.2 Runners, Streaming Events and Context Objects"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-1-sdk-primitives-and-agent-loops/30-1-2-runners-streaming-events-and-context-objects"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30-s1-t2">
+
+The agent is inert until a runner drives it. This lesson covers the three runner entry points, the streaming event surface you will actually consume, and the context object — the piece of the SDK that keeps your database session and policy flags out of the prompt but inside every tool call. Verified November 2026.
+
+## 1. `Runner.run` vs `run_sync` vs `run_streamed`
+
+| | `Runner.run` | `Runner.run_sync` | `Runner.run_streamed` |
+| :-- | :-- | :-- | :-- |
+| Form | `async def`, awaited | Sync wrapper around `.run` | `async`, returns immediately |
+| Returns | `RunResult` | `RunResult` | `RunResultStreaming` |
+| Use in | FastAPI, async workers, notebooks-as-async | CLI scripts, cron (`python -m postmaster.morning`) | UIs, SSE endpoints, progress views |
+| Event loop | Requires one | **Fails inside one** | Requires one |
+| Events | None | None | Yes — this is the point |
+
+All three loop the same way: model call → final output? stop : tool calls? run them, append results, loop again : handoff? switch agent, loop again — capped by `max_turns` (**default 10**, verified in source Nov 2026). Exceed it and `MaxTurnsExceeded` is raised — unless you pass `error_handlers={"max_turns": ...}` to turn the crash into a controlled final output (29.2.1).
+
+```python
+result = await Runner.run(agent, ticket_text, context=ctx, max_turns=8)
+print(result.final_output)          # str | your output_type instance
+print(result.last_agent.name)       # after handoffs, who finished?
+print(result.new_items)             # full tool/handoff item history
+print(result.context_wrapper.usage) # aggregated tokens for the run
+```
+
+## 2. Streaming — the Events You Actually Consume
+
+```python
+from agents import Runner
+from openai.types.responses import ResponseTextDeltaEvent
+
+async def stream_ticket(ticket_text: str):
+    result = Runner.run_streamed(triager, ticket_text)
+    async for event in result.stream_events():
+        if event.type == "raw_response_event":            # token deltas
+            if isinstance(event.data, ResponseTextDeltaEvent):
+                print(event.data.delta, end="", flush=True)
+        elif event.type == "run_item_stream_event":       # semantic items
+            print(f"\n[item] {event.item.type}")
+        elif event.type == "agent_updated_stream_event":  # handoff happened
+            print(f"\n[agent] -> {event.new_agent.name}")
+    print(f"\ndone: {result.final_output}")  # iterator exhaustion = run complete
+```
+
+The three top-level event types (verified): `raw_response_event` (literal model stream, e.g. `response.output_text.delta`), `run_item_stream_event` (completed items — names include `tool_called`, `tool_output`, `message_output_created`, `handoff_requested`, `handoff_occured` *[sic — misspelled in the SDK]*, `reasoning_item_created`), and `agent_updated_stream_event` (current agent changed). Rules that bite people:
+
+- A streaming run is **not complete until `stream_events()` finishes iterating** — session persistence and approval bookkeeping can land after the last visible token. `result.is_complete` tells you.
+- Breaking out of the loop early does **not** stop the run — model and tools keep going. Call `result.cancel()` (or `cancel(mode="after_turn")`) in a `finally` and drain the stream (verified pattern):
+
+```python
+result = Runner.run_streamed(triager, ticket_text)
+try:
+    async for event in result.stream_events():
+        if event.type == "agent_updated_stream_event":
+            print(f"-> {event.new_agent.name}")   # live routing visibility
+        # ... handle forward to your SSE/WebSocket client ...
+    else:
+        pass  # exhausted = clean finish
+except Exception:
+    result.cancel()                                # stop the run on handler failure
+    async for _ in result.stream_events():         # drain cleanup
+        pass
+    raise
+```
+
+- `run_sync` cannot stream. If you need tokens in a terminal, `run_streamed`.
+- Approval pauses (`needs_approval`) end the event iterator with `interruptions` populated; resume with `Runner.run_streamed(agent, result.to_state())` / `Runner.run(agent, state)` after decisions, keeping the same session if you use one.
+
+## 3. Context Objects — `RunContextWrapper[T]`
+
+The context is a **local, per-run object your code sees — never the model**. Pass any Python object; a dataclass is the convention. The Postmaster context carries exactly three things: a DB session, a policy, and a correlation ID:
+
+```python
+# postmaster/context.py
+import uuid
+from dataclasses import dataclass, field
+
+@dataclass
+class PostmasterPolicy:
+    read_only: bool = False          # True ⇒ writes are refused by tools (defense in depth)
+    auto_refund_max_cents: int = 5000  # $50 auto ceiling; code-enforced, not prompt-enforced
+    require_identity_for_address: bool = True
+
+@dataclass
+class PostmasterContext:
+    db: "DBSession"                   # your SQLAlchemy/psycopg session — never leaves this process
+    policy: PostmasterPolicy = field(default_factory=PostmasterPolicy)
+    correlation_id: str = field(default_factory=lambda: f"pm-{uuid.uuid4().hex[:12]}")
+    ticket_id: str = ""
+```
+
+```python
+# tools receive the wrapper as their first parameter — type-safe per-call access
+from agents import RunContextWrapper
+from agents.decorators import function_tool
+
+@function_tool
+def lookup_order(ctx: RunContextWrapper[PostmasterContext], order_id: str) -> str:
+    """Fetch one order by exact ID (format ORD-YYYY-NNNNNN). Read-only."""
+    if ctx.context.policy.read_only:
+        return "error: refused (read-only mode)"
+    row = ctx.context.db.execute(
+        "SELECT status, paid_cents FROM orders WHERE order_id = %(id)s",
+        {"id": order_id},
+    ).mappings().one_or_none()
+    if not row:
+        return f"error: order {order_id} not found — do not invent one"
+    return f"status={row['status']} paid_cents={row['paid_cents']} corr={ctx.context.correlation_id}"
+```
+
+Threading it through the run:
+
+```python
+ctx = PostmasterContext(db=db, ticket_id="tk_2291")
+result = await Runner.run(triager, ticket_text, context=ctx, max_turns=8)
+```
+
+Agents are generic over the context type — `Agent[PostmasterContext]` — so the type checker rejects a tool built for a different context. `ToolContext` (a `RunContextWrapper` subclass) adds `tool_name`, `tool_call_id`, `tool_arguments` when you need per-call metadata for logging; `wrapper.usage` gives aggregated token counts at the end.
+
+## 4. Typed Output — `output_type` + Pydantic
+
+When `output_type` is a Pydantic model, the SDK instructs the model to produce **structured outputs** instead of free text, and validates the result against your model before the run ends.
+
+```python
+class TriageDecision(BaseModel):
+    intent: Literal["refund_dispute", "address_change", "inventory_shortfall", "other"]
+    order_id: str | None = None
+    next_agent: Literal["refund_specialist", "escalation", "done"]
+    note: str
+
+triager = triager.clone(output_type=TriageDecision)
+result = await Runner.run(triager, ticket_text, context=ctx)
+decision: TriageDecision = result.final_output   # typed, validated
+```
+
+Three verified facts you should know before relying on this: (1) your model must be expressible as an OpenAI structured-outputs strict schema — the SDK converts via Pydantic and "any type that can be wrapped in a Pydantic TypeAdapter" (dataclasses, lists, TypedDict); (2) if the model's output fails validation, the run raises `ModelBehaviorError` — unless you install an `error_handlers={"invalid_final_output": ...}` handler, which can substitute a fallback instance of the same type; (3) handoffs and guardrails still apply — validation is on the *final* agent's output only.
+
+**What breaks with `output_type`, in practice:**
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `ModelBehaviorError` on every run | Field type the strict schema can't express (e.g. free-form `dict`, or `Optional` without a pattern) | Use concrete types + enums; every field required-or-default; test conversion offline: `TypeAdapter(TriageDecision).json_schema()` |
+| Final output missing `order_id` | Model omitted an optional field | Either make it required with a clear description ("null if unknown") or supply a handler fallback |
+| Validation happens but the value is nonsense | Shape ≠ correctness (Section 5) | Business invariants in the tool; never trust `output_type` alone |
+| Handoff'd specialist's output unvalidated | Guardrails/validation land on the *final* agent | Put `output_type` on the specialist that produces the decision the app consumes |
+
+**Meter the run's tokens while you still can see them:**
+
+```python
+# after Runner.run ...
+usage = result.context_wrapper.usage
+print(f"tokens in={usage.input_tokens} out={usage.output_tokens} total={usage.total_tokens}")
+```
+
+That single line is the input to your 29.2.1 budget math — log it per ticket from day one, and you will never have to estimate token cost from vibes.
+
+## 5. Honest Failure Modes
+
+**Context do's and don'ts (the table your reviewers will quote):**
+
+| Do | Don't |
+| :-- | :-- |
+| Fresh context per run (`build_ctx(...)` per ticket) | Module-level/global context shared across runs |
+| Policy + IDs + flags in context; live services injected at construction | Secrets, API keys, full DB sessions (serialization leaks them into `RunState`) |
+| Read-only flags enforced in the tool, not just honored in logging | Trusting the model to "respect" read-only |
+| `correlation_id` on every context, logged on every tool call | Debugging merchant-disputed refunds with no join key |
+| Immutable-ish context (replace, don't mutate shared lists) | Two tool calls in one turn appending to one list |
+
+- **Context bleed.** The context object is shared across all agents in one run — and it is *reference-shared* in nested `Agent.as_tool()` calls. Mutable fields (`ctx.db` cursor, lists) mutated by two concurrent tool calls in one turn are a race you will not see in dev. Keep context for **reads and policy**; put per-call scratch data in local variables.
+- **Shared mutable state across runs.** Creating one module-level `PostmasterContext` and reusing it for every ticket is the classic bug: correlation IDs leak, one ticket's read_only flag flips for another. Construct a fresh context per run.
+- **Secrets in context.** Serialized `RunState` (human-in-the-loop pause/resume) persists context; `RunState.to_json()` will carry whatever you put there. DB sessions do not serialize — keep only IDs and flags, and inject the live session at resume time.
+- **Async + sync mixing.** A sync tool called in an async run blocks the loop; two `Runner.run` calls sharing one `db` connection will corrupt each other's transactions. One session per run.
+- **Assuming validation is a safety boundary.** `output_type` guarantees *shape*, not *truth* — `intent: "refund_dispute"` can still be the wrong call, confidently. Gates (29.2) remain your boundary.
+
+## 6. Practice
+
+**Guided exercise.** Build `postmaster/context.py`; write `lookup_order` against a SQLite stub; run the broken-order ticket with `await Runner.run`; print `result.context_wrapper.usage`.
+
+**Independent exercise.** Add `TriageDecision` as `output_type`; dump `result.final_output.model_dump()`; confirm the shape.
+
+**Challenge.** Call `Runner.run_streamed`, consume only raw text deltas, break out of the loop on the first `tool_called`, and demonstrate with `result.is_complete` that the run kept going — then fix it with `cancel()`.
+
+**Assessment checklist**
+
+- [ ] I know when `run_sync` raises (inside an existing event loop) and what to use instead.
+- [ ] I can name the three streaming event types and one `run_item_stream_event` name.
+- [ ] My `PostmasterContext` holds no secrets and is constructed fresh per run.
+- [ ] I wired a typed context into a tool and read `wrapper.context.policy` inside it.
+- [ ] I can explain why `output_type` is shape-validation, not correctness.
+
+</BookNodePage>

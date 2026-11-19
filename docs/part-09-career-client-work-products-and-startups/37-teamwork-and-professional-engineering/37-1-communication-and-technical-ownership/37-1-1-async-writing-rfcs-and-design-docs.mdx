@@ -1,0 +1,124 @@
+---
+id: "37-1-1-async-writing-rfcs-and-design-docs"
+title: "37.1.1 Async Writing, RFCs and Design Docs"
+sidebar_label: "37.1.1 Async Writing, RFCs and Design Docs"
+slug: "/part-09-career-client-work-products-and-startups/37-teamwork-and-professional-engineering/37-1-communication-and-technical-ownership/37-1-1-async-writing-rfcs-and-design-docs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-37-s1-t1">
+
+Distributed teams do not fail at code — they fail at **decisions**. A meeting where the wrong decision gets made because only two people were in the room costs more than a week of engineering. Async writing is how professional teams make decisions that survive contact with three time zones and six weeks of silence.
+
+This lesson teaches you to write the two documents that carry most of that load: the **RFC** (Request for Comments — a proposal that invites challenge before commitment) and the **design doc** (the record of what was decided and why). Both are exercises in thinking, not formatting.
+
+## 1. Why Writing Beats Meetings (Most of the Time)
+
+| Property | Meeting | Document |
+| :-- | :-- | :-- |
+| Who can see it | Attendees | The whole org, forever |
+| Accuracy | Whoever spoke loudest | Written once, checked by reviewers |
+| Rework cost | Re-explain to each newcomer | Link to the doc |
+| Async friendliness | None — requires overlap | Full — read on any schedule |
+| Permanent record | None by default | Searchable, linked, quotable |
+
+The one exception is genuinely contentious design disagreement, where a live hour of whiteboarding beats 40 comment threads. The skill is knowing which one you are in. Rule of thumb: if you cannot state the trade-off in one sentence, it is not ready for either — think harder first.
+
+## 2. The RFC Format That Actually Gets Read
+
+Most RFCs die because they are 8-page treatises nobody finishes. The format that works — **target 1–2 pages**:
+
+```markdown
+# RFC-042: Replace polling with WebSockets for the cart service
+
+**Author:** A. Rivera · **Date:** 2026-11-19 · **Status:** Comment period → 2026-11-26
+
+## Context
+Cart-polling fires 18 requests/min/session; at 5k concurrent sessions that is
+1.5M requests/day of reads that change sub-second. Checkout conversion is up 3%
+since the June UI refresh; infra cost is dominated by these polls ($2,100/mo).
+
+## Problem
+- p95 cart-staleness after local edit: 4.2s (users see stale totals)
+- 96% of polls return unchanged data
+- Infra cost grows linearly with traffic, not with usage
+
+## Proposal
+Move cart sync to a WebSocket channel (`/ws/cart`). Server pushes diffs on
+write. Client falls back to 5s polling if the socket fails. No schema changes.
+
+## Alternatives considered
+1. Server-Sent Events — rejected: unidirectional; we need client→server presence hints
+2. Longer polling interval (30s) — rejected: staleness worsens; violates UX bar
+3. Do nothing — rejected: cost and staleness both track growth
+
+## Trade-offs
+- + Latency: sub-100ms updates; − Complexity: connection lifecycle, reconnect logic
+- + Cost: ~40% fewer cart-read requests; − Ops: sticky sessions or a ws-relay
+- Rollout: behind `CART_WS_ENABLED` flag, 10% → 50% → 100% over two weeks
+
+## Open questions
+- Reconnect backoff policy — proposal: expo, jitter, cap 30s (see PR #418)
+```
+
+### What each section does
+
+- **Context** — the evidence someone new needs in 30 seconds. Numbers, not vibes.
+- **Problem** — the cost of doing nothing, quantified. If you cannot quantify it, the RFC is a preference, not a proposal.
+- **Proposal** — one design, not three. Compare options in *alternatives*, not in the proposal body.
+- **Alternatives** — at least two rejected options with the rejection reason. This is where reviewers actually engage; a reviewer can attack a rejected option even if the proposal is solid.
+- **Trade-offs** — a balanced ledger. An RFC with no downsides reads as advocacy, not engineering.
+- **Open questions** — explicit invitation for the reader to shape the outcome. Decision-hoarding kills review culture.
+
+## 3. Writing the Design Doc (After the RFC)
+
+The RFC asks *whether*; the design doc records *what was built and why*. It is written **after** implementation starts, not before. Keep it alive — it becomes the onboarding doc and the audit trail. The sections that matter:
+
+1. **Overview** — two sentences: what this is, and the RFC it came from.
+2. **Architecture** — diagram (even ASCII) + the data flow.
+3. **Key decisions** — the ones from the RFC, carried forward with outcomes.
+4. **Trade-offs accepted** — e.g., "we accepted 5s polling fallback over guaranteed push".
+5. **Failure modes** — what breaks, how you notice, how you recover (ties into Chapter 22/24).
+6. **Observability** — the metrics and logs that prove it works in production.
+7. **Rollout** — flags, stages, rollback plan.
+
+## 4. The Review Loop
+
+```text
+Author writes RFC → 48–72h comment window → Author responds to every thread
+   → Status flips to "Accepted" or "Rejected" (with reasons) → Design doc 
+   references the RFC by number → Implementation links the PR to both.
+```
+
+Rules that keep the loop honest:
+
+- **48–72h minimum**, never "comments by tomorrow morning" — that filters for the wrong reviewers.
+- **Every comment gets a response** — even if the answer is "won't fix, here's why".
+- **Decisions are written down in the doc, not in chat.** Chat history is not a decision log.
+- **Rejected RFCs are kept, not deleted.** "Why did we not do X?" is the question you will be asked in six months; the answer should exist.
+
+## 5. Common Failure Modes
+
+| Failure | Symptom | Fix |
+| :-- | :-- | :-- |
+| The 8-page RFC nobody reads | Zero comments, then silent disagreement later | 1–2 pages, numbers-first |
+| Proposal without problem | "I want to use Kafka" | Delete it — no quantified problem, no RFC |
+| Fake alternatives | "Option A or Option B (obviously A)" | Steelman each alternative |
+| Chat decisions | "We agreed on Slack, right?" | Decisions happen in docs; chat points to docs |
+| RFC → production gap | Design doc permanently "draft" | Assign doc ownership; merge it in the same PR as the feature flag |
+| Comments answered in private | Author DM'd the reviewer about the trade-off | Public threads only — the audience is the team |
+
+## 6. Exercise
+
+Take the last technical disagreement your team had (API shape, retry policy, queue vs cron, whatever). Write the 1–2 page RFC it *should* have had, including a quantified problem, two alternatives and a trade-off ledger. Review it against the checklist below.
+
+**Acceptance criteria.** Your RFC passes all of:
+
+- [ ] Problem section contains at least one number (latency, cost, error rate, hours).
+- [ ] At least two **steelmanned** alternatives with explicit rejection reasons.
+- [ ] A balanced trade-off table (at least two real costs).
+- [ ] Status, author, date, comment window.
+- [ ] Fits on two pages or fewer.
+
+</BookNodePage>

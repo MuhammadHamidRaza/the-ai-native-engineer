@@ -1,0 +1,129 @@
+---
+id: "17-3-1-vps-providers-updates-backups-and-real-deployment"
+title: "17.3.1 VPS Providers, Updates, Backups and Real Deployment"
+sidebar_label: "17.3.1 VPS Providers, Updates, Backups and Real Deployment"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-3-vps-operations-and-real-server-deployment/17-3-1-vps-providers-updates-backups-and-real-deployment"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s3-t1">
+
+You have a secured box, a proxy and a process manager. Last mile: pick the provider honestly, keep the box patched without thinking about it, back it up in a way you have *tested*, and run the full go-live checklist for ShopCore.
+
+> **Cost safety, up front.** VPS providers bill **hourly** (sometimes monthly-capped) and do not care if you forget. Set a billing alert/limit at signup — before the first instance. A €5/mo box you forgot for a year is €60 of pure waste; snapshots and backups of a destroyed instance still bill until deleted. **Every price below is approximate, as of Nov 2026, and changes** — treat tables as orientation, and check the provider's pricing page before you commit: [hetzner.com/cloud](https://www.hetzner.com/cloud), [digitalocean.com/pricing](https://www.digitalocean.com/pricing), [aws.amazon.com/lightsail/pricing](https://aws.amazon.com/lightsail/pricing).
+
+## 1. Provider Shortlist (approximate, Nov 2026, excl. VAT)
+
+| Provider | Entry plan | 2 vCPU / 4 GB class | Regions note | Good for |
+| :-- | :-- | :-- | :-- | :-- |
+| **Hetzner Cloud** | CX23 ~€5.99/mo (EU) | CPX22 ~€19.49/mo · CX32 ~€15/mo (EU) | EU-first (Falkenstein, Nuremberg, Helsinki), US (Ashburn), Singapore | Raw value, EU data residency; IPv4 billed separately (~€0.50/mo) |
+| **DigitalOcean Basic** | $4/mo (512 MiB) · $6/mo (1 GiB) | $24/mo (2 vCPU/4 GiB) | 15 regions incl. NYC/SFO, AMS, SGP, BLR | Docs/tutorials ecosystem, managed DBs nearby |
+| **AWS Lightsail** | $5/mo (0.5 GB) | $24/mo (4 GB) | AWS footprint incl. more global regions | Eventual AWS migration path; fixed predictable bundle |
+| **Vultr / Linode (Akamai)** | ~$5/mo | ~$20–24/mo | Broad incl. Tokyo/Seoul | Alternatives, similar economics |
+
+**Zones and images:** "Region" = geography; "zone" = datacenter within it - put the box near your *users*, not near you. Images to prefer: **Ubuntu 24.04 LTS** (always LTS, never a .10 point release) for a book shelf); avoid marketplace/Bitnami images (different paths, surprise configs). Size to start: 1 GB for static + nginx, **2–4 GB** for Node + Postgres-on-box; vertical upgrade is a resize, not a rebuild.
+
+**In-place upgrades:** Hetzner/DO/Lightsail all offer resize in place (bigger vCPU/RAM keeps disk; disk grows, usually can never shrink). Plan: snapshot → resize → verify. Downtime minutes, not hours.
+
+## 2. Keeping It Patched — unattended-upgrades
+
+```bash
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades   # answer Yes
+cat /etc/apt/apt.conf.d/50unattended-upgrades | head -20
+```
+
+Ubuntu then applies **security** updates automatically (kernels need a reboot — schedule one monthly; DO/Hetzner flag "reboot required" in the console). Check with:
+
+```bash
+cat /var/run/reboot-required 2>/dev/null || echo "no reboot pending"
+apt list --upgradable
+```
+
+Never `apt upgrade` blindly on a Friday. Read `apt list --upgradable`; security-only auto, the rest at a maintenance window.
+
+## 3. Backups vs Snapshots vs Restore Drill
+
+| Mechanism | What it is | Frequency | Restore |
+| :-- | :-- | :-- | :-- |
+| **Provider snapshot** | Full disk image, manual or scheduled | Before risky changes | New instance from image (~5–10 min) |
+| **Provider automated backup** | Weekly snapshots, retained ~4 weeks (DO ~20% of instance price) | Automatic | Same, no heroics |
+| **`pg_dump` of ShopCore DB** | Logical DB backup to object storage/another host | `cron` nightly | Restore into fresh Postgres in minutes |
+
+Minimum viable: **weekly provider backup + nightly `pg_dump`**. A snapshot of a corrupted-state disk faithfully preserves the corruption; a logical dump does not.
+
+```bash
+pg_dump -U postgres shopcore | gzip > /home/deploy/backups/shopcore-$(date +%F).sql.gz
+find /home/deploy/backups -mtime +14 -delete     # retain 14 days
+```
+
+**Restore drill (the only kind of backup that counts), once a quarter:**
+
+```bash
+ssh root@<new-box>
+# 1. install postgres + create empty db  2. gunzip < dump.sql.gz | psql -U postgres shopcore
+# 3. verify row counts: psql -c 'select count(*) from orders;'
+# 4. point DNS at new box (or curl with --resolve during the drill)  5. delete the drill box
+```
+
+Time it. Write the number in your ops notes. A backup you have never restored is a hope, not a control.
+
+## 4. Rotation, Monitoring and Teardown
+
+Logs rotate by default via `logrotate` (`/etc/logrotate.conf`; `/var/log/nginx/*.log` rotates weekly with 14 retained). Confirm with `logrotate -d /etc/logrotate.conf`. journal space: `journalctl --vacuum-time=7d`.
+
+Monitoring in one line each, for a solo box: `htop` on demand, plus an external ping (e.g., a free uptime pinger hitting `/health` every 5 min) — on-box "monitoring" cannot report its own death. Real metrics (Prometheus/Grafana/Loki) are [Chapter 20](/book/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud) material; do not skip the health ping because of them.
+
+**Teardown checklist (destroy learner boxes fully):** delete instance → delete attached volumes → delete snapshots/backups → release reserved IPs → remove DNS records still pointing at it → confirm `df`/billing panel shows zero instances. Provider consoles make "deleted" unambiguous — if it still appears in the billing page a day later, something was missed.
+
+## 5. The Go-Live Checklist — ShopCore on a Real VPS
+
+**Phase A — before traffic**
+- [ ] VPS created, SSH key-only (17.1.1), ufw 22/80/443 only (17.2.1), fail2ban on.
+- [ ] Domain `shopcore.dev` + `www` A/AAAA records → VPS IP, TTL 300 ([16.2.2](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-2-domains-registrars-dns-and-https/16-2-2-dns-records-nameservers-and-propagation)).
+- [ ] `dig A shopcore.dev` resolves from two networks.
+
+**Phase B — deploy**
+- [ ] Repo cloned to `/home/deploy/shopcore`; `npm ci && npm test` green on the box.
+- [ ] `.env` written (not committed): `DATABASE_URL` → managed Neon (16.3.2) or local Postgres; `PORT=4000`; `NODE_ENV=production`.
+- [ ] Migrations applied; `psql \dt` verified.
+- [ ] systemd unit `shopcore-api` enabled + active (17.1.3); `journalctl -u shopcore-api -n 20` clean.
+- [ ] nginx or Caddy serving `:443` → `127.0.0.1:4000` (17.2.2); `curl -Iv https://shopcore.dev` → `verify ok`.
+
+**Phase C — verify like a stranger**
+- [ ] Full checkout flow from mobile data, incognito: catalog → cart → checkout → order confirmation.
+- [ ] `curl https://shopcore.dev/health` → `{"status":"ok"}`.
+- [ ] `journalctl -u shopcore-api --since "-5 min"` shows the requests.
+
+**Phase D — rollback ready**
+- [ ] Previous artifact kept: git tag/`releases/<sha>` folders or last-known-good build. Rollback = checkout tag + `systemctl restart shopcore-api` (~30 s). If DNS changed in this release, revert TTL'd records too.
+- [ ] Post-deploy: `pg_dump` taken, snapshot taken.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Fresh VPS unreachable by SSH | Forgot to add SSH key at creation; wrong user (`root` vs `ubuntu`) | Provider console; if password-only image, console login then install your key |
+| Site resolves to old host for some users | DNS cache within TTL | Lower TTL beforehand; wait; test `dig @1.1.1.1`, `dig @8.8.8.8` |
+| Disk full (`No space left`) | Logs/snapshots/backups accumulated | `journalctl --vacuum-time=7d`; `apt clean`; move backups off-box; `df -h` weekly habit |
+| Resize changed IP | Some providers reassign IPs on rebuild/resize | Update A records; note: resize in place usually keeps IP — rebuild does not |
+| Backup "succeeded" but restore fails | Never tested; corrupt dump | Test restores quarterly (§3); `gunzip -t` the dump file |
+
+## 7. Practice
+
+**Guided exercise.** On paper, price out ShopCore on all three providers for 12 months including backup add-on and IPv4; pick one and justify in four sentences.
+
+**Independent exercise.** Enable `unattended-upgrades` on your VPS; then read `/var/log/unattended-upgrades/unattended-upgrades.log` after the first automatic run and report what it did.
+
+**Challenge.** Perform Phases A→D end to end for the real ShopCore API, then deliberately break the deploy (bad `ExecStart` path), time your rollback, and confirm the site recovers. Write the incident timeline: detect → decide → rollback → verify.
+
+**Assessment checklist**
+
+- [ ] I can name my provider's entry and 2 vCPU/4 GB price and where to verify it.
+- [ ] Security updates install themselves; kernel reboots are scheduled.
+- [ ] I restored a backup once and timed it.
+- [ ] I executed DNS → TLS → deploy → verify → rollback with my own hands.
+- [ ] This throwaway box is destroyed or diaried — it is not billing me silently.
+
+</BookNodePage>

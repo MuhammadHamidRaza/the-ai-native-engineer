@@ -1,0 +1,149 @@
+---
+id: "01-2-2-files-processes-and-memory"
+title: "01.2.2 Files, Processes and Memory"
+sidebar_label: "01.2.2 Files, Processes and Memory"
+slug: "/part-01-foundations/01-how-computers-software-and-the-internet-work/01-2-operating-systems/01-2-2-files-processes-and-memory"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-01-s2-t2">
+
+Every time you deploy a web server, start a PostgreSQL database, or run automated tests locally, you interact with **three foundational Operating System abstractions**: **Files**, **Processes**, and **Virtual Memory**. Yet beginners routinely hit confusing roadblocks around all three: *"Why did `node server.js` die with `EADDRINUSE` even though I closed VS Code?"*, *"Why can two separate runs of my script both live at memory address `0x7fff...` without overwriting each other?"*, *"Why does `chmod 600 ~/.ssh/id_ed25519` fix SSH refusal errors?"*, or *"What actually happens inside memory when a program leaks objects until Linux kills it with exit code `137`?"*
+
+Once you see clearly how the OS represents **Files** (hierarchical byte streams + permission metadata), **Processes & Threads** (isolated running instances with PIDs, file descriptors, and signals), and **Virtual Memory** (per-process page tables backed by physical RAM), every single one of those mysteries becomes completely transparent.
+
+## 1. Plain-English Intuition: Recipe Book vs. Active Kitchens
+
+Separate three ideas people often blend together carelessly:
+- A **Program / Executable File** (`e.g. /usr/bin/python3` or `server.ts`) sitting on your SSD is just a **dormant recipe book**—inert bytes on storage consuming zero CPU and zero active RAM.
+- A **Process** is a **live, active kitchen executing that recipe right now**—assigned its own unique numeric badge (**`PID`**, *Process ID*), its own private walled-off memory counters, its own open file handles, and at least one **Thread of Execution** holding a CPU Program Counter. Launch `python3` twice in two tabs and one dormant file becomes **two completely independent processes** with separate `PID`s and separate memory!
+- **Files & Directories** are the **organized filing cabinets** living under one unified hierarchy (`/home/...`, `/etc/...`, `/tmp/...`)—plus POSIX extends *"everything is a file"* neatly to pipes, terminal devices, and network sockets via numeric **File Descriptors**.
+
+## 2. Files, Hierarchical Paths, Inodes & POSIX Permissions
+
+In POSIX/Linux and macOS filesystems, there are no Windows drive letters (`C:\`, `D:\`). Everything mounts into a **single inverted tree rooted at `/` (`root`)**:
+
+```text
+/                         <- Root of entire OS filesystem
+├── bin/ , usr/bin/       <- Installed system & user executable binaries (`git`, `curl`, `ls`)
+├── etc/                  <- System-wide configuration files (`hosts`, `nginx/`, `ssh/`)
+├── home/<user>/          <- Your personal home (`~`) — store code cleanly here (`~/code/...`)
+│   └── (macOS: /Users/<user>/)
+├── tmp/                  <- Scratch temporary files (usually wiped on reboot)
+└── var/log/              <- System and service log files
+```
+
+### Absolute vs. Relative Paths (`pwd`)
+- An **Absolute Path** starts strictly from root `/` (e.g., `/home/alex/code/app/package.json`) and resolves identically regardless of where your shell stands.
+- A **Relative Path** resolves starting from your process's **Current Working Directory (`pwd`)** using `.` (*this directory*) and `..` (*parent directory*), e.g., `./src/index.ts` or `../.env`. Forgetting which directory a server started inside is the #1 cause of `ENOENT: no such file or directory` bugs!
+
+### Reading POSIX Permissions (`rwx` and `chmod`)
+Run `ls -la` inside any folder and inspect the leading 10-character column (for example, `-rwxr-xr--`):
+- Character 1: File type (`-` = regular file, `d` = directory, `l` = symbolic link).
+- Characters 2–4 (**Owner / User `u`**), 5–7 (**Group `g`**), 8–10 (**Others `o`**):
+  - **`r` (`4`):** Read file contents (or list filenames inside a directory).
+  - **`w` (`2`):** Modify/write file contents (or create/delete files inside a directory).
+  - **`x` (`1`):** Execute file as a program/script (or enter/`cd` into a directory!).
+
+Summing `4 + 2 + 1` gives familiar numeric `chmod` codes:
+- `chmod 755 deploy.sh` (`rwxr-xr-x`): Owner can read/write/execute (`7`); group & others can read/execute (`5`).
+- `chmod 600 ~/.ssh/id_ed25519` (`rw-------`): **Strict private secret key**—only owner reads/writes; SSH outright refuses private keys readable by other OS users!
+
+## 3. Processes, Child Threads, File Descriptors & Signals
+
+Every running process carries four critical kernel attributes you inspect constantly in debugging:
+
+| Process Attribute | What It Represents | Practical Everyday Impact |
+| :--- | :--- | :--- |
+| **`PID` & `PPID`** | Unique integer **Process ID** and **Parent Process ID** | Your shell (`PPID`) spawns `node` or `python3` (`PID`). Stopping an orphaned background `PID` clears stuck ports (`EADDRINUSE`) |
+| **Standard File Descriptors (`0, 1, 2`)** | `0 = stdin` (input), `1 = stdout` (normal output), `2 = stderr` (errors/logs) | Enables shell pipes (`\|`) and separating clean JSON outputs (`stdout`) from warning diagnostics (`stderr`) cleanly (`01.2.3`) |
+| **Signals (`SIGINT`, `SIGTERM`, `SIGKILL`)** | Asynchronous notifications sent by kernel/users to control processes | `Ctrl+C` sends **`SIGINT`** (interrupt); `docker stop` / cloud deploys send **`SIGTERM`** (polite drain & shutdown); **`SIGKILL` (`kill -9`)** terminates immediately without cleanup! |
+| **Threads inside a Process** | Concurrent execution paths *sharing the exact same process heap memory* | Processes isolate memory safely via MMU; threads share heap memory directly (fast communication, yet unsafe shared mutations cause race conditions!) |
+
+## 4. Virtual Memory & How the OS Isolates Process RAM
+
+Look back at that earlier puzzle: *"How can two different Python runs both report variable addresses starting around `0x7f...` without smashing each other's variables?"*
+
+Because **no user-space program ever sees raw physical DRAM addresses directly.** Instead, the OS Kernel and CPU **MMU (`Memory Management Unit`)** divide memory into fixed-size **Pages (`typically 4 KB` on x86-64, `16 KB` on Apple Silicon)** and maintain a private **Page Table** per process:
+
+```text
+  PROCESS A (`node server.js`, PID 4120)     PROCESS B (`postgres`, PID 4188)
+  Virtual Addr Space                         Virtual Addr Space
+  [ Stack | ... | Heap @ 0x00401000 ]        [ Stack | ... | Heap @ 0x00401000 ]
+                      |                                          |
+                      v  MMU Page Table A                        v  MMU Page Table B
+               +------+------------------------------------------+------+
+               |          PHYSICAL RAM CHIPS (DRAM FRAMES)              |
+               |   Frame 0x1A4F (Proc A)     |    Frame 0x8C20 (Proc B) |
+               +-----------------------------+--------------------------+
+```
+
+Look at three huge engineering superpowers unlocked by **Virtual Memory**:
+1. **Air-tight isolation:** Even if Process A guesses Process B's virtual hex address `0x00401000`, Process A's Page Table maps `0x00401000` exclusively to **Frame `0x1A4F`**—never to Process B's **`Frame 0x8C20`**! Accessing an unmapped virtual page raises a hardware **Page Fault → `SIGSEGV` (`Segmentation Fault`)**, stopping memory leaks across process walls.
+2. **Safe overcommit & lazy loading:** Starting a huge binary does not copy all 100 MB off SSD into RAM upfront; the kernel loads individual 4 KB executable pages *on demand* the instant instructions touch them.
+3. **Copy-on-Write (`fork`) speed:** When a parent process spawns a child worker, the OS initially shares read-only physical RAM pages between parent and child, duplicating only the exact 4 KB pages either side modifies!
+
+And remember **Exit Code `137` (`OOM Killer`)**: when aggregate process memory exceeds container cgroup RAM limits (`Part 05`), the Linux kernel picks the heaviest RAM hog and terminates it immediately via `SIGKILL` (`128 + 9 = 137`) to save the host OS from freezing!
+
+### Symbolic Links (`Symlinks`) & Open File Limits (`ulimit -n`)
+Two subtle POSIX file concepts frequently confuse developers working with `nvm`, Homebrew, and high-concurrency APIs:
+- **Symbolic Links (`ln -s`):** Think of a symlink as an OS-level shortcut pointer rather than a duplicate copy of bytes. When `nvm` switches Node versions or `npm` installs CLI tools into `node_modules/.bin/`, it updates lightweight symlinks so `/usr/local/bin/node` points cleanly to the selected version without duplicating gigabytes. Running `ls -l` shows `->` on symlinks (`lrwxr-xr-x`).
+- **Open File Descriptor Limits (`EMFILE: too many open files`):** Because POSIX treats *both disk files and active network sockets* as numeric **File Descriptors**, the kernel imposes a per-process ceiling (`ulimit -n`, often `1024` or `1048576` depending on OS defaults). Forgetting to close opened file handles or leaking database/HTTP client sockets under load triggers `EMFILE` crashes even when gigabytes of RAM remain free!
+
+## 5. Runnable Lab: Inspect Processes, File Descriptors, Permissions & Signals
+
+Open your POSIX terminal and execute this hands-on inspection sequence inside a clean temporary scratch file:
+
+```bash
+# 1. Print your current shell's Process ID (`$$`) and current directory (`pwd`)
+echo "Shell PID: $$ | Working Dir: $(pwd)"
+
+# 2. Inspect running user processes (truncated neatly to top 10 lines)
+ps aux | head -n 10
+
+# 3. Demonstrate file permissions (`chmod`) & absolute vs relative paths safely
+mkdir -p /tmp/os-lab-0122 && cd /tmp/os-lab-0122
+printf '#!/usr/bin/env bash\necho "Running script inside PID $$!"\n' > hello.sh
+ls -l hello.sh          # Observe default permissions: -rw-r--r-- (no 'x' execute bit!)
+./hello.sh              # Fails intentionally: Permission denied!
+chmod +x hello.sh       # Grant execute bit cleanly (755 / +x)
+./hello.sh              # Succeeds cleanly!
+
+# 4. Observe Process isolation & PID/PPID + max open file descriptors live in Python
+python3 -c "import os, resource; print('Python PID:', os.getpid(), '| Parent Shell PPID:', os.getppid(), '| Open FD limit:', resource.getrlimit(resource.RLIMIT_NOFILE))"
+
+# 5. Clean up scratch directory cleanly
+cd ~ && rm -rf /tmp/os-lab-0122
+```
+
+Notice step #4: `Parent Shell PPID` printed by Python matches **the exact `$$` PID of your terminal shell**! Watching parent-child process spawning firsthand turns abstract OS diagrams into undeniable reality.
+
+## 6. Failure Modes & Common Pitfalls
+
+- **`EADDRINUSE` (`Port 3000 already in use`):** Happens when an old dev server survived in the background (or stayed bound after a frozen terminal). Inspect who owns the port before rebooting your laptop:
+  - **Linux / WSL 2:** `ss -tulpn | grep 3000` (or `lsof -i :3000`) → `kill <PID>`
+  - **macOS:** `lsof -i :3000` → `kill <PID>`
+- **Abusing `kill -9` (`SIGKILL`) on databases or servers:** Sending `SIGTERM` (`kill <PID>`, signal `15`) lets PostgreSQL or Node.js flush buffers, close open transactions, and drain active HTTP users cleanly. Reserve `kill -9` strictly for frozen unresponsive processes—never routine restarts!
+- **Running `chmod 777` blindly to "fix" permission errors:** Opening read/write/execute permissions (`777`) to every account on a Linux server breaks SSH security immediately and exposes application configs. Grant the narrowest permission required (`600` for private keys/`.env`, `644` for public read files, `755` for executable scripts).
+
+## 7. Hands-On Practice Exercises
+
+1. **Trace Port & Process Ownership:** Start a tiny temporary Python HTTP server in the background (`python3 -m http.server 8765 &`), capture its printed `PID`, verify the listening port using `lsof -i :8765` or `ss -tlnp | grep 8765`, and terminate it gracefully using `kill <PID>` (NOT `kill -9`)—confirming the port releases cleanly afterward.
+2. **Virtual Memory Reasoning Check:** Suppose two independent FastAPI workers (`PID 501` and `PID 502`) both report holding a dictionary at virtual hex address `0x104a8c000`. Can `PID 501` accidentally read API keys stored in `PID 502` at `0x104a8c000`? Explain precisely why or why not in two sentences referencing **MMU Page Tables** and **Physical RAM Frames**.
+
+## Key Takeaways
+
+- A **Program** is dormant bytes on SSD storage; a **Process** is a live executing instance owning a **`PID`**, isolated **Virtual Memory**, open **File Descriptors (`0 stdin, 1 stdout, 2 stderr`)**, and **Threads**.
+- **POSIX Permissions (`rwx` / `chmod`)** control read, write, and execute rights cleanly (`600` secrets, `755` executables); never mask errors by throwing `chmod 777` around.
+- **Virtual Memory Page Tables** let every process operate safely in isolated address space while the kernel handles **SIGINT / SIGTERM / SIGKILL** lifecycle transitions.
+
+## Official Primary References
+
+- [Ubuntu Tutorials — Linux Command Line & File Permissions](https://ubuntu.com/tutorials/command-line-for-beginners)
+- [Python `os` Process Management Docs (`docs.python.org/3/library/os.html#process-management`)](https://docs.python.org/3/library/os.html#process-management)
+- [Node.js `process` Signal Events (`nodejs.org/api/process.html#signal-events`)](https://nodejs.org/api/process.html#signal-events)
+
+**Next Topic:** [01.2.3 Shells, Terminals and Execution Environments](/book/part-01-foundations/01-how-computers-software-and-the-internet-work/01-2-operating-systems/01-2-3-shells-terminals-and-execution-environments)
+
+</BookNodePage>

@@ -1,0 +1,63 @@
+---
+id: "b-10-client-communication-rules"
+title: "B.10 Client Communication Rules"
+sidebar_label: "B.10 Client Communication Rules"
+slug: "/appendix/appendix-b-practical-client-outreach-rules-and-templates/b-10-client-communication-rules"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-b-10">
+
+**What this solves:** Projects don't usually fail on technical merit — they fail on communication. These 12 rules keep clients calm, informed, and paying — even when things go wrong.
+
+## The 12 Rules
+
+1. **Over-communicate.** Weekly 5-line status every Friday, even if nothing changed.
+2. **Never surprise the client.** Bad news travels fast with a plan; silence breeds panic.
+3. **One channel per client.** Slack for async, Loom for walkthroughs, email for contracts.
+4. **Respond within business hours.** Same-day for $50k+ engagements; 24h for the rest.
+5. **Write decisions down.** "We agreed to X" in Slack/email > memory.
+6. **Milestone demos, not just PRs.** They see working software weekly.
+7. **Scope lock before build.** Written agreement on what's in/out — signed before code.
+8. **Flag delays immediately.** Day 1 of a slip, not day 14.
+9. **Say "I don't know" when true.** Then find out — trust beats omniscience.
+10. **Respect their time.** Looms ≤5 min; meetings ≤45 min; agendas sent in advance.
+11. **Celebrate wins publicly.** Share credit with their team; it buys loyalty.
+12. **Know when to shut up.** Sometimes the best communication is letting the work speak.
+
+## The Weekly Status Template (Copy-Paste)
+
+```text
+Status Update — Week of [Date]
+
+Done:
+- [shipped thing] — link
+- [decided thing] — noted in #decisions
+
+In progress:
+- [next thing] — on track / blocked on [X]
+
+Needs from you:
+- [one decision, one date]
+
+Risks:
+- [one honest risk, one sentence]
+
+Next milestone: [date, deliverable]
+```
+
+## When Things Go Wrong
+
+**Structure:** What happened → What we're doing → When we'll know we're fixed → What we changed so it doesn't recur.
+
+```text
+"Alice — heads up: the staging deploy showed a memory leak under load.
+We've rolled back to v0.9 and are diagnosing; ETA fix tomorrow 2pm.
+No customer impact — it only hit staging. I'll update by 10am and 4pm.
+Postmortem Thursday with root cause + prevention."
+```
+
+**Why this works:** honest, fast, complete. Clients forgive problems; they don't forgive surprises.
+
+</BookNodePage>

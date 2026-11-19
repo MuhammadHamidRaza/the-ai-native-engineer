@@ -1,0 +1,189 @@
+---
+id: "25-2-3-structured-outputs-and-json-schemas"
+title: "25.2.3 Structured Outputs and JSON Schemas"
+sidebar_label: "25.2.3 Structured Outputs and JSON Schemas"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-2-how-language-models-work-and-programmatic-access/25-2-3-structured-outputs-and-json-schemas"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s2-t3">
+
+Prose is how LLMs were born; JSON is how your systems talk. The moment model output feeds another program, "usually valid JSON" is a bug farm. This lesson covers the three providers' schema mechanisms, why some are enforced by server-side grammars and some by strong hints, how to generate TypeScript types from the same schema with zod, and the retry pattern that makes the residual failures boring.
+
+## 1. The Spectrum — From Hint to Guarantee
+
+1. "Respond in JSON" in the prompt → **~always plausible, sometimes malformed.** Never enough.
+2. **JSON mode** (valid JSON, no schema guarantee) → valid JSON *syntax*, wrong *shape*. Supported with broad model coverage but deprecated in favor of structured outputs.
+3. **Structured outputs / response schemas** → output **constrained to your JSON Schema**. This is what you want; it is enforced by the serving stack (constrained decoding — effectively a grammar compiled from your schema), so malformed JSON and missing required keys become *impossible*, not unlikely.
+
+All three providers ship #3 as of 2026, with different field names and guarantees.
+
+## 2. OpenAI — Responses API + `text.format` (verified Nov 2026)
+
+For **new projects** use Responses (`POST /v1/responses`); Chat Completions remains supported. Structured Outputs start with `gpt-4o-mini`/`gpt-4o-2024-08-06` and continue across the GPT-5/GPT-6 families; for new projects the docs recommend `gpt-6-astra`.
+
+```bash
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-6-astra",
+    "input": [
+      {"role": "system", "content": "Extract the event."},
+      {"role": "user", "content": "Alice and Bob are going to a science fair on Friday."}
+    ],
+    "text": { "format": {
+      "type": "json_schema",
+      "name": "calendar_event",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "date": {"type": "string"},
+          "participants": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["name", "date", "participants"],
+        "additionalProperties": false
+      }
+    } }
+  }'
+```
+
+Node + zod (the SDK path — one source of truth for schema and types):
+
+```js
+import OpenAI from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
+import { z } from "zod";
+
+const Event = z.object({
+  name: z.string(),
+  date: z.string(),
+  participants: z.array(z.string()),
+});
+
+const openai = new OpenAI();
+const res = await openai.responses.parse({
+  model: "gpt-6-astra",
+  input: [
+    { role: "system", content: "Extract the event." },
+    { role: "user", content: "Alice and Bob go to a science fair Friday." },
+  ],
+  text: { format: zodTextFormat(Event, "event") },
+});
+console.log(res.output_parsed); // typed: { name: string, date: string, participants: string[] }
+```
+
+Strict mode guarantees schema adherence for the supported JSON Schema subset (object roots; all properties required — use `.nullable()` instead of optional; `additionalProperties: false`). First request with a *new* schema pays extra latency; subsequent ones don't. **Refusals are not schema-constrained** — the response may carry a `refusal` part instead; handle it explicitly. Cached schemas, refusal handling and `.parse` are SDK conveniences — the wire format is plain JSON.
+
+## 3. Anthropic — Tool Schemas as the Structured-Output Mechanism + `strict`
+
+Anthropic's canonical structured-output path is **tool use with `strict: true` on the tool definition**: the tool's `input_schema` is enforced by constrained decoding, so the arguments arrive guaranteed-parseable. You can also request JSON-only text and validate yourself, but the strict tool is the documented guarantee. (Structured Outputs via response format objects are evolving; verify the current Anthropic docs before building.)
+
+```js
+const res = await client.messages.create({
+  model: "claude-sonnet-5-5",
+  max_tokens: 1024,
+  tools: [{
+    name: "extract_event",
+    description: "Record a calendar event.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        date: { type: "string" },
+        participants: { type: "array", items: { type: "string" } },
+      },
+      required: ["name", "date", "participants"],
+      additionalProperties: false,
+    },
+  }],
+  tool_choice: { type: "tool", name: "extract_event" }, // force the structured path
+  messages: [{ role: "user", content: "Alice and Bob go to a science fair Friday." }],
+});
+const toolUse = res.content.find(b => b.type === "tool_use");
+console.log(toolUse.input); // schema-conformant object
+```
+
+## 4. Google — `responseMimeType` + `responseSchema`
+
+```js
+// @google/genai — shapes per ai.google.dev/gemini-api/docs/structured-output
+const res = await ai.models.generateContent({
+  model: "gemini-3.8-flash",
+  contents: "Alice and Bob go to a science fair Friday. Extract the event.",
+  config: {
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        date: { type: "string" },
+        participants: { type: "array", items: { type: "string" } },
+      },
+      required: ["name", "date", "participants"],
+    },
+  },
+});
+console.log(JSON.parse(res.text));
+```
+
+Important Google-specific caveat, straight from the docs: some JSON Schema keywords are **not enforced server-side** — `minLength`, `maxLength`, `minProperties`, `maxProperties`, `uniqueItems` (and array-contains/minmax variants). The API strips or ignores them (it may still emit them in its internal schema). **Validate those constraints client-side** (zod `.min()`, Pydantic `model_validate_json()`). `minItems`/`maxItems` and `propertyOrdering` *are* enforced. Also note: Gemini 2.0 needs explicit `propertyOrdering`; 3.x/4.x handle ordering better.
+
+## 5. Grammar Enforcement — Why Some Providers Are Hard and Some Soft
+
+Server-side enforcement works by compiling your schema into a **grammar** and masking invalid tokens at every decode step. Constraints: it must be decidable per token (that's why `minLength` is excluded — length is a global property, not a local token property); root must be an object in strict subsets; recursion depth and union complexity are limited. Providers with native grammar engines: OpenAI (strict), Anthropic (strict tool use), Google (constrained decoding). "Free-form JSON mode" has no grammar — it's a hint. If you need a hard guarantee, only #3 qualifies — and even there: **syntactic validity ≠ semantic correctness.** A schema-conformant `{date: "Friday"}` is valid JSON and useless data. Your validators must also enforce business rules (date parses, participant count > 0, string in enum you actually accept).
+
+## 6. One Schema, Three Artifacts — zod → JSON Schema → TypeScript Types
+
+```ts
+import { z } from "zod";
+export const Event = z.object({
+  name: z.string().describe("short event name"),
+  date: z.string().describe("ISO date or weekday phrase"),
+  participants: z.array(z.string()).min(1),
+});
+export type Event = z.infer<typeof Event>;
+```
+
+`z.infer` gives you the TypeScript type; `zodTextFormat` / manual `zod-to-json-schema` gives the wire schema. One source of truth, no drift between "the type we check at build time" and "the schema the model sees." Commit both artifacts together; review schema changes like API changes.
+
+## 7. Streaming + JSON — the Caveat Everyone Hits
+
+Streaming (25.2.4) and structured outputs are compatible, but **partial JSON is not parseable JSON**: you cannot `JSON.parse` half a `{`. Two options: (a) buffer the whole stream, parse at `response.completed` — simple, still fast enough for most UIs; (b) parse incremental deltas with a tolerant/parser-partial JSON parser and render progressively (accepting that intermediate states may be invalid). Never let a half-parsed object trigger a side effect. OpenAI's SDK streams structured output as typed events (`response.output_text.delta` / streaming structured-output helpers) — check the current "Streaming structured output" guide; the semantics above don't change.
+
+## 8. Retry-on-Invalid — the Boring Pattern That Works
+
+Even with strict mode, you can get: refusals, `max_output_tokens` truncation (`status: "incomplete"`), or business-rule validation failures. Wrap it:
+
+```ts
+async function extractEvent(text: string, attempt = 1): Promise<Event> {
+  const res = await openai.responses.parse({ /* ...Event schema... */ });
+  if (res.status === "incomplete" && attempt < 3)
+    return extractEvent(text, attempt + 1); // bump max_output_tokens
+  try { return Event.parse(res.output_parsed); }
+  catch {
+    if (attempt >= 3) throw new Error("unrecoverable: schema-valid but rule-invalid");
+    return extractEvent(text, attempt + 1); // or return to user with the raw text
+  }
+}
+```
+
+Add jittered backoff; log `usage` per attempt; alert when the retry rate climbs — a rising retry rate is your earliest signal that a provider shipped a regression.
+
+## 9. When Schemas Beat Prose — and When They Don't
+
+**Beat prose:** extraction pipelines feeding databases; classification/routing; form filling; tool arguments; anything a downstream program consumes; regulated records. **Prose wins:** user-facing conversation, creative work, open-ended analysis, teaching — anywhere a rigid shape damages the product. A useful heuristic: if the output crosses a process boundary into code, schema it; if it crosses into a human's eyeballs, write it well instead.
+
+## 10. Assessment Checklist
+
+- [ ] I can name each provider's mechanism (text.format strict / strict tool / responseSchema) and which are grammar-enforced.
+- [ ] I know which JSON Schema keywords Google does not enforce and validate them myself.
+- [ ] My app generates types and wire schema from one zod definition.
+- [ ] I handle refusal + incomplete + retry distinctly — not one catch-all.
+- [ ] I never trigger side effects on a partial streamed JSON object.
+
+</BookNodePage>

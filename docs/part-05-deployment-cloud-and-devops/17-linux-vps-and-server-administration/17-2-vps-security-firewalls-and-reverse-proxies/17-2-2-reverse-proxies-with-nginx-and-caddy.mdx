@@ -1,0 +1,155 @@
+---
+id: "17-2-2-reverse-proxies-with-nginx-and-caddy"
+title: "17.2.2 Reverse Proxies with Nginx and Caddy"
+sidebar_label: "17.2.2 Reverse Proxies with Nginx and Caddy"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-2-reverse-proxies-with-nginx-and-caddy"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s2-t2">
+
+A Node API on `:4000` is not a public service; it is a component. A **reverse proxy** is the public door: it terminates TLS, sets headers, routes by hostname/path, strips attack surface, and serves HTTP/2 — while the app stays on loopback. This lesson does it twice: **nginx** (the ubiquitous, configurable choice) and **Caddy** (the two-line automatic-HTTPS choice).
+
+## 1. Architecture
+
+```text
+browser ──443──> [reverse proxy on VPS] ──HTTP──> 127.0.0.1:4000 (node, systemd)
+                  TLS termination
+                  headers, redirects, ACME
+```
+
+The proxy means you can later add another service on another port, route `/api` vs `/` separately, or swap runtimes — without changing the app or re-issuing certificates.
+
+## 2. nginx — the ShopCore API Behind It
+
+Install: `sudo apt update && sudo apt install -y nginx`. Config lives in `/etc/nginx/sites-available/*` (symlinked into `sites-enabled/`) or `conf.d/*.conf`. Create `/etc/nginx/sites-available/shopcore`:
+
+```nginx
+server {
+    listen 80;
+    server_name shopcore.dev www.shopcore.dev;
+
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support (e.g. future live order updates)
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_read_timeout 90s;
+    }
+}
+```
+
+Enable and validate:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/shopcore /etc/nginx/sites-enabled/shopcore
+sudo rm /etc/nginx/sites-enabled/default     # optional: drop the welcome page
+sudo nginx -t                                  # SYNTAX OR NOTHING — prints file+line on error
+sudo systemctl reload nginx                    # zero-downtime reload
+```
+
+**WebSocket note:** the `Upgrade`/`Connection` pair above is what lets `ws://` clients through. Without it, REST works and sockets silently fail — the classic half-working deploy. (SSE needs only ordinary HTTP/1.1 proxying plus `proxy_buffering off;`.)
+
+**TLS for nginx** — issue a cert with certbot (`sudo apt install -y certbot python3-certbot-nginx`), then `sudo certbot --nginx -d shopcore.dev -d www.shopcore.dev --redirect`. Certbot rewrites the server block to listen 443 with the cert and adds the 80→443 redirect, and installs a renewal timer (`systemctl list-timers | grep certbot`). Renewals are automatic thereafter.
+
+## 3. Caddy — Automatic HTTPS, Two Lines
+
+Install per [caddyserver.com](https://caddyserver.com/docs/install) (Debian/Ubuntu: official Cloudsmith repo; `apt`'s stock caddy is often older). `/etc/caddy/Caddyfile`:
+
+```text
+shopcore.dev {
+    reverse_proxy 127.0.0.1:4000
+}
+```
+
+That is the whole thing. Caddy:
+
+- issues + renews a publicly trusted cert via ACME on first request (Let's Encrypt/ZeroSSL),
+- redirects HTTP→HTTPS automatically,
+- proxies with sane defaults including WebSocket passthrough.
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+curl -Iv https://shopcore.dev
+```
+
+Expected: `SSL certificate verify ok`, HTTP/2 `200`, plus `server: Caddy` header. Caddy shines when you do not want to think about certs — the trade-off is less fine-grained rewrite/rate limiting than nginx.
+
+## 4. Beyond Proxying — Static Roots, Rate Limits, Logs
+
+nginx also serves static files efficiently; if you later host the SPA on the same box (instead of Vercel from 16.3.1), add it as a separate server block:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name shopcore.dev;
+    # certbot writes these two lines for you; without them nginx does not start
+    ssl_certificate     /etc/letsencrypt/live/shopcore.dev/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/shopcore.dev/privkey.pem;
+    root /var/www/shopcore/dist;
+    index index.html;
+    gzip on;
+    location /api/ { proxy_pass http://127.0.0.1:4000; }
+    location / { try_files $uri /index.html; }   # SPA fallback
+}
+```
+
+Rate limiting blunts login-form brute force at the edge:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+location /api/auth/login { limit_req zone=login burst=10 nodelay; proxy_pass http://127.0.0.1:4000; }
+```
+
+Logs: nginx writes to `/var/log/nginx/access.log` and `error.log`; `tail -f /var/log/nginx/error.log` is the first thing to read on any 502. Caddy logs to the journal — `journalctl -u caddy -f`.
+
+## 5. Prove It From Both Sides
+
+```bash
+# on the VPS — direct to the app (bypassing proxy)
+curl -s http://127.0.0.1:4000/health
+
+# from your laptop — through the proxy, public path
+curl -s https://shopcore.dev/health
+curl -Iv https://shopcore.dev 2>&1 | grep -Ei "HTTP|issuer|expire|server"
+```
+
+Both must agree. From a phone on mobile data too — "works from the office network" is DNS caching, not health (16.2.2).
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `502 Bad Gateway` | App not running on 4000 / proxy wrong upstream | `systemctl status shopcore-api`; `curl 127.0.0.1:4000/health` on the box; check `proxy_pass` address |
+| `413 Request Entity Too Large` | Body over nginx's 1 MB default | `client_max_body_size 10m;` in the server block |
+| Redirect loop | App also enforces its own HTTPS redirect behind the proxy | Terminate/redirect only at the proxy; app must trust `X-Forwarded-Proto` (`app.set('trust proxy', true)` in Express) |
+| Caddy cert issuance fails | DNS not pointing here yet, or 80/443 blocked | `dig A shopcore.dev` must show this VPS; `ufw allow 80,443`; check `journalctl -u caddy` |
+| WebSocket connects then drops | Missing `Upgrade` headers (nginx) | Add the two `proxy_set_header` Upgrade/Connection lines; reload |
+| "Works on 80, not 443" | certbot not run / ufw denies 443 | `ufw status`; `certbot --nginx`; `ss -ltnp \| grep -E '80\|443'` |
+
+## 7. Practice
+
+**Guided exercise.** With the 17.1.3 unit running on port 4000, write the nginx server block from §2 exactly, `nginx -t`, reload, and `curl -s https://<your-domain>/health` from your laptop. If you have no domain yet, use `curl -H 'Host: shopcore.dev' http://127.0.0.1/health` from the box.
+
+**Independent exercise.** Install Caddy side-by-side (temporarily stop nginx: `systemctl stop nginx`), deploy the two-line Caddyfile, and `curl -Iv` the result. Compare logs. Decide which you would keep, and why, in one paragraph.
+
+**Challenge.** Break it on purpose: stop `shopcore-api`, confirm the browser/curl shows `502`, restart it, confirm recovery — then write the three checks you will run first next time the site "is down."
+
+**Assessment checklist**
+
+- [ ] I can explain every line in the nginx server block.
+- [ ] `nginx -t` and `reload` are my safe-edit ritual.
+- [ ] I can get a cert three ways (certbot+nginx, Caddy, Vercel/Cloudflare from 16.2.3) and say which to use when.
+- [ ] WebSockets are proxied deliberately, not by accident.
+
+</BookNodePage>

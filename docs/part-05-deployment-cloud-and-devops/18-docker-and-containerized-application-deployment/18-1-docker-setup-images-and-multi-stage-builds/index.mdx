@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "18.1 Docker Setup, Images & Multi-Stage Builds"
+sidebar_label: "18.1 Docker Setup, Images & Multi-Stage Builds"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-1-docker-setup-images-and-multi-stage-builds"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s1">
+
+**Subchapter 18.1** installs Docker, explains what actually happens when you type `docker run`, and teaches you to write Dockerfiles that produce small, cache-friendly images instead of 1 GB accidents.
+
+## Lessons in Subchapter 18.1
+
+1. **[18.1.1 Docker Installation, Architecture and First Containers](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-1-docker-setup-images-and-multi-stage-builds/18-1-1-docker-installation-architecture-and-first-containers):** Docker Desktop on Windows (WSL 2 backend) and the Linux engine via apt, client → daemon → registry architecture, `hello-world`, the `docker run` flags, `ps`/`logs`/`exec`/`rm`, disk cleanup, and daemon troubleshooting.
+2. **[18.1.2 Dockerfiles, Layers, Caching and Multi-Stage Builds](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-1-docker-setup-images-and-multi-stage-builds/18-1-2-dockerfiles-layers-caching-and-multi-stage-builds):** `FROM`/`WORKDIR`/`COPY`/`RUN`/`EXPOSE`/`CMD`, layer ordering and cache invalidation, `.dockerignore`, a multi-stage Node build (deps → runtime), image size before/after, `--target`, and tagging discipline.
+
+Work through 18.1.1 first — every command in 18.1.2 assumes a working engine. When you finish, you should be able to go from an empty folder to a tagged, minimal image with a single `docker build`.
+
+</BookNodePage>

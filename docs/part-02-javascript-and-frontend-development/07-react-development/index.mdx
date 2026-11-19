@@ -1,0 +1,63 @@
+---
+id: "index"
+title: "Chapter 07: React Development"
+sidebar_label: "Chapter 07: React Development"
+slug: "/part-02-javascript-and-frontend-development/07-react-development"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07">
+
+Manually updating dozens of DOM nodes with `document.createElement` works on small widgets (`06.3`), yet quickly tangles into fragile spaghetti as interactive apps grow. **React** flips the model: you describe **what the UI should look like for a given piece of state**, and React efficiently updates only the changed DOM nodes whenever state updates.
+
+**Chapter 07 (`22 Focused Hours`)** walks you from creating your first React project with **Vite** all the way to hooks, `AbortController` effect cleanup, data fetching states, Vitest component testing, production builds, and accessible UI component libraries.
+
+## Setup: Zero to a Running React App with Vite
+
+Make sure Node.js `v20.19+` or `v22+` LTS is installed (`node -v`). In your projects folder (`Windows PowerShell`, `WSL 2`, `macOS`, or `Linux`), scaffold a brand-new React + TypeScript project using **Vite**:
+
+```bash
+npm create vite@latest task-tracker -- --template react-ts
+```
+
+*(Choosing TypeScript `--template react-ts` catches missing props and undefined fields instantly; `--template react` uses plain JavaScript if needed.)*
+
+Now enter the folder, install packages, and start the dev server:
+
+```bash
+cd task-tracker
+npm install
+npm run dev
+```
+
+**Expected Output:**
+
+```text
+  VITE v6.x.x  ready in 320 ms
+
+  ->  Local:   http://localhost:5173/
+  ->  Network: use --host to expose
+```
+
+Open `http://localhost:5173/` in your browser. Edit text inside `src/App.tsx`, save (`Ctrl+S`), and watch it update live. To **stop** the dev server, press `Ctrl+C` in the terminal; to **restart** it, run `npm run dev` again.
+
+### Understanding the Generated Folder Structure
+
+- `package.json`: Project dependencies (`react`, `react-dom`) and scripts (`dev`, `build`, `lint`, `preview`).
+- `index.html`: Single HTML entry shell containing `<div id="root"></div>` and loading `/src/main.tsx`.
+- `src/main.tsx`: Mounts your `<App />` component tree into `#root` wrapped in `<StrictMode>`.
+- `src/App.tsx`: Your root React component—start editing here.
+
+### Common React + Vite Setup Errors
+
+- **Port `5173` already in use:** Another Vite server is still running in another terminal window, or pass `--port 5174` (`npm run dev -- --port 5174`).
+- **Missing `node_modules` / `'vite' is not recognized`:** You ran `npm run dev` before running `npm install`, or inside the parent directory instead of `cd task-tracker`.
+
+## Chapter 07 Roadmap
+
+- **07.1 Component Architecture & Rendering:** JSX rules, props, composition (`children`), reconciliation lifecycle, lists with stable keys, conditional UI, and controlled forms.
+- **07.2 State, Hooks & Effects:** `useState`, `useReducer`, derived state, `useEffect` cleanup & `AbortController`, custom hooks, and `Context`.
+- **07.3 Production React Patterns:** Data fetching with loading/error/empty states, real vs. premature memoization, `npm run build` + Vitest tests, and accessible headless UI libraries.
+
+</BookNodePage>

@@ -1,0 +1,93 @@
+---
+id: "05-1-3-narrowing-and-type-guards"
+title: "05.1.3 Narrowing and Type Guards"
+sidebar_label: "05.1.3 Narrowing and Type Guards"
+slug: "/part-02-javascript-and-frontend-development/05-typescript-for-professional-development/05-1-static-typing-foundations/05-1-3-narrowing-and-type-guards"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-05-s1-t3">
+
+Once a variable has a union type like `string | number` or `User | null`, TypeScript blocks operations that only work on *one* member of the union until you **prove** which branch holds at runtime. That proof process is called **narrowing**—and instead of lying to the compiler with `as User` casts, narrowing aligns runtime checks with compile-time safety.
+
+## 1. Built-In Narrowing Mechanisms
+
+```typescript
+// 1. typeof guard
+function formatId(id: string | number): string {
+  if (typeof id === "string") {
+    return id.trim().toUpperCase(); // TypeScript knows id is `string` here
+  }
+  return id.toFixed(0); // TypeScript knows id is `number` here
+}
+
+// 2. Nullish / truthiness check
+function greetingLength(name: string | null | undefined): number {
+  if (!name) return 0; // Guards null, undefined, and ""
+  return name.length;
+}
+
+// 3. `in` operator for object unions
+type EmailAlert = { channel: "email"; recipientEmail: string };
+type SlackAlert = { channel: "slack"; webhookUrl: string };
+
+function describeTarget(alert: EmailAlert | SlackAlert): string {
+  if ("recipientEmail" in alert) {
+    return `Email -> ${alert.recipientEmail}`;
+  }
+  return `Slack -> ${alert.webhookUrl}`;
+}
+
+// 4. `instanceof` for Error and built-in classes
+export function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
+}
+```
+
+## 2. Custom Type Predicates (`value is Type`)
+
+When checking complex shapes in reusable helper functions, return a **type predicate** (`param is SomeType`):
+
+```typescript
+export interface ApiErrorBody {
+  code: string;
+  message: string;
+}
+
+export function isApiErrorBody(value: unknown): value is ApiErrorBody {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "code" in value &&
+    typeof (value as Record<string, unknown>).code === "string" &&
+    "message" in value &&
+    typeof (value as Record<string, unknown>).message === "string"
+  );
+}
+
+const raw: unknown = JSON.parse('{"code":"RATE_LIMIT","message":"Slow down"}');
+if (isApiErrorBody(raw)) {
+  console.log(`[${raw.code}] ${raw.message}`); // Safely typed!
+}
+```
+
+## 3. Why Non-Null Assertions (`!`) and Blind `as` Casts Are Dangerous
+
+Writing `const user = users.find(...)!;` or `const body = raw as ApiErrorBody;` **does zero runtime checking**—it merely tells TypeScript *"trust me, stop checking."* If the runtime value is `undefined` or malformed JSON, your app crashes anyway. Reserve `as` strictly for verified test fixtures or low-level DOM narrowings where the runtime invariant is already proven.
+
+## 4. Practice Exercises
+
+1. Write a function `normalizeInput(val: string | string[] | null): string[]` that returns `[]` on `null`, `[val]` on a single `string`, and `val` when already an array (use `Array.isArray`).
+2. Write a type guard `isNonEmptyString(val: unknown): val is string` and test it with `filter` on `["a", "", 12, null, "b"]`.
+
+## Mastery Checklist
+
+- [ ] Can narrow unions cleanly using `typeof`, `Array.isArray`, `in`, and `instanceof`.
+- [ ] Writes custom `x is Type` guards carefully without skipping `value !== null`.
+- [ ] Avoids `!` non-null assertions and unverified `as` type casts.
+
+</BookNodePage>

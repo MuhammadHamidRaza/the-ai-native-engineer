@@ -1,0 +1,53 @@
+---
+id: "13-3-2-role-based-access-control-and-ownership"
+title: "13.3.2 Role-Based Access Control and Resource Ownership"
+sidebar_label: "Role-Based Access Control and Resource Ownership"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-3-authentication-and-authorization/13-3-2-role-based-access-control-and-ownership"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s3-t2">
+
+Checking `if (!req.user) return 401;` proves **Authentication**—not **Authorization**. If User A can send `DELETE /api/tasks/99` and delete User B's task simply by guessing ID `99`, your API suffers from **Broken Object Level Authorization (IDOR)**, one of the OWASP API Top 10 flaws.
+
+## 1. Role-Based Access Control (`RBAC`) + Resource Ownership
+
+Combine **role guards** (`customer` vs `admin`) with **SQL-level ownership filters**:
+
+```javascript
+export function requireRole(...allowed) {
+  return (req, res, next) => {
+    const user = req.user; // set by requireAuth — see 13.2.3 / the ShopCore reference
+    if (!user) {
+      res.status(401).json({ error: 'UNAUTHORIZED' });
+      return;
+    }
+    if (!allowed.includes(user.role)) {
+      res.status(403).json({ error: 'FORBIDDEN' });
+      return;
+    }
+    next();
+  };
+}
+```
+
+(`req.user` is populated by your `requireAuth` middleware from the session lookup — the same shape the ShopCore reference uses (`examples/shopcore/src/middleware/requireAuth.js`, `session.js`). Do not switch to `res.locals.user` unless your own stack sets it there; one source of truth, always.)
+
+And inside ShopCore queries, **scope every mutation by `user.id`** (unless admin override is explicitly permitted):
+
+```sql
+-- Stops IDOR cleanly: returns 0 rows if the order belongs to ANOTHER user!
+DELETE FROM orders WHERE id = $1 AND user_id = $2 RETURNING id;
+```
+
+## 2. What OAuth Is (and Is Not)
+
+OAuth 2.0 is how your app delegates **authentication to a provider** (GitHub, Google) — the user never gives you their GitHub password; they consent, GitHub vouches for them. Session handling and roles are then **your** job. The full working flow — creating a GitHub OAuth app, handling `state` + PKCE, and minting your own session — is its own lesson: **[13.3.3 OAuth 2.0: Sign in with GitHub](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-3-authentication-and-authorization/13-3-3-oauth-2-0-sign-in-with-github)**.
+
+## Mastery Checklist
+
+- [ ] Distinguishes role checks (`403`) from ownership checks (`WHERE id = $1 AND user_id = $2`) to eliminate IDOR.
+- [ ] Knows the OAuth 2.0 Authorization Code + `state` + PKCE flow exists and where it is taught in this book.
+
+</BookNodePage>

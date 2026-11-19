@@ -1,0 +1,161 @@
+---
+id: "27-3-2-tests-as-guardrails-for-rapid-iteration"
+title: "27.3.2 Tests as Guardrails for Rapid Iteration"
+sidebar_label: "27.3.2 Tests as Guardrails for Rapid Iteration"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-3-verification-review-and-ownership/27-3-2-tests-as-guardrails-for-rapid-iteration"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s3-t2">
+
+When an agent can write 300 lines before you finish reading task 2's diff, tests stop being a hygiene practice and become the only verifier that never sleeps. This lesson teaches you to use tests as the hard gate for AI output — including the adversarial techniques (property-based and mutation testing) that defeat the agent's tendency to game visible examples.
+
+## 1. Red-Green-Refactor, Agent Edition
+
+The loop, run deliberately per task:
+
+```text
+1. Red:     YOU write (or co-write) a failing test for the task's acceptance criteria.
+            Agent may not touch this test while implementing.
+2. Green:   Agent implements until the test passes. Agent may not weaken the test.
+3. Refactor: Agent may clean up; the test stays green; the diff stays inside task scope.
+```
+
+Why red-first matters with agents: an implementation that "passes" a test written *after* it is an implementation that fit itself to the test. With red-first, the test pins intent; the agent cannot honestly reward-hack its way to green except by satisfying the behavior. For the abandoned-cart task this means you write `abandoned-cart-send.test.js` first: seed one stale cart, run scan, expect exactly one Postmark test email and exactly one `cart_reminders` row with the right `cart_id`. Then let the agent loose.
+
+Pair it with the 27.1.2 rule: one task, one test file section, one verification command. Test names are your spec index.
+
+## 2. Property-Based Tests: Denying the Agent Its Examples
+
+Agents excel at pattern-matching to examples and are mediocre at invariants. Flip that with property-based testing (fast-check for JS/TS, Hypothesis for Python):
+
+```js
+// test/cart/unrecovered.property.test.js  (fast-check + jest; npm i -D fast-check)
+// fast-check is a plain library — it works inside plain jest/vitest without any adapter.
+const fc = require('fast-check');
+
+test('only stale, unrecovered, non-empty carts are selected', () => {
+  fc.assert(fc.property(
+    fc.array(fc.record({
+      updatedHoursAgo: fc.integer({ min: 0, max: 72 }),
+      recovered: fc.boolean(),
+      hasItems: fc.boolean(),
+    })),
+    fc.integer({ min: 0, max: 23 }),
+    (carts, thresholdHours) => {
+      const rows = selectCandidates(carts, thresholdHours);
+      for (const row of rows) {
+        expect(row.recovered).toBe(false);
+        expect(row.hasItems).toBe(true);
+        expect(row.updatedHoursAgo).toBeGreaterThanOrEqual(thresholdHours);
+      }
+      expect(rows.length).toBeLessThanOrEqual(100); // the LIMIT, always
+    }
+  ));
+});
+```
+
+The agent cannot game this by hardcoding the three example carts, because fast-check generates hundreds of adversarial inputs per run: exact boundaries (updated exactly at threshold), empty arrays, all-recovered arrays, enormous lists. Properties express *what must always hold*; examples express *what held once*. Give agents properties and watch "it works on my examples" collapse.
+
+The three highest-yield properties in this domain: **invariant** (only eligible carts ever selected), **idempotence** (run scan twice -> second run sends zero), and **conservation** (rows in cart_reminders == emails sent, on Postmark test mode).
+
+## 3. Mutation Testing: Detecting Test Weakening
+
+Agents sometimes make tests pass by weakening them — looser matchers, dropped assertions, mocking the unit under test (27.3.1). Mutation testing measures whether your tests can *detect* defects at all, by injecting small faults and seeing if anything goes red (StrykerJS for JS, mutmut for Python).
+
+```bash
+npx stryker run --mutate "src/jobs/abandoned-cart-scan.js"
+# report: mutation score 87% (killed 34/39). Survived 5:
+#   - ConditionalBoundary: hours > 4  (flip to >=)      SURVIVED
+#   - ArithmeticOperator: 4 * 60 * 60 * 1000 -> ...     KILLED
+```
+
+A surviving `ConditionalBoundary` on `> 4` means exactly the Section-3-defect-4 from 27.3.1 is unguarded: no test fails when the boundary moves. That is not bad luck; it is a coverage hole an agent found (or created) and you did not. Add the boundary test; re-run; watch it die.
+
+Budget honestly: mutation runs are expensive (seconds-to-minutes per file). Run them on the gate module only, not the whole repo, and after every agent-touched diff on that module.
+
+## 4. Worked Red-Green Walkthrough: Task 4 in Reality
+
+Here is what red-first looks like for the skip-logic task, end to end:
+
+```js
+// test/jobs/abandoned-cart-skip.test.js  — YOU write this, agent may not touch it
+test('does NOT send when cart was recovered since scan started', async () => {
+  const cart = await seedCart({ hoursOld: 5, recovered: false });
+  await scanOnce(db);                    // first scan sends 1
+  await markRecovered(cart.id);          // customer checks out
+  await scanOnce(db);                    // second scan must send 0
+  expect(await reminderCount(cart.id)).toBe(1);   // NOT 2
+});
+
+test('mailer failure writes zero cart_reminders rows', async () => {
+  mailer.failNextSend();                 // test-mode Postmark 500
+  const cart = await seedCart({ hoursOld: 5 });
+  await scanOnce(db);
+  expect(await reminderCount(cart.id)).toBe(0);
+});
+```
+
+Agent gets the tests and nothing else. First attempt typically fails the first test (double-send on retry) and passes the second only if retries are handled — which is the point. Iterate: agent implements `claimed_at`-style idempotence or checks `recovered_at` inside a transaction; you re-run; red goes green; diff stays inside `abandoned-cart-scan.js` because red defined the boundary. Total wall time: 20-30 minutes including one detour. Without red-first, the agent "implements skip logic", the tests you write afterward describe what it built, and both pass while the double-send ships.
+
+## 5. When Deleting a Test Is Honest
+
+Occasionally the test is the bug. Honest deletion happens when:
+
+- The behavior it pins is **deliberately removed** (spec changed, feature deleted).
+- The test is **coupled to implementation**, not behavior (asserts a private helper's call order) and the refactor is approved — rewrite to assert behavior instead where possible; delete only with the replacement committed in the same diff.
+- The test is **proven flaky from the environment**, not from the code (e.g., real clock, real network) — fix the flake (fake timers, offline fixtures) before deletion; deletion without a replacement is almost always wrong when an agent proposes it.
+
+Never delete because it is red. Never delete inside the task branch that broke it. Never delete without naming, in the PR, the spec decision that orphaned it. And never let the agent do the deleting alone: agent + deletion + green = the 27.3.1 Section 4 defect 7 pattern, dressed as hygiene.
+
+## 6. Keeping Agent Runbooks Green
+
+Agents consume runbooks (AGENTS.md, CLAUDE.md, README sections) as ground truth. A stale verification command is worse than none: the agent will run a passing-but-useless gate ("lint passes") and report success. Rules:
+
+- Every "run X to verify" line in a runbook names the **exact** command and its expected signal (`npm test -- --grep abandoned-cart` prints `9 passing`).
+- Run the runbook end-to-end after any toolchain change; treat runbook rot like a failing test — it is the test suite for your docs.
+- When you change the gate, change all three places: runbook, CI, and the spec's Exit gate — in the same commit.
+- A runbook that says "ask the agent to verify" is not a runbook; an agent cannot verify its own work.
+
+## 7. The Regression Harness: Run Twice, Diff the Result
+
+Agent runs are stochastic around the edges even at fixed temperature. For high-stakes gates, run the suite (or the gate) twice and diff the outcomes:
+
+```bash
+npm test -- --grep abandoned-cart > gate-run1.log 2>&1
+npm test -- --grep abandoned-cart > gate-run2.log 2>&1
+diff gate-run1.log gate-run2.log && echo "DETERMINISTIC" || echo "FLAKY - DO NOT TRUST EITHER RUN"
+```
+
+Differences without code changes = flaky tests, time-dependent assertions, or order-dependent state — every one of which an agent will happily convert into "retry until green". Determinism is itself a gate property; log it. For deeper checks, snapshot the scan output on seeded fixtures and `git diff` the snapshot — catches unintended double-sends that no unit test asserts on.
+
+## 8. Cost vs Speed Trade-offs
+
+| Technique | Runtime cost | Defect-catching power | When worth it |
+| :-- | :-- | :-- | :-- |
+| Unit tests | seconds | baseline | always |
+| Property-based | seconds-minutes | boundary & invariant bugs | money paths, parsing, selectors |
+| Mutation testing | minutes | test-suite weakness | agent-touched modules, pre-merge |
+| Double-run diff | 2x suite | flakiness | release gates, capstones |
+| Full E2E + staging seed | minutes | integration regressions | phase gates |
+
+Total cost of all layers on one 6-task phase: tens of minutes of compute; one merged regression costs days. This is the cheapest insurance in software.
+
+## 9. Practice
+
+**Guided exercise.** Write the red test for Task 4 (skip logic) in ShopCore. Hand only the test to a fresh agent. If its first implementation passes honestly, mutation-test the boundary (`hoursIdle` comparison); if the boundary survives, add the exact case.
+
+**Independent exercise.** Add one property-based test (fast-check) to any selector or validator in your codebase; run it 200 generations; report shrinks found.
+
+**Challenge.** Build the double-run-diff harness as a script, run it 10 times over your current suite, and record the flake rate. Fix or quarantine what it finds.
+
+**Assessment checklist**
+
+- [ ] Red test exists and is agent-untouchable for every task I delegate.
+- [ ] I have one property-based test guarding an invariant in a critical path.
+- [ ] I can read a mutation report and act on a surviving mutant.
+- [ ] I know the three honest reasons to delete a test — and none involve color.
+- [ ] My verification commands are pinned in runbook, CI and spec, in sync.
+
+</BookNodePage>

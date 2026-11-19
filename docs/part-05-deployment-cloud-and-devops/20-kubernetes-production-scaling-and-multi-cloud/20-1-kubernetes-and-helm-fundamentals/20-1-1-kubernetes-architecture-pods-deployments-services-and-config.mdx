@@ -1,0 +1,215 @@
+---
+id: "20-1-1-kubernetes-architecture-pods-deployments-services-and-config"
+title: "20.1.1 Kubernetes Architecture: Pods, Deployments, Services and Config"
+sidebar_label: "20.1.1 Kubernetes Architecture: Pods, Deployments, Services and Config"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-1-kubernetes-and-helm-fundamentals/20-1-1-kubernetes-architecture-pods-deployments-services-and-config"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s1-t1">
+
+> **Verification status (November 2026):** the authoring pipeline for this book had **no container runtime or Kubernetes cluster available** — these commands were not executed end-to-end here; they were checked against the official documentation (kind, kubernetes.io, helm.sh, cloud-provider-kind) and marked as of Nov 2026. Run the lab on your machine; if a step fails, paste the exact error and the first fix to try is always kind get clusters + kubectl version --client + matching tool versions. The kubectl port-forward path in 20.1.2 works with zero moving parts and is the recommended first checkpoint.
+
+Compose on one host shows you the edge of the problem: if that host dies, your app dies with it, and someone has to wake up and intervene. This lesson explains how Kubernetes solves that — and gets a real cluster running on your laptop in under ten minutes.
+
+## 1. Understand — Why Kubernetes Exists
+
+**The problem with manual operations:** SSH into a box, edit a unit file, restart the process, forget to repeat it on the other two boxes, drift accumulates, nobody remembers what "correct" is. Every manual fix makes the system more unique and less recoverable.
+
+**The Kubernetes answer — declarative reconciliation:** you write down the *desired state* ("3 replicas of shopcore-api, listening on 4000, using this ConfigMap"), store it in the API server, and controllers run an infinite **control loop** comparing desired vs actual and closing the gap: a pod crashes → a controller notices and creates another; a node dies → pods are rescheduled. You never run "restart the app"; you fix the *declaration* and the system follows.
+
+Two consequences follow, and they are the whole mental model:
+
+- **Self-healing** — restarts happen because a controller observed divergence, not because someone paged.
+- **Idempotency** — applying the same manifest twice changes nothing the second time. That is what makes CI/CD pipelines safe to re-run.
+
+## 2. The Architecture — Control Plane vs Nodes
+
+| Component | Lives on | Job |
+| :-- | :-- | :-- |
+| **kube-apiserver** | control plane | The front door. Every `kubectl` command and every controller talks to it. Authn/authz, validation, the REST API. |
+| **etcd** | control plane | The only stateful piece: a consistent key-value store holding **all** cluster state. Lose etcd without a backup → lose the cluster. |
+| **kube-scheduler** | control plane | Watches for unscheduled Pods and picks a Node for each (resources, affinity, taints). |
+| **kube-controller-manager** | control plane | Runs the built-in control loops: Deployment, ReplicaSet, Node, Job controllers… |
+| **kubelet** | every node | The node agent. Talks to the API server, drives the container runtime to make containers match Pod specs, reports status. |
+| **Container runtime** | every node | containerd or CRI-O pulls images and runs containers. (Docker Engine was dropped as a runtime in Kubernetes 1.24 — Docker still builds your images, kind still uses Docker to host nodes.) |
+| **kube-proxy** | every node | Programs the node's network rules for Services (virtual IP → pod endpoints). |
+
+Supported Kubernetes minor releases as of November 2026 are **1.35–1.37** (latest 1.37.x, per [kubernetes.io/releases](https://kubernetes.io/releases/)); kind pins a known-good node image per release. Check what your cluster runs with `kubectl version`.
+
+## 3. Official Software and Where to Get It
+
+- **Kubernetes** — [kubernetes.io](https://kubernetes.io) (docs, releases: [kubernetes.io/releases](https://kubernetes.io/releases/))
+- **kubectl** — the CLI; install per OS below. Match kubectl to your cluster's minor version ±1.
+- **kind** — Kubernetes IN Docker; [kind.sigs.k8s.io](https://kind.sigs.k8s.io) / [github.com/kubernetes-sigs/kind](https://github.com/kubernetes-sigs/kind). Current stable is **v0.33.0** (Nov 2026). kind runs each cluster node as a Docker container — including the control plane — so no VMs are needed.
+- **WSL2 note:** on Windows, run everything inside a WSL2 Ubuntu shell unless noted; kubectl/kind/docker must all see the same Docker daemon. Docker Desktop + WSL2 integration is the least-friction path ([Docker Desktop WSL2 backend docs](https://docs.docker.com/desktop/features/wsl/)).
+
+## 4. Install kubectl and kind
+
+**Windows (PowerShell or WSL2):**
+
+```powershell
+winget install -e --id Kubernetes.kubectl
+winget install Kubernetes.kind
+kubectl version --client
+kind version
+```
+
+**macOS (Homebrew):**
+
+```bash
+brew install kubectl kind
+```
+
+**Linux (kubectl via direct binary; kind via curl):**
+
+```bash
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64 && chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
+```
+
+(kind's apt/dnf situation changes; the curl binary always works. For newer node images, check the kind release notes.)
+
+## 5. Verify — Your First Cluster
+
+Where to run: any terminal with Docker running.
+
+```bash
+kind create cluster --name shopcore
+kubectl cluster-info --context kind-shopcore
+kubectl get nodes
+```
+
+Expected (abbreviated — your ages/versions will differ):
+
+```text
+Creating cluster "shopcore" ...
+ ✓ Ensuring node image (kindest/node:v1.35.x) 🖼
+ ✓ Preparing nodes 📦  
+ ✓ Writing configuration 📜
+ ✓ Starting control-plane 🕹️
+ ✓ Installing CNI 🔌
+ ✓ Installing StorageClass 💾
+Set kubectl context to "kind-shopcore"
+
+NAME                     STATUS   ROLES           AGE   VERSION
+shopcore-control-plane   Ready    control-plane   45s   v1.35.x
+```
+
+`kubectl get ns` shows the built-ins (`default`, `kube-system`, `kube-public`, `kube-node-lease`). `kubectl get pods -A` lists everything running — API server, etcd, scheduler, controller-manager, CoreDNS, kube-proxy.
+
+Teardown when done: `kind delete cluster --name shopcore`.
+
+## 6. The Three Objects You Will Use Daily — YAML Anatomy
+
+Namespaces isolate teams/environments: `kubectl create namespace shopcore` (or declare `namespace:` in metadata). Then a Deployment (declares 2 replicas of the ShopCore API):
+
+```yaml
+# shopcore-api.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopcore-api
+  namespace: shopcore
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: shopcore-api
+  template:
+    metadata:
+      labels:
+        app: shopcore-api
+    spec:
+      containers:
+        - name: api
+          image: nginx:alpine            # swap for shopcore-api:1.0.0 in the next lesson
+          ports:
+            - containerPort: 4000
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+```
+
+And a Service (stable virtual IP + DNS name `shopcore-api.shopcore.svc.cluster.local` in front of ever-changing pod IPs):
+
+```yaml
+# shopcore-api-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopcore-api
+  namespace: shopcore
+spec:
+  selector:
+    app: shopcore-api
+  ports:
+    - port: 80          # what clients hit
+      targetPort: 4000  # what the container listens on
+  type: ClusterIP       # default; NodePort/LoadBalancer in the next lesson
+```
+
+Apply, inspect, scale, roll out:
+
+```bash
+kubectl apply -f shopcore-api.yaml
+kubectl apply -f shopcore-api-service.yaml
+kubectl get pods -n shopcore
+kubectl scale deployment shopcore-api -n shopcore --replicas=3
+kubectl rollout status deployment/shopcore-api -n shopcore
+kubectl rollout undo deployment/shopcore-api -n shopcore   # instant rollback to previous ReplicaSet
+```
+
+Expected after apply: `deployment.apps/shopcore-api created`, then pods flip `ContainerCreating` → `Running`. `rollout status` prints `Waiting for deployment "shopcore-api" rollout to finish: 1 out of 3 new replicas have been updated...` then `deployment "shopcore-api" successfully rolled out`.
+
+## 7. ConfigMap vs Secret — Config Is Plain, Secrets Are Not Magic
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shopcore-config
+data:
+  LOG_LEVEL: info
+  FEATURE_CHECKOUT: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shopcore-secret
+type: Opaque
+stringData:                       # plain text here; Kubernetes base64-encodes it for you
+  DATABASE_URL: postgres://shopcore:pw@postgres.shopcore.svc.cluster.local:5432/shopcore
+```
+
+Use `stringData` (write plain) or `data` (pre-encoded with `base64`). **Critical honesty:** base64 is an encoding, not encryption — anyone with `get secret` RBAC reads it. Secrets at rest in etcd are only encrypted if the cluster enables envelope encryption; etcd itself must be protected (it holds *everything*). Real secret management = RBAC least privilege + external secret stores (Vault, cloud KMS integrations) in production. Mount via `envFrom` or volumes; never bake secrets into images.
+
+## 8. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `The connection to the server localhost:8080 was refused` | kubectl has no context / kind cluster stopped | `kind get clusters`; `kubectl config use-context kind-shopcore` |
+| Pod stuck `ContainerCreating` | Image pull failure or CNI not ready | `kubectl describe pod -n shopcore <pod>` → events; `kind load docker-image` for local images |
+| Pod `CrashLoopBackOff` | App exits immediately | `kubectl logs -n shopcore <pod> --previous`; check command/port/env |
+| `error: You must be logged in to the server (Unauthorized)` | Stale credentials in ~/.kube/config | Re-create cluster or `kind delete cluster --name shopcore && kind create cluster --name shopcore` |
+| `port 80: permission denied` on Windows | Port < 1024 needs admin/WSL2 | Use port ≥ 1024 or WSL2 (root there) |
+| `ImagePullBackOff` for `shopcore-api:1.0.0` | Local image never loaded into kind | `kind load docker-image shopcore-api:1.0.0 --name shopcore` (next lesson) |
+
+## 9. Practice and Assessment
+
+**Guided.** Create cluster `shopcore`; namespace `shopcore`; deploy `nginx:alpine` 2 replicas; expose as `shopcore-web` Service on port 80; port-forward (`kubectl port-forward -n shopcore svc/shopcore-web 8080:80`) and `curl http://localhost:8080`.
+
+**Independent.** Scale to 5 replicas, watch pods churn with `kubectl get pods -n shopcore -w`, kill one pod manually (`kubectl delete pod -n shopcore <name>`), and observe reconciliation. Then `rollout undo` a deliberate bad change (edit the deployment to an impossible image tag `nginx:doesnotexist`).
+
+**Assessment checklist**
+
+- [ ] I can name the four control-plane components and say what each does.
+- [ ] I can create a kind cluster, namespace, deployment, service, and delete them.
+- [ ] I can explain why base64 in a Secret is not encryption, and what actually protects secrets.
+- [ ] I understand declarative reconciliation well enough to predict what happens when a pod dies.
+
+**Cost note:** kind is free and local; delete clusters you are not using (`kind delete cluster --name shopcore`). Docker Desktop's VM wants RAM — give it ≥ 6 GB or your pods will get OOM-killed, not Kubernetes-scheduled.
+
+</BookNodePage>

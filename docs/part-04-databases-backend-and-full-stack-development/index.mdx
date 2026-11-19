@@ -1,0 +1,38 @@
+---
+id: "index"
+title: "Part 04: Databases, Backend & Full-Stack Development"
+sidebar_label: "Part 04 — Databases, Backend & Full-Stack Development"
+slug: "/part-04-databases-backend-and-full-stack-development"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="part-04">
+
+Frontend interfaces are only the visible skin of modern software. Real applications live or die on **data integrity**, **query performance**, **authentication and authorization boundaries**, **background reliability**, and **end-to-end engineering discipline**. Part 04 takes you from designing relational schemas on paper to shipping **ShopCore** — a complete, authenticated, tested online store you build milestone by milestone with **PostgreSQL**, **Express 5**, and **React + Vite**.
+
+## How Part 04 Is Structured
+
+- **Chapter 11 — Database Design & Fundamentals:** Model real domains (`ShopCore`): entities, keys, cardinality, crow's-foot ER diagrams, 1NF–3NF plus intentional snapshot denormalization, ACID transactions, isolation levels, and relational vs document vs vector stores. Includes the canonical ShopCore schema (DDL + seed) used by every later lesson.
+- **Chapter 12 — SQL, PostgreSQL & MongoDB:** Install PostgreSQL yourself (Windows/macOS/Linux), use pgAdmin and psql, or a free hosted database on Neon/Supabase. Master JOINs, aggregations, CTEs, window functions, indexes and `EXPLAIN ANALYZE`. Set up least-privilege roles, verified backups, JSONB, full-text search and pgvector. Then MongoDB from zero — Community Server, Compass, mongosh, modeling, aggregation pipelines, and a free Atlas cluster.
+- **Chapter 13 — Backend Engineering with Node.js:** Install Node.js LTS, master npm and `package.json`, build an Express 5 API from your first route to a complete ShopCore CRUD service, wire in PostgreSQL and MongoDB, implement scrypt password hashing, HttpOnly cookie sessions, JWTs, RBAC with SQL-level ownership checks, OAuth 2.0 with GitHub, background jobs, idempotency keys, HMAC webhooks, rate limiting and a production security checklist.
+- **Chapter 14 — Git Teamwork, Testing & Code Review:** Install Git and GitHub, run the clone → branch → PR → squash-merge loop, resolve conflicts, keep history clean with Conventional Commits, and build the testing pyramid — unit, supertest integration against a disposable database, and Playwright smoke journeys with CI gates.
+- **Chapter 15 — Complete Full-Stack Application:** Assemble everything into **ShopCore**: React + Vite frontend, Express API, PostgreSQL migrations, cookie auth, atomic checkout transactions, automated tests, CI, a security review pass, and a README a stranger can run — nine milestones, no placeholders.
+
+## Chapters in Part 04
+
+- [11. Database Design & Fundamentals](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals)
+- [12. SQL, PostgreSQL & MongoDB](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb)
+- [13. Backend Engineering with Node.js](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs)
+- [14. Git Teamwork, Testing & Code Review](/book/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review)
+- [15. Complete Full-Stack Application](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application)
+
+## What You Will Be Able to Do After Part 04
+
+- Install, launch, connect and operate PostgreSQL and MongoDB on your own machine or in free hosted tiers.
+- Create the ShopCore schema, seed it, query it confidently, and back it up for real.
+- Build a production-shaped REST API with authentication, authorization, validation and error handling.
+- Collaborate with Git and GitHub like a professional engineer, with tests and reviews enforced.
+- Ship a complete full-stack application — and explain every layer of it.
+
+</BookNodePage>

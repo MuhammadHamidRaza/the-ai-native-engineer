@@ -1,0 +1,161 @@
+---
+id: "02-1-1-decomposing-ambiguous-problems"
+title: "02.1.1 Decomposing Ambiguous Problems"
+sidebar_label: "02.1.1 Decomposing Ambiguous Problems"
+slug: "/part-01-foundations/02-critical-thinking-and-problem-solving/02-1-analytical-thinking-for-engineers/02-1-1-decomposing-ambiguous-problems"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-02-s1-t1">
+
+Real-world engineering tasks almost never walk through the door looking like neat textbook exercises (*"Write a function `sumPositive(arr)` returning the sum of integers greater than zero"*). Instead, stakeholders, founders, product managers, and clients drop messy, incomplete requests onto your desk:
+
+> *"We need a way for operations staff to upload customer support attachments and have AI summarize urgent issues into our weekly team digest without leaking private customer data."*
+
+Stare at a sentence like that as one giant monolithic problem, and your brain freezes—or worse, prompts an AI tool blindly with that exact paragraph and receives a fragile half-baked prototype missing tenant permissions, file validation, error states, and retry safety. **Decomposing Ambiguous Problems** is the disciplined craft of slicing vague human intent into **small, clear, non-overlapping sub-problems with explicit inputs, boundaries, invariants, and verifiable outputs**.
+
+## 1. Plain-English Intuition: Framing a House Before Hanging Drywall
+
+No master carpenter walks onto an empty dirt lot holding plywood sheets and asks, *"Where should I nail the bathroom mirror first?"* They decompose the build top-down across clean structural boundaries:
+1. Survey the soil & boundary lines (**Constraints & Context**).
+2. Pour foundation footings (**Data Storage & Core Invariants**).
+3. Frame load-bearing walls, plumbing, and wiring (**Interfaces, Auth & Core Pipelines**).
+4. Hang drywall and paint (**UI Polish & Ergonomics**).
+
+Crucially, every big task stops feeling intimidating the second you break it down until **each leaf node fits comfortably inside one 45-to-90-minute verifiable unit of work**.
+
+## 2. The Five-Step Problem Decomposition Protocol (`B.O.U.N.D.`)
+
+Whenever a vague feature request, client brief, or bug report lands in front of you, walk cleanly through five structured steps before opening an editor:
+
+1. **Clarify the Core Objective (`Outcome First`):** Who uses this output, what decision or action does it enable, and how do we tell objectively when it works? (*"Weekly Monday 8 AM Slack/email digest listing verified P1/P2 tickets for each workspace, cutting manual manager triage time in half."*)
+2. **Enumerate Exact Inputs & Messy Edge Cases (`Inputs`):** What formats, sizes, encodings, and origins arrive? (*Plain text, `.pdf`, `.png`, `.csv`? `0 KB` empty upload? `40 MB` scan? Duplicate submissions? Multi-language UTF-8?*)
+3. **Define Hard Boundaries & Invariants (`Non-Negotiables`):** What must **never** happen even when code or AI stumbles? (*Tenant A's attachments never summarize into Tenant B's digest; malformed uploads return HTTP `422` without crashing the worker; raw PII never hits unapproved logs.*)
+4. **Slice Into Orthogonal Functional Stages (`MECE Tree`):** Divide the pipeline into **Mutually Exclusive, Collectively Exhaustive** stages connected by crisp data contracts—each testable alone!
+5. **Sequence by Risk & Thin Vertical Slice (`00.8.4`):** Implement the narrowest end-to-end path proving the riskiest assumptions first before adding convenience polish.
+
+## 3. Concrete Walkthrough: Decomposing the "AI Support Attachment Digest"
+
+Watch how cleanly one overwhelming paragraph fractures into an unmistakable engineering blueprint using an **Input → Validate → Persist → Process → Emit** decomposition tree:
+
+```text
+[ AMBIGUOUS GOAL: "AI Summary Digest of Customer Support Attachments" ]
+   |
+   +--> 1. BOUNDARY & ACCESS LAYER (Who can upload/view?)
+   |      - Auth session check (`401` if unauthenticated)
+   |      - Workspace ownership check (`403` if wrong tenant)
+   |
+   +--> 2. INGESTION & VALIDATION (Deterministic edge guards)
+   |      - Enforce allowed MIME types (`.pdf`, `.txt`, `.png`) + max size (`10 MB`)
+   |      - Compute SHA-256 content hash -> block duplicate re-ingestion cleanly
+   |      - Store raw bytes safely in object storage; insert `status='queued'` row in DB
+   |
+   +--> 3. EXTRACTION & AI SUMMARIZATION (Asynchronous worker, not HTTP!)
+   |      - Extract clean text from PDF/OCR (deterministic fallback if 0 text found)
+   |      - Redact sensitive patterns / pass bounded text to structured LLM schema:
+   |        `{ urgency: "P1"|"P2"|"P3", summary: string, citedPageRefs: number[] }`
+   |      - Persist validated result + token cost (`status='ready'` or `'needs_review'`)
+   |
+   +--> 4. DIGEST AGGREGATION & DELIVERY (Scheduled / Triggered)
+          - Query `status='ready'` rows strictly filtered `WHERE workspace_id = $1`
+          - Format clean digest message + clickable links back to original file
+          - Record delivery timestamp idempotently so retry never double-posts digest!
+```
+
+Look at what happened in two minutes:
+- Instead of *"build an AI support app"* (impossible to estimate or test cleanly), you now hold **four crisp, independent modules**!
+- Even better: Stage 1 & 2 require **zero AI** (`Part 04` CRUD + hashing); Stage 3 can be tested offline against 5 saved sample PDFs (`Part 03 / Part 08`); Stage 4 is pure SQL grouping + formatting!
+
+## 4. Asking High-Leverage Clarifying Questions Before Building
+
+Ambiguity thrives on silent assumptions. Engineers earn massive trust from clients and product leads when they catch missing requirements in a 5-minute kickoff rather than three weeks later after building the wrong UI. Always turn fuzzy adjectives into crisp binary questions:
+
+| Vague Stakeholder Phrase | Weak Silent Assumption | Sharp Clarifying Question to Ask Immediately |
+| :--- | :--- | :--- |
+| *"Users upload documents"* | Only clean small text `.pdf` files under 2 MB | *"What exact file types (`.pdf`, `.docx`, scanned photos `.jpg`) and maximum file size do real customers send weekly?"* |
+| *"Notify the team right away"* | Send an email to every admin account | *"Which exact role receives alerts, over which channel (Slack vs. email vs. in-app badge), and should urgent alerts group or fire individually?"* |
+| *"Should be fast"* | Under 3 seconds feels fine | *"Is this synchronous while an operator stares at a spinner (`< 2s`), or background batch ready by next morning (`< 15m`)?"* |
+| *"Keep customer data safe"* | Put login behind a password | *"Do different customer companies share one app (`multi-tenant isolation`), and are any specific fields forbidden from leaving to third-party AI APIs?"* |
+
+## 5. Choosing Clean Decomposition Seams (`Where to Cut`)
+
+How do you know *where* to draw boxes between sub-problems so they don't tangle back into spaghetti code? Cut along **natural change & responsibility boundaries**:
+
+1. **Separate I/O & Side Effects from Pure Business Logic (`Functional Core, Imperative Shell`):** Keep functions that compute totals, classify tiers, validate rules, or format digests **pure** (`data in → data out`, zero network/DB calls inside!). Wrap database reads, HTTP calls, and file writes in thin outer orchestration handlers. Pure logic functions test in 0.1 milliseconds without mocking databases or servers!
+2. **Separate Deterministic Validation from Probabilistic AI Steps:** Validate file extensions, permissions, arithmetic totals, and JSON structure in deterministic code *before* and *after* calling an LLM (`00.8.5`).
+3. **Cut Along Data Ownership / Lifecycle Phases:** Ingestion (`write-once immutable bytes`), Enrichment (`retryable worker state`), and Query/Display (`fast indexed reads`) evolve independently—never glue all three into a single 300-line controller function.
+4. **Explicitly State Non-Goals (`Scope Guards`):** Equal in value to listing what Slice 1 *will* build is writing down three things Slice 1 deliberately *will not* build yet (for instance: *"Slice 1 supports `.pdf` and `.txt` up to 10 MB; `.xlsx` spreadsheets and live Slack threading wait for Slice 2"*). Defining non-goals stops mid-sprint feature creep and keeps each module crisp.
+
+### Quick 15-Second Decomposition Quality Test
+Look at your leaf boxes before writing code and test every box against three questions:
+- Can I describe this box's exact **input shape and return shape** in two lines?
+- Can another engineer test this box **independently** without booting the entire rest of the system?
+- Does every failure edge (`timeout`, `invalid format`, `unauthorized`) have an explicit owner rather than falling quietly between boxes?
+
+If any answer is *"no"*, refine that seam for sixty seconds right now rather than debugging spaghetti two days later!
+
+## 6. Runnable Lab: Practice Pure Logic vs. I/O Decomposition in Python
+
+Notice how separating **parsing/validation logic** cleanly from **file/network reading** transforms untestable script soup into crystal-clear modules. Run this tiny self-contained Python demonstration checking ticket digest grouping across messy inputs:
+
+```bash
+python3 - << 'EOF'
+# Pure business-logic sub-problem: completely decoupled from HTTP, DB, or Slack I/O!
+from collections import Counter
+
+def summarize_urgency_counts(tickets: list[dict]) -> dict[str, int]:
+    """Count validated ticket severities cleanly; flag unknown/missing severities safely."""
+    valid_levels = {"P1", "P2", "P3"}
+    counts = Counter({"P1": 0, "P2": 0, "P3": 0, "INVALID": 0})
+    for ticket in tickets:
+        level = str(ticket.get("urgency", "")).strip().upper()
+        if level in valid_levels:
+            counts[level] += 1
+        else:
+            counts["INVALID"] += 1
+    return dict(counts)
+
+# Unit verification requires ZERO database, ZERO API keys, ZERO mocks:
+sample_batch = [
+    {"id": 1, "urgency": "p1"},
+    {"id": 2, "urgency": " P2 "},
+    {"id": 3, "urgency": None},
+    {"id": 4, "urgency": "urgent!!"},
+]
+result = summarize_urgency_counts(sample_batch)
+assert result == {"P1": 1, "P2": 1, "P3": 0, "INVALID": 2}, f"Unexpected: {result}"
+print("Pure decomposed unit test PASSED cleanly:", result)
+EOF
+```
+
+Look how clean that boundary is: **one 12-line pure function**, zero external side effects, resilient to `None`, lowercase `"p1"`, stray spaces `" P2 "`, and unexpected strings `"urgent!!"`—verified deterministically in under 1 millisecond!
+
+## 7. Failure Modes & Common Pitfalls
+
+- **Over-fragmenting prematurely ("Micro-function sprawl"):** Decomposition aims for **cohesive, understandable chunks**, not shattering 20 lines of linear logic across 14 tiny files (`getName.ts`, `trimName.ts`, `validateNameLength.ts`) where nobody can follow control flow. Keep steps unified until genuine complexity, reuse, or I/O boundaries justify splitting.
+- **Forgetting cross-cutting failure states when drawing boxes:** Every arrow between Stage A and Stage B on your decomposition diagram hides a potential failure (`network timeout`, `duplicate retry`, `partial crash`). Label **every arrow** with: *"What happens if this step fails halfway?"*
+- **Delegating decomposition completely to an AI prompt:** Telling an LLM *"architect this entire system for me"* produces generic textbook layers ignoring your real user constraints, hosting budget, and team skills. **Humans decompose boundaries and invariants; AI helps scaffold modules inside those clean seams.**
+
+## 8. Hands-On Practice Exercises
+
+1. **Decompose an Ambiguous Client Brief:** Read this realistic client request: *"Our HR team receives ~80 resumes per week via email as PDF and Word files and wastes Monday mornings copying candidate names, skills, and years of experience into a shared spreadsheet before calling top fits."*
+   - (a) Write **four crisp clarifying questions** uncovering hidden constraints (`privacy/PII`, `format limits`, `duplicate candidates`, `existing ATS/spreadsheet destination`).
+   - (b) Draw a **4-stage ASCII decomposition tree** (`Ingest → Parse/Validate → Extract/Score → Human Review Table`) marking which stages must be **100% deterministic** versus **bounded AI extraction**.
+2. **Refactor Monolithic Logic into Pure vs. I/O Seams:** Imagine a single script function `process_order()` that connects to PostgreSQL, queries cart items, computes subtotal + 8% tax + coupon cap, writes an invoice row, and sends a confirmation email via HTTPS. Split `process_order()` cleanly on paper into **three named sub-functions**, proving which one can run unit tests completely offline in milliseconds.
+
+## Key Takeaways
+
+- Ambiguous requests become solvable the moment you decompose them via **`B.O.U.N.D.`**—clarifying **Outcomes**, enumerating messy **Inputs**, locking **Non-Negotiable Invariants**, slicing **MECE stages**, and targeting a thin **vertical slice**.
+- Always isolate **pure computation/validation** cleanly away from **external I/O** (`HTTP`, `SQL`, `filesystem`, `LLM calls`) so core logic stays instantaneously testable.
+- Ask concrete, falsifiable clarifying questions upfront whenever human specifications rely on vague adjectives (*"fast, smart, secure, seamless"*).
+
+## Official Primary References
+
+- [George Pólya — *How to Solve It* Structured Problem Solving](https://en.wikipedia.org/wiki/How_to_Solve_It)
+- [Martin Fowler — Presentation-Domain-Data Layering (`martinfowler.com`)](https://martinfowler.com/bliki/PresentationDomainDataLayering.html)
+- [Section 00.8.4 — Slicing Deliverables Cleanly](/book/part-00-about-this-book/00-8-fde-mindset/00-8-4-slicing-deliverables)
+
+**Next Topic:** [02.1.2 First-Principles Reasoning](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-1-analytical-thinking-for-engineers/02-1-2-first-principles-reasoning)
+
+</BookNodePage>

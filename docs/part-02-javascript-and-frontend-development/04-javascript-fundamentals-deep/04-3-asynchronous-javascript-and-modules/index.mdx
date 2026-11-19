@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "04.3 Asynchronous JavaScript & Modules"
+sidebar_label: "04.3 Asynchronous JavaScript & Modules"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s3">
+
+Web browsers and Node.js servers spend most of their time waiting—waiting for user clicks, waiting for database responses, or waiting for HTTP APIs. Subchapter **04.3** reveals how a single-threaded JavaScript runtime handles thousands of concurrent I/O operations cleanly via the **Event Loop**, why Promises drain before `setTimeout`, how to write rock-solid `async/await` error handling, and how to split real codebases into testable **ES Modules**.
+
+## Topics in This Subchapter
+
+1. **[04.3.1 Event Loop, Microtasks and Timers](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules/04-3-1-event-loop-microtasks-and-timers):** Call stack + host APIs + macrotask queue vs. microtask queue, why blocking loops freeze UIs, and `AbortController` timer cleanup.
+2. **[04.3.2 Promises, Async/Await and Error Handling](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules/04-3-2-promises-async-await-and-error-handling):** Promise states, `async/await`, `fetch` error checks (`!res.ok`), `Promise.all` vs `Promise.allSettled`, and avoiding sequential `await` waterfalls.
+3. **[04.3.3 ES Modules and Modern Syntax](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules/04-3-3-es-modules-and-modern-syntax):** `"type": "module"` in `package.json`, named vs. default exports, JSON parsing/serialization, optional chaining (`?.`), and writing multi-file tests with `node --test`.
+
+</BookNodePage>

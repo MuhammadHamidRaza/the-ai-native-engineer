@@ -1,0 +1,139 @@
+---
+id: "34-2-2-audit-trails-and-escalation-queues"
+title: "34.2.2 Audit Trails and Escalation Queues"
+sidebar_label: "34.2.2 Audit Trails and Escalation Queues"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers/34-2-2-audit-trails-and-escalation-queues"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-34-s2-t2">
+
+The previous page built the workers. This page makes them employable: a durable audit trail of every decision, a human escalation queue people actually process, on-call ownership, and ROI measured honestly. This is the difference between "AI did something to our customers" and "here is the row, the approver and the prompt version."
+
+## 1. The `worker_runs` Audit Schema
+
+One row per worker decision, append-only, in **your** Postgres (not n8n's database — separate lifecycle, separate backup):
+
+```sql
+CREATE TABLE worker_runs (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id       text NOT NULL,             -- 'inbox-triage', 'ar-nudge', 'research-brief'
+  worker_version  text NOT NULL,             -- spec version, e.g. '1.2.0'
+  occurred_at     timestamptz NOT NULL DEFAULT now(),
+  correlation_id  text NOT NULL,             -- orderId / invoice_id / brief run id
+  input_hash      text NOT NULL,             -- sha256 of redacted input (verify, don't store raw PII)
+  input_ref       text,                      -- pointer to raw payload in restricted store
+  prompt_version  text NOT NULL,             -- git sha or semver of the prompt template
+  model_id        text NOT NULL,             -- exact model id requested
+  model_version   text,                      -- provider-reported version if any
+  decision        jsonb NOT NULL,            -- structured output (enum, reasons, citations)
+  output_summary  text,
+  tokens_in       int, tokens_out int, cost_eur numeric(10,4),
+  latency_ms      int,
+  gate_result     text,                      -- 'approved:a.rahman' | 'auto:policy-r3' | 'blocked'
+  approved_by     text, approved_at timestamptz,
+  status          text NOT NULL,             -- 'ok' | 'escalated' | 'failed' | 'skipped:<reason>'
+  error           text
+);
+CREATE INDEX ON worker_runs (worker_id, occurred_at DESC);
+CREATE INDEX ON worker_runs (correlation_id);
+```
+
+Log **decisions, not just runs** — a skipped invoice is a decision (`status='skipped:dispute_flag'`), and "why didn't it nudge?" is a legitimate question Legal will ask. Retention: 24 months hot, 7 years archived (or per your DPO's policy); `input_hash` lets you prove content existed without retaining raw PII. Never log raw card data or full message bodies into `decision` unredacted.
+
+## 2. The Escalation Queue — UX That Humans Actually Clear
+
+Escalations die in buried email. Make the queue a place, not a folder:
+
+```text
+worker --> gate fails --> Slack #escalations (card: worker, order link, one-line reason, buttons)
+                              |
+                [Claim] [Reassign] [Resolve: auto-handled] [Escalate to lead]
+                              |
+                   Linear/Intercom ticket auto-created with worker_runs link
+                              |
+                    SLA timer: first human touch <= 4 business hours
+```
+
+Card content rules: one screen, four facts — *what the worker sees*, *what it wanted to do*, *why it stopped*, *one-click actions*. Grouping: one card per case, not one per event (dedupe by `correlation_id`). Rotation: on-call engineer + support lead alternate weeks; backup when the queue > 20 items or age > 4h: page the manager. Kill-switch lives on the same card ("Stop this worker" → sets flag) — the person reviewing failures must be able to stop them.
+
+What the card actually looks like (Slack Block Kit excerpt):
+
+```text
+:rotating_light: AR Nudge stopped on INV-2026-0917 — customer replied "invoice is disputed,
+please do not send reminders".
+Worker wanted: L3 tone-ladder email to ap@priya-designs.com
+Why stopped: dispute_flag detected in reply thread (keyword "disputed")
+Order/Invoice: INV-2026-0917 · €4,280 · due 2026-10-27 · touch 2/4
+[Claim] [Mark dispute & stop] [Override & send L2] [Stop AR worker]
+worker_runs: r-9f31…  ·  SLA: first touch ≤ 4 business hours
+```
+
+## 3. On-Call and Review Cadence
+
+- **Weekly 30-min review** (owner + backup): escalations sampled, auto-approvals sampled, ROI deltas, error-budget burn.
+- **Monthly spec review**: prompt_version bumps are PRs; guardrail changes need business sign-off.
+- **Quarterly red-team**: re-run the injection/sentiment/PII suite from 34.1.1.
+
+## 4. Measuring Worker ROI — Honestly
+
+| Metric | Honest form | Vanity form to avoid |
+| :-- | :-- | :-- |
+| Time saved | Hours deflected × loaded hourly cost, per worker/mo | "Tickets handled by AI: 1,240" |
+| Quality | % escalations correctly skipped vs human audit | "99% success rate" (retries hide failures) |
+| Speed | P50/P90 time-to-first-draft vs human baseline | "Instant!" |
+| Cost | Tokens + infra + human review time − baseline | "Free with n8n!" |
+| Risk | Incidents, mis-sends, near-misses disclosed | Silence |
+
+Compute per worker quarterly; if AR Nudge moves DSO by 2.1 days on €400k monthly receivables, that is the headline — not "AI sent 900 emails".
+
+The ROI query, ready to paste:
+
+```sql
+-- Weekly per-worker summary for the ROI one-pager
+SELECT worker_id,
+       count(*)                                   AS decisions,
+       count(*) FILTER (WHERE status = 'ok')      AS ok,
+       count(*) FILTER (WHERE status LIKE 'skipped%') AS skipped,
+       count(*) FILTER (WHERE gate_result LIKE 'approved:%') AS human_approvals,
+       round(percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms))  AS p50_ms,
+       round(percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms)) AS p95_ms,
+       sum(cost_eur)                              AS spend_eur,
+       (count(*) FILTER (WHERE status = 'ok') * 6.0 / 60) AS human_hours_saved_est
+FROM worker_runs
+WHERE occurred_at > now() - interval '28 days'
+GROUP BY worker_id;
+```
+
+Present the result as: hours saved, euros spent (on the worker), errors caught by the gate, misses found in sampling — four numbers and one narrative. If hours saved < review time consumed, say so; that is the honest outcome and it usually means the gate is too tight or the scope too broad, both fixable.
+
+Retention and privacy: keep `worker_runs` 24 months hot / 7 years cold per your DPO; scrub or hash `input_ref` contents on the same schedule as your mail store; access to `worker_runs` is read-only for support leads, write-only from workers, exported nowhere without Legal sign-off.
+
+## 5. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Can't answer "what did workers do Tuesday?" | Audit rows missing/fragmented | All workers write `worker_runs` in the same transaction as side effects |
+| Queue ignored | Alerts too noisy / no owner | Route only un-auto-resolvable items; name a weekly queue owner |
+| PII found in logs | Redaction gap | Hash-only for bodies; store payloads in restricted bucket with TTL |
+| ROI review goes nowhere | No baseline | Instrument for 2 weeks pre-launch (time per ticket) before go-live |
+| Approver rubber-stamps | Cards too long | Four-fact card; weekly sample-audit of approvals with feedback |
+
+## 6. Practice
+
+**Guided.** Write the `worker_runs` INSERT as an n8n Postgres node (parameterized), fire one Inbox Triage run, and retrieve the row.
+
+**Independent.** Build the Slack escalation card with three working buttons; prove double-clicks don't create two tickets (idempotency on `correlation_id + action`).
+
+**Challenge.** Answer this from raw SQL: "List every customer-facing message sent by any worker in October with its approver, and flag those whose approval preceded the redaction of PII."
+
+**Checklist**
+
+- [ ] `worker_runs` captures input hash, prompt/model version, decision, gate, approver, latency, cost
+- [ ] Rows are written transactionally with the side effect (or a marked failure row is)
+- [ ] Escalation queue has SLA, owner, dedupe, and an on-card stop-worker action
+- [ ] On-call rotation exists and was paged at least once in testing
+- [ ] ROI is in hours and euros against a measured baseline — with misses disclosed
+
+</BookNodePage>

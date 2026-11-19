@@ -1,0 +1,78 @@
+---
+id: "08-1-1-file-based-routing-and-layouts"
+title: "08.1.1 File-Based Routing and Layouts"
+sidebar_label: "08.1.1 File-Based Routing and Layouts"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-1-app-router-and-rendering-strategies/08-1-1-file-based-routing-and-layouts"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08-s1-t1">
+
+Inside Next.js App Router (`src/app/`), **folders define URL segments** and reserved filenames define the UI rendered at each level. A folder only becomes a publicly reachable route once it contains a `page.tsx` file—so helper components can live safely right beside pages without exposing extra URLs.
+
+## 1. Reserved Route Files & Folder Mapping
+
+```text
+src/app/
+├── layout.tsx               -> Root shell wrapping all routes (<html>, <body>)
+├── page.tsx                 -> "/"
+├── projects/
+│   ├── layout.tsx           -> Shared sidebar/header for all /projects/* routes
+│   ├── loading.tsx          -> Instant fallback spinner while /projects streams
+│   ├── page.tsx             -> "/projects"
+│   └── [projectId]/
+│       ├── page.tsx         -> "/projects/abc-123" (dynamic segment!)
+│       └── not-found.tsx    -> Rendered when notFound() is called
+```
+
+## 2. Dynamic Routes, `notFound()`, and `<Link>` Navigation
+
+In modern Next.js (`15+`), route `params` and `searchParams` are asynchronous Promises you `await` inside Server Components:
+
+```tsx
+// src/app/projects/[projectId]/page.tsx
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+export default async function ProjectDetailPage({
+  params,
+}: {
+  params: Promise<{ projectId: string }>;
+}) {
+  const { projectId } = await params;
+
+  if (!/^[a-z0-9-]+$/i.test(projectId)) {
+    notFound();
+  }
+
+  return (
+    <main className="p-6 space-y-4">
+      <Link href="/projects" className="text-sm underline">
+        ← Back to all projects
+      </Link>
+      <h1 className="text-2xl font-bold">Project: {projectId}</h1>
+    </main>
+  );
+}
+```
+
+Use `<Link href="/projects">` for internal routes instead of `<a href="/projects">` so Next.js performs fast client-side transitions while preserving layout state (like sidebar scroll position).
+
+## 3. Nested `layout.tsx` vs. `template.tsx`
+
+- **`layout.tsx`** wraps child pages and **stays mounted across sibling navigations** (state inside a layout is preserved when switching from `/projects/1` to `/projects/2`).
+- **`error.tsx`** must start with `"use client"` so users can click a `reset()` recovery button if a route throws during rendering.
+
+## 4. Practice Exercises
+
+1. Create `/projects` (`src/app/projects/page.tsx`), a shared `src/app/projects/layout.tsx` header bar, and `/projects/[projectId]/page.tsx`.
+2. Verify visiting `/projects/!!!` calls `notFound()` and renders your custom `not-found.tsx` UI instead of crashing.
+
+## Mastery Checklist
+
+- [ ] Maps URL paths cleanly using folders + `page.tsx`.
+- [ ] Awaits `params` cleanly in dynamic route segments and handles missing records with `notFound()`.
+- [ ] Uses `<Link>` for internal navigation and persistent `layout.tsx` shells.
+
+</BookNodePage>

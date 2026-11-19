@@ -1,0 +1,137 @@
+---
+id: "11-1-1-entities-keys-and-cardinality"
+title: "11.1.1 Entities, Keys and Cardinality"
+sidebar_label: "11.1.1 Entities, Keys and Cardinality"
+slug: "/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-1-entities-keys-and-cardinality"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-11-s1-t1">
+
+Before you write a single `CREATE TABLE`, you need to know **what things exist in the business** and **how they relate**. Get this wrong and no amount of clever SQL will save you — data integrity is designed on paper first, enforced by the database second.
+
+Throughout Chapter 11–15 we model **ShopCore**, an online store. The complete, canonical DDL and seed data for ShopCore live in [11.1.3 The ShopCore Schema](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema) — refer to it whenever you need the exact definition of a table.
+
+## 1. What Is an Entity?
+
+An **entity** is a real-world "thing" the business needs to remember: a customer, a product, an order. In a relational database, each entity becomes a **table**, and each row represents one instance of that entity.
+
+Ask about a store:
+
+> "What does the business need to keep a permanent record of?" — Customers. Products. Orders. The line items inside orders. Payments.
+
+That list is our entity set: `users`, `products`, `orders`, `order_items`, `payments`. Notice what is **not** an entity: "price of a product" is not an entity, it is a property of `products`; "quantity" is a property of `order_items`, not a standalone thing.
+
+**Method — find entities in three questions:**
+1. What nouns does the business talk about constantly? (people, things, events)
+2. What nouns must be remembered **permanently** (not just shown on screen)?
+3. If I delete this noun, does something else lose its meaning?
+
+## 2. Drawing an ER Diagram (Crow's Foot Notation)
+
+An **Entity-Relationship diagram** is the blueprint of your database. It shows boxes (entities), labelled lines (relationships), and small symbols at the line ends (cardinality).
+
+```text
++----------+        places         +---------+        contains       +-------------+        sells        +----------+
+|  users   | 1 --------------- N  | orders  | 1 ---------------- N  | order_items | N ----------- 1   | products |
+|----------|                    |---------|                        |-------------|                    |----------|
+| id (PK)  |                    | id (PK) |                        | id (PK)     |                    | id (PK)  |
+| email UQ |                    | user_id |----------------------->| order_id FK |                    | sku UQ   |
+| role     |                    | status  |                        | product_id  |------------------->| title    |
++----------+                    +---------+                        | qty         |                    | price    |
+                                                                 | unit_price  |                    | stock    |
+                                                                 +-------------+                    +----------+
+```
+
+Legend for crow's foot symbols (the forks at line ends):
+
+| Symbol | Meaning |
+| :-- | :-- |
+| single bar | exactly **one** |
+| circle | **zero** |
+| crow's foot | **many** |
+| bar + crow's foot | one-to-many ("one or many") |
+| circle + crow's foot | zero-to-many (optional many) |
+
+Read the line between `users` and `orders`: "one user places many orders." Read `orders` → `order_items`: "one order contains many order items." Read `products` → `order_items` the other way: "many order items reference one product."
+
+**Practice the skill now.** Take a library, a clinic, or a ride-hailing app and try to list its entities and draw one relationship before reading on. Students who can draw an ER diagram can design a database; students who cannot will fight their schema forever.
+
+## 3. Keys: How the Database Prevents Chaos
+
+### Primary Key (PK)
+Every table needs exactly one column (or a combination) that **uniquely identifies each row** and can never be null. ShopCore uses **surrogate primary keys**: `BIGINT GENERATED ALWAYS AS IDENTITY` — an automatically incrementing number (1, 2, 3 …) that means nothing by itself and never needs to change.
+
+Why not use `email` as the primary key? Because people change their email addresses. If 5,000 rows in `orders` reference a user by email and the user changes it, you must update every referencing row. With a surrogate `users.id`, you update one column in `users` and zero rows elsewhere.
+
+### Foreign Key (FK)
+A **foreign key** is a column in a child table that references the primary key of a parent table. It is the mechanism the database uses to guarantee **referential integrity** — you can never insert an order for a user that doesn't exist, or an order item for an unknown product.
+
+ShopCore's foreign keys (see [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema)):
+
+```text
+orders.user_id        → users.id        (ON DELETE RESTRICT)
+products.category_id  → categories.id   (ON DELETE RESTRICT)
+order_items.order_id  → orders.id      (ON DELETE CASCADE)
+order_items.product_id→ products.id    (ON DELETE RESTRICT)
+payments.order_id     → orders.id      (ON DELETE RESTRICT, UNIQUE)
+```
+
+Delete rules matter — think about what should happen when a parent is deleted:
+
+- `RESTRICT` (safest for business records): refuse to delete the parent. You cannot delete a user who has placed orders; you cannot delete a product that appears in someone's receipt. History is protected.
+- `CASCADE`: deleting the parent deletes the children. Deleting an order automatically removes its line items — correct here, because an orphan line item (inside no order) is meaningless.
+
+### Unique Constraint (UQ)
+`UNIQUE` prevents duplicates on natural business identifiers: `users.email`, `products.sku`, `categories.slug`. A UNIQUE constraint is not the same as a primary key — there can be many UNIQUE columns, and none are row identifiers.
+
+## 4. Cardinality: 1:1, 1:N and M:N
+
+### One-to-Many (1:N) — the most common case
+"One user places many orders." Place the foreign key on the **"many" side** — `orders.user_id`. Never store a comma-separated list of order ids inside `users` (`orders = '1,2,3'`) — that breaks every rule of joins, indexes and constraints.
+
+ShopCore's 1:N relationships: `users→orders`, `orders→order_items`, `products→order_items`, `categories→products`.
+
+### Many-to-Many (M:N) — always a junction table
+"An order contains many products, and a product appears in many orders." Relational databases cannot store arrays of FKs cleanly — so you create an **associative entity** (junction table) `order_items` carrying `order_id`, `product_id`, plus relationship attributes: `qty` and `unit_price_cents`.
+
+The pattern generalizes everywhere: students↔courses, authors↔books, tags↔posts. Whenever you see M:N, you create a junction table and give it its own primary key.
+
+### One-to-One (1:1) — rare and deliberate
+"One user has one profile." Store `user_profiles.user_id` with a `UNIQUE` constraint referencing `users.id`. Use 1:1 only when splitting a table: optional wide columns, sensitive PII separation, or performance-critical hot rows.
+
+## 5. Reading the Canonical Schema Against This Lesson
+
+In ShopCore (from 11.1.3):
+
+```sql
+-- One user → many orders. FK on the many side.
+user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT
+
+-- Many↔Many orders/products, with snapshot price.
+order_id  BIGINT NOT NULL REFERENCES orders(id)   ON DELETE CASCADE,
+product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+qty              INTEGER NOT NULL CHECK (qty > 0),
+unit_price_cents INTEGER NOT NULL CHECK (unit_price_cents >= 0)
+```
+
+Every design decision you see traces back to the rules above: surrogate PKs, FKs on the many side, junction table for M:N, snapshot pricing.
+
+## 6. Practice
+
+**Guided exercise.** Given the ShopCore ER diagram, answer: (a) Which table is the junction table and what are its two foreign keys? (b) Why is `payments.order_id` marked `UNIQUE`? (c) Why does `order_items` store `unit_price_cents` even though `products.price_cents` exists?
+
+**Independent exercise.** Extend ShopCore mentally: add a `reviews` entity (a customer reviews a product, one review per user per product). What foreign keys does `reviews` need? What constraint stops the same user reviewing the same product twice? Sketch the table before checking the answer: `reviews(id PK, product_id FK, user_id FK, rating INT CHECK 1–5, body TEXT, UNIQUE (user_id, product_id))`.
+
+**Challenge.** Draw the full ShopCore ER diagram from memory on paper, then verify it against [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema). Every missing table or arrow is a concept to re-read here.
+
+**Assessment checklist**
+
+- [ ] I can explain what an entity is and list ShopCore's six tables.
+- [ ] I can draw and read crow's-foot cardinality symbols.
+- [ ] I can explain why surrogate PKs beat natural keys for foreign references.
+- [ ] I know which tables hold FKs, which delete rules they use, and which table is the junction table.
+- [ ] I can distinguish 1:1, 1:N and M:N and name the rule for placing FKs.
+
+</BookNodePage>

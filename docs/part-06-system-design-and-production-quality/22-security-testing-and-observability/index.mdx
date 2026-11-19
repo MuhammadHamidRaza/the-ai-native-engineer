@@ -1,0 +1,50 @@
+---
+id: "index"
+title: "22. Security, Testing & Observability"
+sidebar_label: "22. Security, Testing & Observability"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22">
+
+Chapter 21 decided what ShopCore is and how it should behave under stress. Chapter 22 is about what happens next: the adversary arrives, the regression ships anyway, and the 3 a.m. page fires — and the three disciplines that determine whether those events are boring or catastrophic: **security, testing, and observability**.
+
+**Chapter 22 (`12 Focused Hours`)** follows the lifecycle of every production change:
+
+**Threats → Secrets → Testing → Mocking → Logging → Metrics**
+
+1. **Threats** — 22-1-1 applies the OWASP Top 10:2025 to the actual ShopCore codebase: injection, XSS, CSRF, SSRF, IDOR/BOLA, auth failures — each with attack, payload, fix and a verification test.
+2. **Secrets & Supply Chain** — 22-1-2 covers the lifecycle of every credential ShopCore holds, and the dependency audit discipline (lockfiles, SBOM, scanners, cadence) that keeps the *software you didn't write* from being the front door.
+3. **Testing** — 22-2-1 builds the pyramid: unit, integration, contract (Pact-style), E2E smoke, property-based tests, and factories vs fixtures on a seeded Postgres in CI.
+4. **Test Doubles & Gates** — 22-2-2 answers mock vs real honestly (testcontainers), how to quarantine flaky tests without cheating, mutation testing with StrykerJS, and the CI quality-gate ladder with a ratchet.
+5. **Logging** — 22-3-1 installs structured JSON logs, pino-http, request-id propagation across browser → LB → API → worker, redaction of what must never be logged, and alerting on symptoms instead of log lines.
+6. **Metrics & Incidents** — 22-3-2 covers RED and USE, latency histograms, SLI/SLO math (99.9% = 43.2 min/month error budget), OpenTelemetry tracing, symptom-based alerting and PagerDuty routing, plus the blameless postmortem template applied to a partial ShopCore outage.
+
+## Chapter 22 Structure
+
+- **22.1 Application Security Engineering** — OWASP Top 10:2025 applied to ShopCore; secrets management, rotation drills and dependency/supply-chain auditing.
+- **22.2 Testing & Quality Engineering** — The testing pyramid with real code samples; mocking vs real services, CI gates, mutation testing and the quality ratchet.
+- **22.3 Observability & Incident Response** — Structured logging with correlation ids; metrics, traces, SLIs/SLOs and incident response with a blameless postmortem.
+
+## What You Will Have After This Chapter
+
+- A ShopCore **security punch-list**, verified by URL-style attacks against your own checkout and product pages.
+- A **secrets inventory** with owners, rotation dates and a rehearsed Stripe-key rotation drill.
+- A **test suite layout** (unit/integration/contract/E2E) with CI times you can defend, and a quality ratchet that fails PRs on coverage or mutation regression.
+- **pino-http request-id propagation** across every hop, with redaction rules proven by tests.
+- One **SLO** for checkout, one **error budget**, one **postmortem** written against the shared template after a rehearsed partial outage.
+
+## How to Work Through This Chapter
+
+1. Run the attacks in 22-1-1 against a local ShopCore, never against production. Break it on purpose; that is the cheapest security education you will ever get.
+2. 22-2-1 and 22-2-2 are code-heavy — type them, run them, watch them fail before they pass.
+3. 22-3-1 and 22-3-2 only click when observed live. Wire the logs and metrics in one sitting, then read a real trace of one checkout.
+4. Keep the 21.4 degradation ladder and 22-3 SLOs side by side — the same incident consumes both.
+
+Prerequisites: Chapter 21, and [15.4 Verification & Shipping](/book/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-4-verification-and-shipping) (you need the tested ShopCore with CI). Hours honesty: if ShopCore's test suite is empty, budget the top of the range; the material assumes you have written some tests, not none.
+
+**Exit gates.** This chapter is complete when: an unauthenticated curl to any checkout path behaves exactly as designed; a secret rotated live in under 30 minutes; a contract test fails the build when the Shipping service changes its response; your checkout SLO is computed from real metrics; and a teammate can run your postmortem template without you in the room.
+
+</BookNodePage>

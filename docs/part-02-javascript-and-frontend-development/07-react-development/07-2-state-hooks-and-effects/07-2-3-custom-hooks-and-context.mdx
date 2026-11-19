@@ -1,0 +1,82 @@
+---
+id: "07-2-3-custom-hooks-and-context"
+title: "07.2.3 Custom Hooks and Context"
+sidebar_label: "07.2.3 Custom Hooks and Context"
+slug: "/part-02-javascript-and-frontend-development/07-react-development/07-2-state-hooks-and-effects/07-2-3-custom-hooks-and-context"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-07-s2-t3">
+
+When two components repeat identical debounce timers or `localStorage` persistence logic, extract it into a **custom hook** (`use...`). When deeply nested components need shared app-level values (like current theme or authenticated user) without passing props through six intermediate wrappers, reach for **React Context**.
+
+## 1. Extracting a Reusable Custom Hook (`useDebouncedValue`)
+
+A custom hook is just a function starting with `use` that calls built-in hooks. Each component calling it gets its **own isolated state**:
+
+```tsx
+import { useEffect, useState } from "react";
+
+export function useDebouncedValue<T>(value: T, delayMs = 300): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+
+  return debounced;
+}
+```
+
+Now `<SearchInput />` simply writes `const debouncedQuery = useDebouncedValue(query, 250);` and avoids firing an API request on every keystroke.
+
+## 2. Typed React Context Without Unnecessary Re-Renders
+
+```tsx
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+
+type Theme = "light" | "dark";
+interface ThemeContextValue {
+  theme: Theme;
+  toggleTheme: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<Theme>("light");
+
+  const value = useMemo(
+    () => ({
+      theme,
+      toggleTheme: () => setTheme((t) => (t === "light" ? "dark" : "light")),
+    }),
+    [theme]
+  );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
+  return ctx;
+}
+```
+
+**When *Not* to Use Context:** Context is ideal for low-frequency globals (theme, locale, logged-in user). Do not stuff fast-changing keystrokes or 50 unrelated states into one top-level Context—every consumer re-renders whenever the Context `value` changes.
+
+## 3. Practice Exercises
+
+1. Build `useLocalStorageState<T>(key: string, defaultValue: T)` with JSON `try/catch` safety and wire it into `ThemeProvider`.
+2. Verify that calling `useTheme()` outside `<ThemeProvider>` throws a clear developer error immediately instead of silently returning `null`.
+
+## Mastery Checklist
+
+- [ ] Names custom hooks with `use...` and returns clean minimal APIs.
+- [ ] Wraps Context access in a custom hook (`useTheme`) that checks for missing Provider.
+- [ ] Memoizes Context value objects and reserves Context for low-frequency shared state.
+
+</BookNodePage>

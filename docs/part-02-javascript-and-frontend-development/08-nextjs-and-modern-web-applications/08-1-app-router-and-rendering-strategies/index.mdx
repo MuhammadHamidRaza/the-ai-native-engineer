@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "08.1 App Router & Rendering Strategies"
+sidebar_label: "08.1 App Router & Rendering Strategies"
+slug: "/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-1-app-router-and-rendering-strategies"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-08-s1">
+
+The App Router shifts React from "everything ships to the browser bundle" to **server-first rendering with interactive client islands**. Subchapter **08.1** shows how folders map to URLs, how layouts persist across navigations, how to split Server vs. Client Components cleanly, and how SSR, SSG, streaming, and caching behave in production.
+
+## Lessons in Subchapter 08.1
+
+1. **[08.1.1 File-Based Routing and Layouts](/book/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-1-app-router-and-rendering-strategies/08-1-1-file-based-routing-and-layouts):** `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `not-found.tsx`, dynamic `[slug]` routes, and `<Link>`.
+2. **[08.1.2 Server Components vs Client Components](/book/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-1-app-router-and-rendering-strategies/08-1-2-server-components-vs-client-components):** Default server execution, pushing `"use client"` to leaves, serialization constraints, and preventing hydration mismatches.
+3. **[08.1.3 SSR, SSG, Streaming and Caching](/book/part-02-javascript-and-frontend-development/08-nextjs-and-modern-web-applications/08-1-app-router-and-rendering-strategies/08-1-3-ssr-ssg-streaming-and-caching):** Static pre-rendering vs. request-time SSR, `<Suspense>` streaming, `generateStaticParams`, and cache revalidation.
+
+</BookNodePage>

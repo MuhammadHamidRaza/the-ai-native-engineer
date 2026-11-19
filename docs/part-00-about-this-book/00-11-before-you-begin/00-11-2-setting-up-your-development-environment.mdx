@@ -1,0 +1,262 @@
+---
+id: "00-11-2-setting-up-your-development-environment"
+title: "00.11.2 Setting Up Your Development Environment"
+sidebar_label: "00.11.2 Setting Up Your Development Environment"
+slug: "/part-00-about-this-book/00-11-before-you-begin/00-11-2-setting-up-your-development-environment"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-11-2">
+
+A messy, misconfigured workstation quietly drains dozens of hours across a 638-hour curriculum through *"command not found"* errors, competing Python installs, broken Windows-to-Linux line endings, and missing `PATH` exports. Taking forty-five calm minutes right now to set up one standardized, clean workshop eliminates 90% of environment friction before you ever write your first chapter lab.
+
+Grounded in the verified hardware and OS specifications from [00.11.1 Computer and System Requirements](/book/part-00-about-this-book/00-11-before-you-begin/00-11-1-computer-and-system-requirements), this guide walks step by step across **Windows 11 (via WSL 2)**, **macOS**, and **Ubuntu Linux**.
+
+## Architectural Overview of Your Local Engineering Workshop
+
+Notice why **Windows 11 + WSL 2**, **macOS**, and **Ubuntu Linux** converge on the exact same POSIX command workflow (`bash`/`zsh`, forward slashes `/`, `git`, `node`, `python3`, `docker`):
+
+```text
++-----------------------------------------------------------------------------+
+|  YOUR CODE EDITOR (Visual Studio Code / Terminal)                           |
+|  - Edits source inside clean project folder: ~/code/ai-native-engineer/...  |
++--------------------------------------+--------------------------------------+
+                                       |
+          +----------------------------+----------------------------+
+          v                            v                            v
++-------------------+        +-------------------+        +-------------------+
+| Windows 11 + WSL2 |        | macOS (zsh/brew)  |        | Ubuntu LTS (bash) |
+| Native Ubuntu VM  |        | Apple Silicon /   |        | Native Linux      |
+| (/home/user/...)  |        | Intel POSIX Shell |        | Kernel + Docker   |
++-------------------+        +-------------------+        +-------------------+
+          |                            |                            |
+          +----------------------------+----------------------------+
+                                       v
+        Identical Runtimes: Git 2.x | Node 24/26 LTS | Python 3.13+ | Docker
+```
+
+## 1. Operating System Shell and Package Foundation
+
+Follow **only the section matching your computer's operating system**:
+
+### Windows 11 (Checking Your System, Windows Terminal/PowerShell, and WSL 2 Ubuntu)
+Because [Windows 10 (version 22H2) reached end of support on October 14, 2025](https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro), active development workstations should run **Windows 11 (64-bit)**. Before installing tools on Windows, verify your exact OS build and CPU architecture (`x64` vs `ARM64`):
+- Press `Win + R`, type `winver`, and press `Enter` to confirm **Windows 11** (`Version 23H2` or newer).
+- Open **Windows Terminal** (install from the Microsoft Store if missing on older builds; it hosts **PowerShell**, **Command Prompt**, and **Ubuntu WSL 2** cleanly in separate tabs) and run `systeminfo | findstr /B /C:"OS Name" /C:"System Type"` (look for `x64-based PC` or `ARM64-based PC`) and `winget --version` (built-in Windows package manager).
+- Learn four quick PowerShell folder navigation commands right away (`pwd` prints current folder, `ls` lists files, `mkdir code` creates a folder, `cd code` enters it, and `cd ..` moves up one folder). When installers modify Windows `PATH`, **close and reopen Windows Terminal completely** so the new `PATH` loads.
+
+While Node.js and Python also provide official Windows `.msi`/`.exe` installers for native PowerShell, nearly every backend framework, PostgreSQL workflow, Docker container, and cloud CI runner assumes Linux paths and POSIX shells. Installing **WSL 2 (Windows Subsystem for Linux)** gives you authentic Ubuntu Linux natively inside Windows:
+
+1. Open **Windows Terminal (or PowerShell) as Administrator** (`Start` → type `Terminal` → right-click → *Run as Administrator*) and run:
+   ```powershell
+   wsl --install
+   ```
+2. Restart Windows when prompted. After reboot, a terminal window automatically launches **Ubuntu** installation and asks you to choose a Unix username and password (typing your password stays invisible—that is normal security behavior!).
+3. Update Ubuntu packages immediately inside your new WSL shell:
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   sudo apt install -y build-essential curl git ca-certificates gnupg
+   ```
+4. **Critical filesystem speed rule:** Always store curriculum projects inside your **Linux home directory** (`~/code/ai-native-engineer`), **never** inside `/mnt/c/Users/...`. File watching, `npm install`, and Docker bind mounts execute dramatically faster inside the native WSL `ext4` filesystem than across the Windows `NTFS` bridge.
+5. *(Native Windows PowerShell option for Parts 01–03):* If your PC temporarily cannot enable BIOS virtualization for WSL 2, you can still complete Parts 01–03 using native Windows **Git for Windows** (`git-scm.com`), **Node.js LTS `.msi`**, and **Python `.exe`** inside **Windows Terminal (PowerShell)**—every chapter in Parts 02–04 explicitly notes PowerShell differences where commands diverge (such as `.venv\Scripts\Activate.ps1`).
+
+### macOS (Apple Silicon & Supported Intel Macs)
+Ensure macOS runs either Apple's current major release or one of the two previous major releases so Homebrew, Xcode Command Line Tools, and Docker Desktop remain actively supported:
+
+1. Open **Terminal.app** (or **iTerm2** / **Ghostty**). Check your default shell (`echo $SHELL` should print `/bin/zsh`).
+2. Install **Apple Command Line Tools** (provides `git`, `clang`, `make`, and headers):
+   ```bash
+   xcode-select --install
+   ```
+3. Install **Homebrew** (`brew.sh`), the standard macOS package manager, following the exact official installer printed instructions at the end to add `brew` to `~/.zprofile`:
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+   Verify `brew --version` works cleanly after restarting the terminal.
+
+### Ubuntu Linux (Desktop 22.04 LTS / 24.04 LTS / 26.04 LTS)
+Ubuntu Linux runs the same kernel environment as cloud CI runners natively without VM wrappers:
+
+1. Open your terminal (`Ctrl + Alt + T`) and install baseline compiler headers and utilities:
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   sudo apt install -y build-essential curl git ca-certificates gnupg unzip
+   ```
+
+## 2. Dedicated Workspace Folder and Git 2.x Identity
+
+Scatter projects across `Desktop`, `Downloads`, and `Documents/test1`, and your future self will waste hours hunting for paths. Create one clean root directory for all 10 Parts:
+
+```bash
+mkdir -p ~/code/ai-native-engineer
+cd ~/code/ai-native-engineer
+git --version   # Expect Git 2.40+ / 2.47+
+```
+
+If `git` is missing on macOS/Linux, run `brew install git` (macOS) or `sudo apt install -y git` (Ubuntu). Next, configure your global Git author identity, modern default branch name (`main`), and safe line-ending defaults:
+
+```bash
+git config --global user.name "Your Full Name"
+git config --global user.email "you@example.com"
+git config --global init.defaultBranch main
+git config --global core.autocrlf input   # Keeps LF line endings consistent across Linux/macOS/WSL2
+git config --global pull.rebase false
+```
+
+### Setting Up GitHub Authentication Safely (SSH or GitHub CLI)
+GitHub disabled plain account passwords over HTTPS Git pushes years ago. Choose **one** clean method so `git push` works effortlessly:
+- **Option A — GitHub CLI (`gh`, fastest beginner path):** Install `gh` (`brew install gh` on macOS, or via [official Linux `apt` repo](https://cli.github.com/)), then run `gh auth login` and follow the interactive browser prompts using **SSH** or **HTTPS token**.
+- **Option B — Ed25519 SSH Key:** Generate a modern SSH key (`ssh-keygen -t ed25519 -C "you@example.com"`), print the public key (`cat ~/.ssh/id_ed25519.pub`), and paste it into **GitHub Settings → SSH and GPG keys**. Test connectivity via `ssh -T git@github.com`.
+
+## 3. Code Editor: Visual Studio Code
+
+Download and install **Visual Studio Code** from the official portal (`code.visualstudio.com`):
+- **Windows 11 + WSL 2:** Install VS Code cleanly on Windows, open Extensions (`Ctrl+Shift+X`), install Microsoft's official **WSL** extension (`ms-vscode-remote.remote-wsl`), and **always open projects from inside your Ubuntu WSL terminal** (`cd ~/code/ai-native-engineer && code .`). Confirm the bottom-left green/blue badge reads **`WSL: Ubuntu`**.
+- **macOS:** Drag Visual Studio Code into `/Applications`, open VS Code, press `Cmd+Shift+P`, and run **`Shell Command: Install 'code' command in PATH`**.
+- **Ubuntu Linux:** Install the official `.deb` package from Microsoft or official `apt` repository so the `code` CLI works immediately (`code --version`).
+
+Install **only five essential baseline extensions** right now—avoid bloated theme/icon/AI extension packs that slow language servers down:
+1. **ESLint** (`dbaeumer.vscode-eslint`) — catches JS/TS correctness errors live
+2. **Prettier** (`esbenp.prettier-vscode`) — keeps formatting uniform across files
+3. **Python** + **Pylance** (`ms-python.python`) — IntelliSense, type diagnostics, and debugger
+4. **Tailwind CSS IntelliSense** (`bradlc.vscode-tailwindcss`) — class validation for Part 02+
+5. **Docker** (`ms-azuretools.vscode-docker`) — container & Compose inspection for Part 05+
+
+## 4. Node.js LTS and Python 3.13+ Runtimes
+
+Using explicit runtime version control prevents project dependency conflicts when jumping between Part 02 TypeScript apps and Part 03/08 Python APIs.
+
+### Node.js (`v22`, `v24`, or `v26 Active LTS`)
+According to the [Node.js release schedule](https://nodejs.org/en/about/previous-releases), **Node.js 26** is Active LTS (paired with Maintenance LTS lines **24** and **22**; Node 20 and older reached End-of-Life). Install **`nvm` (Node Version Manager)** inside your WSL 2 / macOS / Linux shell so switching or upgrading LTS releases takes one line:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh | bash
+# Close and reopen your terminal (or source ~/.bashrc / ~/.zshrc), then:
+nvm install --lts
+nvm alias default 'lts/*'
+node -v && npm -v
+```
+
+*(Note: verify the latest `nvm` tag on [github.com/nvm-sh/nvm](https://github.com/nvm-sh/nvm) if a newer patch tag is active).*
+
+### Python 3 (`3.13` / `3.14` / `3.15`) + Environment Isolation (`venv` & `uv`)
+Never run `pip install` directly against your global OS Python—that breaks Ubuntu system tools and causes dependency version collisions across projects. Every Python repository gets its own isolated `.venv/` directory:
+
+```bash
+# Ubuntu / WSL 2: ensure venv module and pip are installed cleanly
+sudo apt install -y python3 python3-pip python3-venv
+
+# macOS: install current Python 3 via Homebrew (keeps system Xcode python clean)
+brew install python
+
+# Optional modern ultra-fast Python package/env tool (`uv` by Astral):
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Test creating and activating a scratch virtual environment to confirm isolation works cleanly:
+
+```bash
+mkdir -p /tmp/py-check && cd /tmp/py-check
+python3 -m venv .venv
+source .venv/bin/activate
+which python   # Should point inside /tmp/py-check/.venv/bin/python
+deactivate
+rm -rf /tmp/py-check
+```
+
+## 5. Containers and Databases (Docker Readiness for Parts 04–05)
+
+While **Parts 01–03** execute purely with local Node.js and Python without containers, **Part 04 (`Ch 12 PostgreSQL`)** and **Part 05 (`Ch 18 Docker`)** rely on Docker for reproducible Postgres + `pgvector` and cloud parity:
+- **Windows 11:** Verify hardware virtualization is enabled in Task Manager → *Performance* → *CPU* (*Virtualization: Enabled*). Install **Docker Desktop for Windows** (`docs.docker.com`), keep the **Use WSL 2 based engine** option checked, and toggle *Settings → Resources → WSL Integration → Ubuntu* ON. *(Tip for 8 GB laptops: create `%UserProfile%\.wslconfig` setting `[wsl2]\nmemory=3GB` so the VM cannot starve your editor and browser.)*
+- **macOS:** Download **Docker Desktop for Mac** carefully matching your processor (**Apple Silicon** vs. **Intel**).
+- **Ubuntu Linux:** Prefer installing **Docker Engine + Docker Compose plugin** natively (`docs.docker.com/engine/install/ubuntu/`). Add your non-root user cleanly (`sudo usermod -aG docker $USER`) and restart your login session so `docker ps` works without `sudo`.
+
+## 6. Day-One Secret Safety Hygiene (`.gitignore`)
+
+Before initializing your very first Git repository, internalize one strict invariant: **secrets never enter Git commit history.** Whenever creating a project directory, ensure `.gitignore` always blocks environment secrets, dependencies, and caches *before* running `git add`:
+
+```gitignore
+# Environment secrets (commit .env.example ONLY)
+.env
+.env.*
+!.env.example
+
+# Language dependencies & build outputs
+node_modules/
+.venv/
+__pycache__/
+.next/
+dist/
+build/
+```
+
+## Common Setup Pitfalls and Instant Fixes
+
+| Symptom Observed | Probable Root Cause | Clean Fix |
+| :--- | :--- | :--- |
+| `wsl --install` fails or hangs on BIOS virtualization error | SVM / Intel VT-x disabled in motherboard UEFI settings | Reboot into UEFI/BIOS and enable CPU Virtualization (`VT-x` / `AMD-V`) |
+| `npm install` takes 4 minutes inside Windows WSL 2 | Project folder lives in `/mnt/c/Users/...` instead of `/home/...` | Move repo cleanly into `~/code/ai-native-engineer` inside Ubuntu ext4 |
+| `externally-managed-environment` error on `pip install` | Installing Python packages into OS global Python (`PEP 668`) | Create & activate `.venv` first (`python3 -m venv .venv && source .venv/bin/activate`) |
+| `code: command not found` on macOS Terminal | Missing `/usr/local/bin/code` shell symlink | Open VS Code → `Cmd+Shift+P` → *Install 'code' command in PATH* |
+| `permission denied` running `docker ps` on Ubuntu | User not added to `docker` Unix group or session not refreshed | Run `sudo usermod -aG docker $USER` then log out and back in |
+
+## 7. Minimal Clean Editor Defaults & WSL 2 Memory Guard
+
+Avoid installing complex multi-extension IDE packs on day one. Creating one lean `.vscode/settings.json` inside your workspace root gives automatic formatting, trim whitespace discipline, and noisy cache hiding without slowing down language servers:
+
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/node_modules/**": true,
+    "**/.venv/**": true,
+    "**/build/**": true,
+    "**/.next/**": true
+  }
+}
+```
+
+If you work on **Windows 11 + WSL 2** with an `8 GB` or `16 GB` laptop and notice `vmmemWSL` holding too much host RAM once browser tabs and Docker containers run together (`Part 04–05`), cap WSL memory explicitly inside `C:\Users\<YourName>\.wslconfig` and restart WSL (`wsl --shutdown`):
+
+```ini
+# C:\Users\<YourName>\.wslconfig — prevents WSL 2 from starving Windows browser/VS Code
+[wsl2]
+memory=4GB
+processors=4
+swap=2GB
+```
+
+Keep one clean `~/code/ai-native-engineer/.gitignore` template (`node_modules/`, `.venv/`, `.env*`, `!.env.example`, `.next/`, `dist/`) ready so every new chapter sub-folder inherits clean hygiene automatically (`Ch 03.2`).
+
+## Final Pre-Part-01 Verification Check
+
+Open your working engineering shell (**Ubuntu on WSL 2**, **macOS Terminal**, or **Ubuntu Shell**) and run:
+
+```bash
+pwd && uname -a
+git --version && git config --get user.name && git config --get user.email
+node -v && npm -v
+python3 --version
+code --version
+```
+
+If any binary prints `command not found` immediately after installation, verify your login shell startup file (`~/.bashrc` on Ubuntu/WSL 2 or `~/.zprofile` and `~/.zshrc` on macOS) rather than reinstalling blindly. Running `which -a node python3 git` exposes duplicate system vs. Homebrew/`nvm` binaries cleanly, and `echo $PATH | tr ':' '\n'` confirms whether `$HOME/.nvm/...` or `/opt/homebrew/bin` loads ahead of outdated OS defaults. On Windows 11 + WSL 2, also check `pwd` does **not** begin with `/mnt/c/`; moving projects inside `/home/<username>/code/ai-native-engineer` preserves full POSIX filesystem permissions, fast file watchers, and clean Docker bind mounts across all ten parts.
+
+If all commands succeed cleanly inside your POSIX shell and you verified Git author metadata and isolated Python `venv` behavior, your workstation is 100% ready for **Part 01**.
+
+## Official Primary References
+
+- [Microsoft Learn — Install WSL 2 (`learn.microsoft.com/en-us/windows/wsl/install`)](https://learn.microsoft.com/en-us/windows/wsl/install)
+- [Microsoft Learn — Advanced `.wslconfig` Settings](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)
+- [VS Code Setup & Remote WSL Docs (`code.visualstudio.com/docs`)](https://code.visualstudio.com/docs/remote/wsl)
+- [Node.js Release Schedule & LTS Downloads (`nodejs.org`)](https://nodejs.org/en/about/previous-releases)
+- [Python 3 Virtual Environments (`docs.python.org/3/library/venv.html`)](https://docs.python.org/3/library/venv.html)
+- [Docker Engine / Desktop Setup Guides (`docs.docker.com`)](https://docs.docker.com/get-started/get-docker/)
+
+</BookNodePage>

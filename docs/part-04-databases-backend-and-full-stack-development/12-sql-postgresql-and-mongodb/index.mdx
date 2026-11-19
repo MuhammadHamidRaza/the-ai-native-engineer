@@ -1,0 +1,36 @@
+---
+id: "index"
+title: "Chapter 12: SQL, PostgreSQL & MongoDB"
+sidebar_label: "Chapter 12: SQL, PostgreSQL & MongoDB"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12">
+
+Chapter 11 designed the data model on paper. **Chapter 12 (`30 Focused Hours`)** makes it real: you will install PostgreSQL and MongoDB on your own machine, open their GUIs, query them from psql and mongosh, host them in the browser for free, and learn enough of both engines to build the ShopCore backend in Chapter 13.
+
+## Chapter 12 Structure
+
+- **12.1 Install & Run PostgreSQL:** Your first working database — official download, Windows/macOS/Linux installs, pgAdmin walkthrough, psql essentials, and hosted Postgres with Neon or Supabase.
+- **12.2 SQL & Relational Querying:** SELECT, JOINs, GROUP BY/HAVING, subqueries, CTEs, window functions, indexes and `EXPLAIN ANALYZE`.
+- **12.3 PostgreSQL in Practice:** Constraints and forward-only migrations, least-privilege roles, verified backups and restores, plus JSONB, full-text search and pgvector.
+- **12.4 MongoDB from Zero to Atlas:** Install Community Server, CRUD with mongosh and Compass, document modeling, aggregation pipelines and indexes, a free Atlas cluster, and the PostgreSQL-vs-MongoDB decision.
+
+## The Fastest Path Through This Chapter
+
+1. **Install something today.** Finish 12.1 first — every later page assumes a running Postgres. Budget 30 minutes.
+2. **Query the canonical ShopCore data** (11.1.3) in 12.2 — don't trust a query you haven't run.
+3. **Break and restore a database in 12.3** — backups are a muscle you build now, not during an incident.
+4. **Stand up Atlas in 12.4** — five minutes in a browser, and your portfolio projects get a real database.
+
+## Prerequisites
+
+- Chapter 11 complete — the ER diagram, keys, and the canonical ShopCore seed data.
+- Ability to open a terminal (PowerShell, Terminal, or your Linux shell).
+- ~2 GB free disk for PostgreSQL + MongoDB + Compass.
+
+PostgreSQL is the engine ShopCore ships on. MongoDB is taught because professional teams meet both — and you need informed judgment about which fits which workload.
+
+</BookNodePage>

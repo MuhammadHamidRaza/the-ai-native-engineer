@@ -1,0 +1,185 @@
+---
+id: "13-2-1-your-first-express-server"
+title: "13.2.1 Your First Express Server"
+sidebar_label: "13.2.1 Your First Express Server"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-1-your-first-express-server"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s2-t1">
+
+Express is the minimal, hugely successful HTTP framework for Node. This lesson builds your first **runnable** Express 5 server, file by file, and explains every line — the complete mental model before routes, middleware and databases enter the picture.
+
+## 1. What Express Adds on Top of Node's `http`
+
+Node's built-in `http` can serve requests, but everything else — routing by path, parsing JSON bodies, chaining request processing (middleware), error boundaries — you write by hand. Express packages exactly those patterns, lightly and predictably.
+
+**Install (inside the `shopcore-api` folder you made in 13.1.2):**
+
+```bash
+cd shopcore-api
+npm install express
+```
+
+The current `npm install` resolves to **Express 5** — the major release stabilized in 2024/2025 and this book uses it (async error propagation, stricter path-to-regexp v8).
+
+## 2. `src/server.js` — Line by Line
+
+Replace `server.js` from 13.1.2 with this structure:
+
+```text
+shopcore-api/
+├── .gitignore
+├── package.json
+├── package-lock.json
+└── src/
+    ├── app.js        ← express app: middleware + routes (no listen)
+    └── server.js     ← starts the listener (keeps tests importable)
+```
+
+**`src/app.js`:**
+
+```javascript
+import express from 'express';
+
+export const app = express();      // build the app, don't listen yet
+
+app.use(express.json());           // parse JSON bodies (Content-Type: application/json)
+
+// Route 1 — health check
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// Route 2 — version info
+app.get('/api/v1/info', (_req, res) => {
+  res.json({ service: 'shopcore-api', version: '1.0.0' });
+});
+```
+
+**`src/server.js`:**
+
+```javascript
+import { app } from './app.js';
+
+const PORT = process.env.PORT || 4000;   // env wins; 4000 is dev default
+
+app.listen(PORT, () => {
+  console.log(`shopcore-api listening on http://localhost:${PORT}`);
+});
+```
+
+**Run it:**
+
+```bash
+npm pkg set scripts.dev="node --watch src/server.js" scripts.start="node src/server.js"
+npm run dev
+```
+
+Expected console: `shopcore-api listening on http://localhost:4000`
+
+**Test from another terminal:**
+
+```bash
+curl http://localhost:4000/health
+
+# Windows PowerShell alternative if curl is absent:
+# Invoke-RestMethod http://localhost:4000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok","uptime":12.345}
+```
+
+## 3. Request and Response — What Actually Flows
+
+For `GET /api/v1/info`:
+
+1. **req (IncomingMessage):** `req.method` = `'GET'`, `req.path` = `/api/v1/info`, headers, query string (`req.query`), params (`req.params`), body (`req.body` — only after `express.json()` ran).
+2. **res (ServerResponse):** `res.status(200).json(obj)` — sets status, sets `Content-Type: application/json`, serializes the object to JSON, ends the response.
+3. Anything thrown inside a handler → Express 5 forwards it to the error boundary (13.2.3) automatically.
+
+Status codes are not decoration — see [13.2.2 RESTful Resource Design and Status Codes](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-2-restful-resource-design-and-status-codes).
+
+## 4. Routing Methods You Need Now
+
+| Method | Express method | Use |
+| :-- | :-- | :-- |
+| GET | `app.get(path, handler)` | Read |
+| POST | `app.post(path, handler)` | Create |
+| PUT | `app.put(path, handler)` | Full replace |
+| PATCH | `app.patch(path, handler)` | Partial update |
+| DELETE | `app.delete(path, handler)` | Delete |
+| Any | `app.use(path?, handler)` | Middleware for any method |
+
+Paths support `:params` — `/api/v1/products/:id` reads as `req.params.id`:
+
+```javascript
+app.get('/api/v1/products/:id', (req, res) => {
+  const { id } = req.params;
+  res.json({ youAskedFor: id });
+});
+```
+
+```bash
+curl http://localhost:4000/api/v1/products/42
+# {"youAskedFor":"42"}
+```
+
+## 5. What Happens When It Breaks — On Purpose
+
+Add this route to `src/app.js`:
+
+```javascript
+app.get('/boom', () => { throw new Error('intentional crash test'); });
+```
+
+Restart (`npm run dev`), hit `curl http://localhost:4000/boom`. Without an error handler, Express 5 returns HTML `Error` output (stack in dev). Instead of raw 500s in production, you'll install a proper boundary in **[13.2.3 Middleware, Validation and Error Boundaries](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-3-middleware-validation-and-error-boundaries)** — that's why `app.js` keeps routes in one place and `server.js` stays tiny.
+
+## 6. Folder Structure You'll Grow Into
+
+```text
+src/
+├── app.js           # express app + middleware + routes mount
+├── server.js        # listen only
+├── db/
+│   └── pool.js      # pg Pool (13.2.4)
+├── routes/
+│   └── products.js  # routers (13.2.5)
+├── middleware/      # auth, validate (13.2.3, 13.3)
+└── errors.js        # AppError, errorBoundary
+```
+
+Small now, clean later — you won't untangle a 1,000-line `server.js`.
+
+## 7. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `Cannot find module './app.js'` | Missing `.js` extension in ESM import — ES modules require extensions |
+| Port already in use (`:::4000`) | Change `PORT` (`PORT=5000 npm run dev`) or free the port (13.1.2 troubleshooting) |
+| `req.body` is `undefined` on POST | You didn't `app.use(express.json())` (or forgot the header `Content-Type: application/json`) |
+| 404 for `/api/v1/info` in browser | Express is **not** strict by default — `/api/v1/info` and `/api/v1/info/` both match. A 404 means the route was never mounted or the path is wrong — check the path you typed |
+| Change not reflected | `--watch` reloads automatically; otherwise restart `npm run dev` |
+| `Error [ERR_REQUIRE_ESM]` | Something CJS tried to require an ESM file — everything here is `"type": "module"` consistently |
+
+## 8. Practice
+
+**Guided exercise.** Build `src/app.js` + `src/server.js` exactly above. Verify `/health` and `/api/v1/info` with `curl`, then add `/api/v1/products/:id` and call it with `/7` and `/kb`.
+
+**Independent exercise.** Add `GET /api/v1/time` returning `{ now: new Date().toISOString() }`, and a 404 catch-all returning `{ error: 'NOT_FOUND' }` (hint: `app.use((req, res) => res.status(404).json(...))` **after** all routes).
+
+**Challenge.** Split products routes into `src/routes/products.js` using `express.Router()` and mount with `app.use('/api/v1/products', productsRouter)`. This is the pattern used in 13.2.5.
+
+**Assessment checklist**
+
+- [ ] I built `app.js` (no listen) + `server.js` (listen only) and can explain why they're separate.
+- [ ] I called my routes with curl and read JSON responses.
+- [ ] I understand req/res, params, JSON body parsing, and route order.
+- [ ] I know a 404 means no route matched — not a server crash.
+- [ ] I can mount an `express.Router()` on a path prefix.
+
+</BookNodePage>

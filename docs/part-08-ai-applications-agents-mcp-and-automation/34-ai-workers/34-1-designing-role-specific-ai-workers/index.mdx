@@ -1,0 +1,56 @@
+---
+id: "index"
+title: "34.1 Designing Role-Specific AI Workers"
+sidebar_label: "34.1 Designing Role-Specific AI Workers"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-34-s1">
+
+A worker that is "an agent with a name" will drift: it will answer questions nobody asked, spend money nobody capped, and email customers nobody approved. This section is the design phase — the discipline that keeps a role-specific worker bounded, measurable and killable, before you build the first node.
+
+## The Worker Design Spec — One Page, No Exceptions
+
+Every worker starts as a one-page spec, written before any automation exists:
+
+```text
+WORKER SPEC: AR Nudge v1.2
+Mission:        Recover overdue B2B invoices with polite, escalating reminders.
+Inputs:         invoices.due_date, customer contact, invoice amount, prior touches
+Outputs:        Email drafts (approval-gated), CRM timeline notes, Slack alerts
+Deterministic guardrails:
+                - Never email a customer whose invoice has a dispute flag
+                - Max 4 touches; never > 1 touch per 7 days
+                - Amount > €10,000 → human-only, no automation
+                - Tone ladder enforced by template id: L1 (friendly) → L4 (final)
+LLM scope:      Personalize tone only; template and facts are NOT LLM-editable
+Budget:         ≤ €60/mo tokens + Twilio €0.02/SMS; hard stop at €80
+SLA:            Runs daily 08:00 CET; nudge sent within 1h of trigger; 99% on-time
+Kill-switch:    Feature flag WORKERS_AR=1 → 0; owner notified on trip
+Owner:          RevOps lead (A. Rahman); backup: Finance manager
+Escalation:     Replies citing dispute/lawyer/hardship → human queue, same-day
+Audit:          worker_runs row per invoice per touch (input hash, template, approver)
+```
+
+If you cannot fill in every line, the worker is not ready to build — and "the LLM will handle it" is the tell.
+
+## The Two Topics in This Section
+
+- **[34.1.1 Scoping Operational Boundaries and SLAs](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-1-scoping-operational-boundaries-and-slas)** — the full guardrail taxonomy (deterministic rules vs LLM judgment), SLA/error-budget language, spend caps, kill-switches, ownership and the red lines, applied to all three ShopCore workers.
+- **[34.1.2 Event-Driven vs Scheduled Worker Execution](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-2-event-driven-vs-scheduled-worker-execution)** — triggers (webhook, queue, cron), durability (retry with backoff, dead-letter queues, idempotency), and why the Inbox Triage worker is event-driven while AR Nudge is scheduled.
+
+## Why Design Comes Before Building
+
+The failure mode of AI workers is never "the model was too weak" — it is "nobody decided what the worker may not do." Boundaries are cheap on paper and ruinous in production. A one-page spec reviewed by the business owner (not just engineering) is the cheapest governance artifact you will ever write.
+
+## Section Exit Criteria
+
+- You can write a complete worker spec for Inbox Triage, AR Nudge and Research Brief from memory of the template above.
+- You can defend, for each worker, why it is event-driven vs scheduled — and what it does when its dependency is down.
+- You can implement a kill-switch that a non-engineer can operate.
+
+Prerequisites: Chapter 33 (n8n) and Part 05 (operations mindset). Verified November 2026.
+
+</BookNodePage>

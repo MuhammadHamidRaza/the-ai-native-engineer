@@ -1,0 +1,190 @@
+---
+id: "13-2-4-connecting-databases-postgresql-and-mongodb"
+title: "13.2.4 Connecting Databases: PostgreSQL and MongoDB"
+sidebar_label: "13.2.4 Connecting Databases"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-2-building-apis-with-express/13-2-4-connecting-databases-postgresql-and-mongodb"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s2-t4">
+
+A backend without a database is a calculator. This lesson connects your Express API to **both** ShopCore databases — PostgreSQL via `pg` (the driver every serious Node+Postgres app uses) and MongoDB via the official `mongodb` driver — with the production patterns: connection pools, `.env` files, and honest error handling.
+
+## 1. Why Pooling (Not Connect-Per-Request)
+
+Opening a Postgres connection spawns an OS process and network handshake (~10–30 ms). Per request at 100 rps that's 1–3 *seconds* of pure connection overhead. A **pool** keeps 10–20 connections open and reuses them. `pg` gives you `Pool`; never `new Client(...)` per route.
+
+## 2. Setup — Dependencies and Environment
+
+Inside `shopcore-api`:
+
+```bash
+npm install pg dotenv
+```
+
+Create `.env` in the project root (and confirm it's gitignored — check with `git check-ignore .env`):
+
+```text
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/shopcore
+MONGODB_URI=mongodb://127.0.0.1:27017
+PORT=4000
+```
+
+Your real password goes here. **Never** in source code, never in git.
+
+## 3. The Postgres Pool — `src/db/pool.js`
+
+```javascript
+import 'dotenv/config';
+import pg from 'pg';
+
+export const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 10,                  // open connections at most
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected pooled client error', err);
+  process.exit(-1);        // fail loudly at boot, not silently per request
+});
+
+// One-off helper: prove it works at startup
+export async function pingPostgres() {
+  const { rows } = await pool.query('SELECT 1 AS ok');
+  return rows[0].ok === 1;
+}
+```
+
+**Sanity test** — in `src/server.js` temporarily add:
+
+```javascript
+import { pingPostgres } from './db/pool.js';
+if (await pingPostgres().catch(() => false)) {
+  console.log('PostgreSQL: connected');
+} else {
+  console.error('PostgreSQL: NOT reachable — check DATABASE_URL');
+  process.exit(1);
+}
+```
+
+`npm run dev` → expect `PostgreSQL: connected`. Delete the block (or move it behind a `--check-db` flag) once proven — apps shouldn't fail open *or* crash per request for this pattern.
+
+## 4. The Mongo Client — `src/db/mongo.js`
+
+```javascript
+import 'dotenv/config';
+import { MongoClient } from 'mongodb';
+
+export const mongoClient = new MongoClient(process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017');
+export const mongoDb = mongoClient.db('shopcore_docs');
+
+// Connect once at startup
+await mongoClient.connect();
+console.log('MongoDB: connected');
+```
+
+`await` at module top level (ES modules support it) — connect before the listener starts, reuse the one client everywhere. Never open/close per request.
+
+## 5. Parameterized Queries — The Only Way
+
+```javascript
+// src/db/products.js
+import { pool } from './pool.js';
+
+export async function listProducts() {
+  const { rows } = await pool.query(
+    'SELECT id, sku, title, price_cents, stock_qty FROM products ORDER BY id'
+  );
+  return rows;
+}
+
+export async function getProduct(id) {
+  const { rows } = await pool.query(
+    'SELECT * FROM products WHERE id = $1',   // $1 placeholder — NEVER string concat
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
+export async function createProduct({ category_id, sku, title, price_cents, stock_qty }) {
+  const { rows } = await pool.query(
+    `INSERT INTO products (category_id, sku, title, price_cents, stock_qty)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [category_id, sku, title, price_cents, stock_qty]
+  );
+  return rows[0];
+}
+```
+
+`$1, $2…` placeholders are sent separately from data — SQL injection into these values is **impossible**. This is non-negotiable, forever:
+
+```javascript
+// NEVER:
+pool.query(`SELECT * FROM products WHERE id = '${req.params.id}'`)   // injection hole
+```
+
+## 6. Querying MongoDB from the App
+
+```javascript
+import { mongoDb } from './db/mongo.js';
+
+export async function recentOrdersFor(userId, limit = 10) {
+  return mongoDb.collection('orders')
+    .find({ userId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .toArray();
+}
+```
+
+Same rule: filters are objects, never string-built.
+
+## 7. Wiring It Into a Route (Preview of 13.2.5)
+
+```javascript
+import { listProducts } from './db/products.js';
+
+app.get('/api/v1/products', async (_req, res, next) => {
+  try {
+    const products = await listProducts();
+    res.json(products);
+  } catch (err) {
+    next(err);    // forwards to your error boundary (13.2.3)
+  }
+});
+```
+
+In Express 5, a rejected promise in an async handler **automatically** reaches the error boundary — try/catch is belt and braces.
+
+## 8. Troubleshooting
+
+| Symptom | Fix |
+| :-- | :-- |
+| `password authentication failed` | `DATABASE_URL` wrong/URL-encoded wrong/user lacks rights — connect with `psql "$DATABASE_URL"` to test the exact string |
+| `ECONNREFUSED 127.0.0.1:5432` | Server not running — start service (12.1.1) or check `-h`/port; for Docker Postgres: `docker ps` |
+| `SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string` | `DATABASE_URL` undefined — `.env` missing, or `dotenv/config` not imported first |
+| `MongoServerError: ECONNREFUSED 27017` | `mongod` service down — 12.4.1 step 6 |
+| Works locally, fails after deploy | Env vars not set on server; SSL `sslmode=require` missing for hosted DB |
+| Pool exhausted / hung requests | Queries not awaited/returned, or `pool.query` without `release` of checked-out clients — use `pool.query` (auto-release) |
+| `.env` committed | Rotate the password immediately; `git rm --cached .env`; fix history |
+
+## 9. Practice
+
+**Guided exercise.** Wire up `pool.js`, run the health check against Postgres, then `GET /api/v1/products` returning the 3 seeded products as JSON. Verify with `curl`.
+
+**Independent exercise.** Connect MongoDB (`db/mongo.js`) and add `GET /api/v1/orders/recent` (hardcode `userId = 'ada@example.com'`) returning your Atlas/local docs as JSON.
+
+**Challenge.** Enforce a startup order: Postgres ping → Mongo connect → `app.listen`. If any step fails, print a clear message and `process.exit(1)` — deliver a one-command `npm run dev` that always proves DB health.
+
+**Assessment checklist**
+
+- [ ] I know why pools exist and never open connections per request.
+- [ ] `.env` holds my connection strings and is gitignored.
+- [ ] All queries use `$1..$n` placeholders — never string interpolation.
+- [ ] I verified Postgres and Mongo connectivity before writing routes.
+- [ ] My `DATABASE_URL` string works in `psql` directly — the string is the contract.
+
+</BookNodePage>

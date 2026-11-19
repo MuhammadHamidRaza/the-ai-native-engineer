@@ -1,0 +1,34 @@
+---
+id: "index"
+title: "27.3 Verification & Ownership"
+sidebar_label: "27.3 Verification & Ownership"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-3-verification-review-and-ownership"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s3">
+
+**27.3 Verification & Ownership** is the section that separates professional agentic engineering from demo-driven development. Agents produce diffs faster than you can read; this section teaches you to read them anyway, to prove with tests what review cannot see, and to own the result in ways no tool can delegate.
+
+## Topics in 27.3
+
+- **27.3.1 Auditing AI-Generated Diffs and Edge Cases** — the 6-layer diff audit (parse, understand, threat-model, verify claims, edge cases, ownership); the reliable "agent tells" (renamed vars, confident comments, swallowed errors, mocked-away behavior, dependency churn, weakened tests, hallucinated imports, date-math off-by-ones); a ~120-line worked abandoned-cart diff seeded with 9 defects, found and triaged; block/fix/nit/accept rubric.
+- **27.3.2 Tests as Guardrails for Rapid Iteration** — red-green-refactor with agents; property-based tests to defeat pattern-matching; mutation testing to catch test weakening; when deleting a test is honest; keeping agent runbooks green; running the suite twice and diffing the result.
+- **27.3.3 AI-Assisted Engineering: Production Discipline** — ownership never transfers; disclosure norms; contracts, IP clauses and client data; credential hygiene; model upgrades as re-qualification events; measuring time-to-merged-value, not lines; sustainable pace for reviewers.
+
+## What You Will Be Able to Do
+
+- Review an agent diff line-by-line in minutes, not hours, with a repeatable method.
+- Build a test harness that catches the failure modes agents actually exhibit.
+- Ship AI-assisted code you can defend in a postmortem, to a client, and to yourself.
+
+## How to Work Through 27.3
+
+27.3.1 and 27.3.2 feed each other: audit tells you *what* broke, tests ensure it *stays* broken. Do 27.3.1 with a red pen on the worked diff before reading the answer key; then build the red-first test harness in 27.3.2 on the same example; 27.3.3 is the closure — read it after your first merged agent PR, not before, or it will read as cliches. The three lessons also make a complete answer to "how do we know the agent's work is safe to merge?" — pair the audit (human), the harness (machine) and the ownership discipline (you); any one alone is a story you tell yourself.
+
+**You will finish this section with:** a personal review checklist for agent diffs, a mutation-tested module, a disclosure one-liner for your PRs, and a defensible answer to "would you merge this?"
+
+**Prerequisites:** 27.1 and 27.2. This section assumes you are already generating diffs and want to stop cargo-culting them into main.
+
+</BookNodePage>

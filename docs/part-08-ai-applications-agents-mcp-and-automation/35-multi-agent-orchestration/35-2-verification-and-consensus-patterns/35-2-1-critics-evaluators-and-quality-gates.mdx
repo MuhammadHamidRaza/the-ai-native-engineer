@@ -1,0 +1,118 @@
+---
+id: "35-2-1-critics-evaluators-and-quality-gates"
+title: "35.2.1 Critics, Evaluators and Quality Gates"
+sidebar_label: "35.2.1 Critics, Evaluators and Quality Gates"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns/35-2-1-critics-evaluators-and-quality-gates"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35-s2-t1">
+
+Multi-agent verification works when the checker is genuinely independent — different evidence, different incentives, or a deterministic test. It fails when the checker is the same model grading its own homework. This lesson builds both the good version and the trap version.
+
+## 1. Three Kinds of Checker
+
+| Checker | Sees | Catches | Misses |
+| :-- | :-- | :-- | :-- |
+| **LLM critic** (different model ideally) | Output + rubric | Tone, structure, missing sections, policy violations | Fabricated facts it can't verify |
+| **Deterministic verifier** | Output artifact | Schema violations, broken code (tests), bad math, missing citations | Plausible-but-wrong prose |
+| **Retrieval/grounding check** | Output claims + corpus | Claims not supported by cited sources | Source misinterpretation |
+| **Human** | Everything + context | Everything, slowly | Scale |
+
+Order of operations: deterministic first (free, instant), retrieval second, LLM critic third, human only at irreversible edges.
+
+Judge agreement math, quickly: if your 2-of-3 panel votes, the Cohen's-kappa vs human labels should be ≥ 0.6 before you trust the panel; below that you are shipping on vibes. Measure on 30–50 labeled items, not on the training vibes of one hero facilitator.
+
+## 2. The Generate → Evaluate → Regenerate Loop
+
+```text
+ draft = generate(task)
+ for attempt in 1..3:
+   verdict = evaluate(draft, rubric)          # structured: {pass: bool, scores, fixes[]}
+   if verdict.pass: return publish(draft)
+   draft = regenerate(task, draft, verdict)   # feedback injected
+ raise BudgetExhausted / route_to_human()
+```
+
+Non-negotiables: **max 3 iterations** (past that, the model re-litigates the same points — diminishing returns are real), **stop on budget**, **escalate on cap** instead of publishing on iteration 3's output blindly. Log every iteration's scores — the trend (fix rate per pass) is your quality signal.
+
+Rubric for the Research Brief draft (critic gets the draft, the brief spec, and the source list):
+
+```json
+{ "criteria": [
+  { "id": "citations", "weight": 3, "desc": "Every claim has url + retrieved_at; UNVERIFIED labeled" },
+  { "id": "coverage", "weight": 2, "desc": "All 6 competitors, all 4 topics" },
+  { "id": "no_speculation", "weight": 2, "desc": "No unsourced forward-looking claims" },
+  { "id": "tone", "weight": 1, "desc": "Internal memo tone; no marketing language" } ],
+  "pass_threshold": 0.8 }
+```
+
+And the loop, as runnable TypeScript:
+
+```ts
+for (let attempt = 1; attempt <= 3; attempt++) {
+  const verdict = await evaluate(draft, rubric);     // {pass, scores, fixes[]}
+  await logWorkerRun({ stage: 'critic', attempt, ...verdict });
+  if (verdict.pass) return publish(draft);
+  if (attempt === 3) return escalate('draft_cap', { draft, verdict });
+  draft = await regenerate(task, draft, verdict.fixes);
+}
+```
+
+Two disciplines separate working loops from theater: the critic receives **the sources**, not just the draft (claim-by-claim checking against evidence), and the regenerator receives a **diff-shaped instruction** ("fix these three items: cite §6.2, drop the Q3 speculation, warm the tone") not a vibes prompt ("make it better").
+
+## 3. Consensus — 2-of-3 With Heterogeneous Models
+
+Consensus pays on **subjective judge-work** ("is this reply empathetic enough?", "is this research brief decision-useful?"), not on verifiable facts (use a test, not a vote).
+
+- Pick **different model families** (e.g., GPT-class + Claude-class + Gemini-class) — same family shares blind spots.
+- Each votes `pass|fail` with a one-line reason; **2-of-3 passes** publishes; else route to human with the dissent attached.
+- Ties are broken by the *deterministic* leg if one exists, else by escalation — never by flipping a coin or re-asking until agreement appears (that's agreement theater, see 35.2.2).
+- Cost: 3 judge calls + reason tokens; budget it or it will quietly double your bill.
+
+## 4. Quality Gates Before Irreversible Actions
+
+Place gates where rollback is impossible: **before send, before pay, before publish, before delete.**
+
+```text
+worker output --> Gate 1: deterministic (schema, policy regex, amount ceilings)
+              --> Gate 2: grounding/citation check (RAG claims)
+              --> Gate 3: single LLM risk check (irreversibility classifier)
+              --> Gate 4: human approval (Slack button) if risk or amount high
+              --> act
+```
+
+Gates compose; each is fail-closed; each logs to `worker_runs` with `gate_result`. A gate you can't see firing is decorative.
+
+## 5. The Rubber-Stamp Failure (and Cures)
+
+Critics default to agreement when: same model graded the draft, the rubric is vague ("is it good?"), or the critic lacks the sources. Cures, in order: (1) different model + different prompt persona; (2) concrete binary rubric with evidence quotes required; (3) inject the sources, force claim-by-claim checking; (4) measure critic precision/recall against a labeled set — if your critic passes everything, it's a rubber stamp, not a gate.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Loop never converges | Feedback vague / model re-argues | Cap at 3; require "fix list" diffs not prose critique |
+| Critic cites wrong section | Long context, no anchors | Pass rubric items with quoted anchors; RAG the rubric |
+| 2-of-3 always passes garbage | Correlated judges | Heterogeneous models; measure judge agreement on labeled fails |
+| Gates slow workflow | Every gate calls LLM | Deterministic gates free; reserve LLM gates for risk edge |
+| Iteration-3 output published silently | Missing cap handler | On cap: escalate, never publish |
+
+## 7. Practice
+
+**Guided.** Build the Research Brief loop: draft with Chain A, critique with a different model + the 4-criterion rubric; log per-iteration scores; stop at 3 or pass ≥ 0.8.
+
+**Independent.** Implement Gate 1 deterministic validation for the AR Nudge (amount ceiling, dispute flag, touch count) as a pre-send n8n IF chain; attempt a policy-violating send and confirm it's blocked with a logged row.
+
+**Challenge.** Labeled critic audit: take 30 drafts, label them pass/fail by hand, measure your critic's agreement. If agreement is below ~0.8, iterate the rubric before trusting the loop in production.
+
+**Checklist**
+
+- [ ] Deterministic checks run before any LLM critic
+- [ ] Generate-evaluate loop has iteration cap (3), budget stop, and escalate-on-cap
+- [ ] Consensus (2-of-3) is reserved for subjective work and uses heterogeneous models
+- [ ] Every gate is fail-closed and logged
+- [ ] My critic is measured against labels, not trusted by default
+
+</BookNodePage>

@@ -1,0 +1,115 @@
+---
+id: "04-3-1-event-loop-microtasks-and-timers"
+title: "04.3.1 Event Loop, Microtasks and Timers"
+sidebar_label: "04.3.1 Event Loop, Microtasks and Timers"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules/04-3-1-event-loop-microtasks-and-timers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s3-t1">
+
+If JavaScript has only **one call stack** (`04.1.2`), how can a Node.js server accept hundreds of HTTP requests or a browser smoothly animate while fetching JSON? Because **JavaScript delegates waiting to the host environment** (libuv in Node.js, C++ Web APIs in browsers) and uses the **Event Loop** to run callbacks only when the call stack empties.
+
+## 1. Plain-English Intuition: One Chef, Asynchronous Ovens
+
+A single chef (`Call Stack`) does not stand staring into an oven for 25 minutes until bread bakes. The chef puts the dough in the oven (`Host API`: timer, network socket, file read), sets an alarm, and immediately keeps chopping vegetables (`synchronous JS`). Only when the current task finishes and the chef's hands are free does the chef pull the finished tray (`callback`).
+
+## 2. The Architecture: Call Stack, Microtasks, and Macrotasks
+
+```text
++-----------------------+       +----------------------------------+
+|     CALL STACK        |       |   HOST APIs (Timers, Network)    |
+|  (Runs 1 JS task at   | ----> |  (libuv / Browser runs I/O off   |
+|       a time)         |       |   the main JS thread)            |
++-----------------------+       +----------------+-----------------+
+           ^                                     |
+           |  4. Only when Call Stack empty:     v
+           |     a) Drain ALL Microtasks first!  [Macrotask Queue:
+           |     b) Pick 1 Macrotask next.        setTimeout, I/O]
+           |
+  [Microtask Queue: Promise.then, queueMicrotask]
+```
+
+**Strict Ordering Rule:**
+1. Run synchronous top-level code until the Call Stack is empty.
+2. Drain the **entire Microtask Queue** (`Promise.then`, `await` continuations, `queueMicrotask`)—including any *new* microtasks queued while draining!
+3. Run **one** task from the Macrotask Queue (`setTimeout`, `setInterval`, network/UI events).
+4. In browsers, render paint/layout updates if needed, then repeat.
+
+## 3. Runnable Proof: Predict the Order First
+
+Write `event_loop.js` and predict all 5 lines before running `node event_loop.js`:
+
+```javascript
+// event_loop.js
+console.log("1. sync start");
+
+setTimeout(() => {
+  console.log("2. setTimeout (0ms macrotask)");
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log("3. Promise microtask A");
+  Promise.resolve().then(() => console.log("4. nested Promise microtask B"));
+});
+
+console.log("5. sync end");
+```
+
+**Expected Output:**
+
+```text
+1. sync start
+5. sync end
+3. Promise microtask A
+4. nested Promise microtask B
+2. setTimeout (0ms macrotask)
+```
+
+Notice why line 4 prints **before** line 2: even though `setTimeout(..., 0)` was registered earlier, the Event Loop drains *every* microtask—including newly added nested microtasks—before starting the next macrotask!
+
+## 4. Blocking the Event Loop (and How to Avoid It)
+
+Because your JS code runs on one stack, **a long synchronous loop freezes everything**: no timers fire, no HTTP requests answer, and browser buttons stop responding:
+
+```javascript
+// BAD: blocks all other work for seconds
+// const end = Date.now() + 2000; while (Date.now() < end) {}
+
+// GOOD: non-blocking delay using Promise + setTimeout
+export function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("Aborted"));
+      return;
+    }
+    const id = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(id);
+        reject(signal.reason ?? new Error("Aborted"));
+      },
+      { once: true }
+    );
+  });
+}
+```
+
+## 5. `setTimeout` Minimum Delays & `clearTimeout` Leaks
+
+`setTimeout(fn, 100)` guarantees a **minimum** wait of 100ms, *not* exact 100ms execution—if synchronous code runs for 400ms on the call stack, the timer waits 400ms+. Always store timer IDs (`clearTimeout(id)` / `clearInterval(id)`) when components unmount or requests cancel so timers do not keep Node processes alive or leak browser memory.
+
+## 6. Practice Exercises
+
+1. Write a script mixing two `setTimeout(..., 0)` callbacks, two `Promise.resolve().then(...)` chains, and synchronous `console.log` statements, predict the exact output order, and verify with `node`.
+2. Use `AbortController` with the `delay` helper above to cancel a 5-second wait after 150ms and verify the process exits cleanly right at 150ms.
+
+## Mastery Checklist
+
+- [ ] Can trace exact execution order across sync code, Promise microtasks, and `setTimeout`.
+- [ ] Understands why a CPU-heavy synchronous loop freezes both UI rendering and Node servers.
+- [ ] Cancels timers cleanly with `clearTimeout` or `AbortSignal`.
+
+</BookNodePage>

@@ -1,0 +1,161 @@
+---
+id: "index"
+title: "02. Critical Thinking & Problem Solving"
+sidebar_label: "02. Critical Thinking & Problem Solving"
+slug: "/part-01-foundations/02-critical-thinking-and-problem-solving"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-02">
+
+A junior developer measures progress by how fast characters appear inside an editor; a seasoned engineer measures progress by how many subtle failures never reach production in the first place. Now that AI coding models synthesize syntax faster than humans can read it, raw typing speed approaches zero competitive value. **Engineering judgment—the ability to dissect fuzzy human requests into crisp boundaries, reason from first principles, trace program state accurately in your head, and catch subtle defects hidden inside fluent AI code—is the defining skill of the AI-Native Engineer.**
+
+**Chapter 02 (`8 Focused Learning Hours`)** trains the cognitive toolkit every engineer relies on before touching a keyboard and throughout every design review, debugging session, and AI interaction across Parts 02–10.
+
+## Why Problem Solving Precedes Programming Languages
+
+Notice an uncomfortable truth observable across software teams worldwide: two developers using the exact same React framework, Python runtime, and AI coding assistant can produce wildly different outcomes on the same feature ticket.
+
+- **Engineer A** reads a vague ticket (*"Users need CSV export of monthly invoices"*), immediately prompts an AI tool for an endpoint, copies 140 lines into the codebase, and notices green happy-path rendering—while unknowingly loading 500,000 rows into server RAM, skipping tenant workspace filtering (`workspace_id`), crashing on commas inside customer names (`CSV injection` / quoting bugs), and emitting wrong timezone dates around midnight UTC.
+- **Engineer B** pauses for ten minutes with scratch paper *before* generating one line of code: decomposes data ownership, payload scale, formatting invariants, and failure states; reads specifications carefully; traces boundary inputs (`0` rows, `100,000` rows, special characters, unauthorized tenant IDs); and audits any generated implementation against those explicit verification criteria.
+
+Languages and frameworks change every few years; **structured analytical reasoning compounds for an entire career.**
+
+## Chapter 02 Architecture (`8 Hours Total`)
+
+```text
++-----------------------------------------------------------------------------+
+|           CHAPTER 02 — CRITICAL THINKING & PROBLEM SOLVING (8 HOURS)        |
++-----------------------------------------------------------------------------+
+|                                                                             |
+|  [02.1 Analytical Thinking for Engineers]                                   |
+|   - Decompose vague business wishes into bounded sub-problems               |
+|   - Separate fundamental invariants (first principles) from surface habits  |
+|   - Map hard constraints, trade-offs, and root causes (not symptoms)        |
+|                                      |                                      |
+|                                      v                                      |
+|  [02.2 Algorithmic & Structured Logic]                                      |
+|   - Model explicit state machines, branching control flow & edge cases      |
+|   - Execute dry-run mental trace tables across loops & async boundaries     |
+|   - Extract exact preconditions/postconditions from specs before coding     |
+|                                      |                                      |
+|                                      v                                      |
+|  [02.3 Engineering Judgment in the AI Era]                                  |
+|   - Audit AI-generated implementations against specs & failure inputs       |
+|   - Spot hidden assumptions (timezones, nullability, concurrency, scale)    |
+|   - Practice systematic verification habits over blind prompt thrashing     |
++-----------------------------------------------------------------------------+
+```
+
+## Subchapter Breakdown & Learning Scope
+
+| Subchapter | Topics Inside | Core Reasoning Disciplines Practiced |
+| :--- | :--- | :--- |
+| **[02.1 Analytical Thinking for Engineers](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-1-analytical-thinking-for-engineers)** | `02.1.1` Decomposing Ambiguous Problems<br/>`02.1.2` First-Principles Reasoning<br/>`02.1.3` Constraints, Trade-Offs & Root Causes | Breaking broad stakeholder wishes into crisp inputs/outputs/boundaries; deriving design limits from latency, memory, and consistency truths; distinguishing true root causes from surface symptoms |
+| **[02.2 Algorithmic & Structured Logic](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-2-algorithmic-and-structured-logic)** | `02.2.1` State, Control Flow & Edge Cases<br/>`02.2.2` Mental Models and Flow Tracing<br/>`02.2.3` Reading Specifications Before Coding | Designing valid state transitions (`pending → processing → failed/done`), building variable trace tables on paper, enumerating off-by-one/empty/unicode boundaries, and writing acceptance specs before code |
+| **[02.3 Engineering Judgment in the AI Era](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-3-engineering-judgment-in-the-ai-era)** | `02.3.1` Evaluating Generated Solutions<br/>`02.3.2` Spotting Hidden Assumptions<br/>`02.3.3` Verification Habits & Mental Discipline | Auditing fluent AI outputs ruthlessly for silent trust gaps, subtle concurrency races, security boundary skips, stale APIs, and enforcing pre-commit proof checklists |
+
+## The Five Questions Strong Engineers Ask *Before* Writing Code
+
+Every nested lesson in Chapter 02 sharpens your reflex around five questions—apply them whether writing a 15-line Python helper in Part 03 or scoping a multi-agent workflow in Part 08:
+
+1. **What exact inputs arrive—and how ugly can real data get?** (`null`, empty arrays, duplicated webhook events, negative numbers, trailing whitespace, non-ASCII text, 50 MB files)
+2. **What state exists across time, and what transitions are illegal?** (Can a `cancelled` invoice transition straight to `paid`? What happens if two browser clicks submit simultaneously?)
+3. **What constraints cannot be negotiated?** (Latency budget `&lt; 300ms`, tenant isolation `workspace_id`, fixed RAM ceiling, external API rate limits, monetary integer precision)
+4. **What fails if an external dependency stalls, times out, or lies?** (Database temporarily unreachable, third-party webhook returns `502`, LLM emits malformed text despite prompt instructions)
+5. **How will I prove this actually works before showing anyone?** (Exact observable test cases covering both happy path and ugly failures)
+
+## How Chapter 02 Connects Directly to the FDE Mindset (`00.8`)
+
+Look back briefly at [Section 00.8 — FDE Mindset](/book/part-00-about-this-book/00-8-fde-mindset) (`Listen → Map → Measure → Slice → Build → Verify → Handover`). Chapter 02 is the **micro-engineering engine** behind **Listen, Map, Slice, and Verify**:
+
+- **Problem Decomposition (`02.1.1`)** turns chaotic customer interviews (`Listen`) into unambiguous system boundaries (`Map`) and minimal vertical deliverables (`Slice`).
+- **State & Edge-Case Modeling (`02.2.1`)** prevents embarrassing Slice 1 bugs where half-processed workflows corrupt database state.
+- **Evaluating AI Outputs & Hidden Assumptions (`02.3.1–02.3.2`)** ensures rapid AI-assisted prototyping never compromises production reliability (`Build` & `Verify`).
+
+## Worked Example: Applying Chapter 02 Thinking in Three Minutes
+
+Imagine a teammate asks you to review this seemingly clean Python discount calculator generated by an AI assistant:
+
+```python
+def apply_promo(price, discount_pct, is_vip):
+    if is_vip:
+        price = price * 0.9
+    return round(price - (price * discount_pct / 100), 2)
+```
+
+Applying **Chapter 02 analytical tools** exposes **five silent defects** in sixty seconds without running a debugger:
+1. **Ambiguous business rule (`02.1.1`):** Does the 10% VIP discount stack *multiplicatively* or *additively* with `discount_pct`, or should VIP apply only when no promo code exists?
+2. **Floating-point currency (`02.1.2` + `01.1.4`):** Multiplying float `price * 0.9` introduces IEEE 754 binary rounding drift on financial values instead of using integer `cents` (`Decimal` or `price_cents`).
+3. **Missing boundary guards (`02.2.1`):** Passing `discount_pct = 150` or `price = -20` silently returns a *negative price*—turning checkout into a negative refund bug!
+4. **Hidden type assumption (`02.3.2`):** If upstream JSON passes `discount_pct` as a string `"15"` or `None`, division throws `TypeError` mid-checkout.
+5. **Untestable acceptance spec (`02.2.3`):** Nobody wrote explicit rounding tie-breaker rules (`round half to even` vs. `round half up`) before shipping.
+
+Look how much production pain three minutes of structured reasoning prevents!
+
+## The Seven-Step Problem-Solving Protocol Before Coding
+
+Borrowing from George Pólya's classic mathematical problem-solving structure and real forward-deployed field engineering (`00.8`), apply this disciplined **7-step protocol** whenever you face a non-trivial bug, ticket, or system design prompt across Parts 02–10:
+
+| Step | Action on Scratchpad (Before Opening AI or Coding) | Concrete Question You Write Down |
+| :---: | :--- | :--- |
+| **1** | **Restate the actual outcome desired** | *"What observable human or business problem changes once this ships—not just what endpoint exists?"* |
+| **2** | **Define exact input & output shapes** | *"What types, units (`cents` vs. dollars, `UTC` timestamps), bounds, and return errors exist?"* |
+| **3** | **List invariants that must NEVER break** | *"What conditions remain true on every execution (`balance >= 0`, `tenant_id` always scoped, idempotent retries)?"* |
+| **4** | **Enumerate ugly edge cases deliberately** | *"What happens on `0` items, `1` item, duplicate submissions, `null`, malformed UTF-8, and timeouts?"* |
+| **5** | **Trace one small example manually on paper** | *"Step line-by-line through `[10, 10, 20]` and `[]` with pencil before trusting loop boundaries."* |
+| **6** | **Implement or guide AI against that contract** | *"Write (or prompt) strictly against those invariants and reject speculative extra complexity."* |
+| **7** | **Verify with adversarial tests** | *"Attempt to break the solution intentionally using every edge case identified in Step 4."* |
+
+## Four Cognitive Failure Patterns That Stall Developing Engineers
+
+Even bright learners lose entire afternoons when one of four predictable reasoning traps hijacks their workflow:
+
+1. **Premature Implementation Reflex:** Jumping straight into `app.tsx` or prompting an LLM after reading only the first sentence of a request—resulting in three wasted rewrites once hidden tenant, sorting, or pagination requirements surface mid-build.
+2. **Happy-Path Tunnel Vision:** Testing exclusively with clean inputs (`"Alice"`, `amount: 100`, stable Wi-Fi) and assuming production users will behave politely. Real-world inputs include double clicks, expired JWTs, network packet drops, and trailing spaces.
+3. **Symptom Patching Over Root-Cause Isolation (`02.1.3`):** Adding a random `setTimeout(..., 500)` or wrapping a crashing block in an empty `try/catch` to silence an error instead of proving *why* state arrived in an illegal configuration.
+4. **Authority Deferral to Fluent AI Prose (`02.3.1`):** Accepting generated code solely because variable names look idiomatic, type annotations compile, and the AI responds confidently. Fluency measures statistical likelihood of phrasing—never runtime correctness for your exact specification!
+
+## How Chapter 02 Maps Into Your Remaining 638 Hours
+
+- **React & Next.js (`Part 02`):** Clean state decomposition (`loading / empty / error / ready`) prevents impossible UI flag combinations (`isLoading && hasError`).
+- **Python & FastAPI (`Part 03–04`):** Specification-first Pydantic schemas (`02.2.3`) catch malformed payloads at the API boundary before corrupting database state.
+- **Distributed Workers & Cloud (`Part 05–06`):** First-principles bottleneck analysis (`02.1.2`) and hidden-assumption audits (`02.3.2`) stop double-charged webhooks, race conditions, and memory spikes.
+- **AI & Agentic Systems (`Part 07–08`):** Verification discipline (`02.3.3`) becomes mandatory when deterministic application pipelines call probabilistic LLMs whose tool arguments and JSON outputs can drift without strict schemas and guardrails.
+
+## Chapter 02 Self-Verification Gate (`Complete Before Chapter 03`)
+
+Do not move on to **Chapter 03** until you can demonstrate these four habits reliably without coaching:
+
+1. Given an ambiguous two-sentence feature request, decompose it cleanly into **core actors, explicit inputs/outputs, hard constraints, non-goals, and five edge cases** before writing code (`02.1`).
+2. Draw a clean state diagram and **manually trace variable values step-by-step across every iteration** of an unfamiliar function containing conditional branches and boundary indices (`02.2`).
+3. Spot at least three hidden assumptions inside an AI-generated helper covering **nullability, units/timezones, concurrency, or silent error swallowing** (`02.3.2`).
+4. Refuse to mark any task complete until at least **two failure-case checks** run and pass alongside the happy path (`02.3.3`).
+
+## Study Advice for Chapter 02 (`8 Hours`)
+
+- **Do not treat Chapter 02 as passive reading:** Keep physical paper or a plain Markdown scratchpad beside your screen (`02.2.2` trace tables and `02.1.1` decomposition trees work far better when sketched by hand before typing).
+- **Inspect every defect walkthrough before scrolling to the fix:** Pause for 60–90 seconds on every diagnostic snippet and list every failure mode you spot independently before comparing with the written audit.
+
+## Quick Contrast: Raw Ticket vs. Chapter 02 Engineered Spec Sheet
+
+Keep this concrete transformation beside your desk whenever translating user wishes or AI prompts into reliable software:
+
+| Dimension | Raw Unengineered Ticket | Chapter 02 Analytical Spec Sheet |
+| :--- | :--- | :--- |
+| **Input Scope** | *"Add file upload for receipts."* | Accepted MIME types (`PDF/PNG/JPEG`), `<= 10 MB`, UTF-8 filenames sanitized, max 5 files per batch |
+| **Error Behavior** | Unspecified (*just show message*) | HTTP `413` on oversized file, `415` on unsupported MIME, `422` structured field errors—zero silent drops |
+| **Idempotency & Concurrency** | Unspecified | Client upload button disables during transfer; server checks SHA-256 hash + `idempotency_key` before writing DB row |
+| **Security & Tenant Isolation** | Unspecified (*assume current user*) | Verify authenticated session server-side, derive `workspace_id` strictly from session (`never req.body`), sanitize downloaded filenames (`02.3.1`) |
+| **Verification Proof** | *"Upload one sample PDF locally."* | Pass valid PDF + oversized `12 MB` PDF + fake `.exe` renamed `.pdf` + cross-tenant `403` + duplicate retry check |
+
+## Official Primary References
+
+- [George Pólya — *How to Solve It* Summary & Problem-Solving Framework (Stanford / Mathematical Reasoning)](https://en.wikipedia.org/wiki/How_to_Solve_It)
+- [Martin Fowler — Specifications & Evolutionary Architecture (`martinfowler.com`)](https://martinfowler.com/architecture/)
+- [Google Engineering Practices — Code Review Developer Guide (`google.github.io/eng-practices`)](https://google.github.io/eng-practices/review/reviewer/)
+
+**Begin Subchapter 02.1:** [02.1 Analytical Thinking for Engineers](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-1-analytical-thinking-for-engineers)
+
+</BookNodePage>

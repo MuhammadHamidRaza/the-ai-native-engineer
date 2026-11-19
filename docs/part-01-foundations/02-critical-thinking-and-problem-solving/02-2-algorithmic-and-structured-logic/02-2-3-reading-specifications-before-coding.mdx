@@ -1,0 +1,163 @@
+---
+id: "02-2-3-reading-specifications-before-coding"
+title: "02.2.3 Reading Specifications Before Coding"
+sidebar_label: "02.2.3 Reading Specifications Before Coding"
+slug: "/part-01-foundations/02-critical-thinking-and-problem-solving/02-2-algorithmic-and-structured-logic/02-2-3-reading-specifications-before-coding"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-02-s2-t3">
+
+Picture an engineer spending six solid hours building a clean rate-limiter middleware or invoice parser, opening a Pull Request proudly—only for a reviewer or product lead to comment in thirty seconds: *"Wait—the ticket says per-workspace rate limits (`workspace_id`), not per-user IP; and it explicitly states expired coupons must return HTTP `422` with `COUPON_EXPIRED`, not silently fall back to $0 discount!"* Six hours of polished TypeScript thrown straight in the trash—not from weak coding skill, **but because they skimmed the specification hastily and filled in the gaps with imagination.**
+
+In the AI era, skipping careful specification reading becomes **even more dangerous (`02.3`)**: if *you* barely read the ticket or API docs before prompting an AI coding agent, the model eagerly generates 300 lines matching your sloppy summary—cementing wrong assumptions cleanly across ten files before anyone notices! **Reading Specifications Before Coding** transforms tickets, RFCs, OpenAPI contracts, and messy customer requirements into airtight **Preconditions, Postconditions, Invariants, and Testable Acceptance Criteria** *before* implementation begins.
+
+## 1. Plain-English Intuition: Surveying Blueprints Before Pouring Concrete
+
+Two construction teams receive a 2-page architectural blueprint:
+- **Team A** glances at the cover sketch (*"Two-story brick office, got it!"*), starts digging trenches immediately, and discovers halfway through week two that note #7 on page 2 specified a reinforced elevator shaft right where they poured plumbing pipes!
+- **Team B** spends forty minutes with a highlighter marking every exact **load rating, setback rule, electrical conduit note, and unanswered ambiguity**, calls the structural architect on the two missing dimensions, and pours once cleanly.
+
+Software specifications—whether Jira tickets, GitHub issues, client discovery notes (`00.8.1`), OpenAPI schemas, or official library reference pages—contain hidden tripwires buried inside single words (`"at most"`, `"inclusive"`, `"idempotent"`, `"strict UTC"`, `"per workspace"`). Slow reading upfront saves days of rework later.
+
+## 2. The Five-Pass Specification Audit (`P.I.C.E.T.`)
+
+Train yourself to run every ticket, API reference, or feature prompt through five crisp reading passes before writing production code:
+
+| Reading Pass | What You Highlight Actively | Concrete Questions You Answer |
+| :--- | :--- | :--- |
+| **1. Actors & Ownership** | Nouns & Roles (`Admin`, `Member`, `Webhook`, `Background Worker`) | Who initiates each action? Whose data can they read/mutate (`tenant_id` / `workspace_id`)? |
+| **2. Inputs & Exact Types** | Fields, Formats, Units (`cents` vs. `dollars`, `UTC ISO-8601`, `MB` limits) | What exact schema enters? Which fields are optional/nullable vs. strictly required? |
+| **3. Preconditions & Error Mapping** | Conditions that **must fail** cleanly (`expired`, `duplicate`, `unauthorized`) | When inputs break rules, do we return `401`, `403`, `409`, `422`, or ignore safely? |
+| **4. Postconditions & Side Effects** | State mutations, DB writes, notifications, return shapes | What exact DB rows, HTTP payloads, or audit logs *must* exist after success? |
+| **5. Unstated Ambiguities & Contradictions** | Silent gaps, conflicting rules, magic words (`"immediately"`, `"safely"`, `"all"`) | What two contradictory interpretations could two smart teammates make right now? Resolve **before** coding! |
+
+## 3. Concrete Walkthrough: Dissecting a Realistic Messy Feature Spec
+
+Read this short, totally normal product requirement ticket carefully—and notice how many traps lurk inside **65 ordinary words**:
+
+> **Ticket #418 — Bulk CSV Coupon Import**
+> *"Admins can upload a CSV of promo coupons (`code, discount_pct, expires_at`). Duplicate codes should be skipped cleanly without failing the batch, and expired dates must not be activated. Show a summary of imported vs. skipped rows after upload."*
+
+Run our **5-Pass `P.I.C.E.T.` Audit** right now (`watch how much hidden ambiguity jumps off the page!`):
+
+1. **Pass 1 (`Actors`):** Only `"Admins"`—does a regular Workspace Member get **`403 Forbidden`**? Is a coupon scoped per workspace or global across the whole platform?
+2. **Pass 2 (`Inputs & Units`):**
+   - Are coupon `code`s **case-insensitive** (`SAVE20` vs. `save20`)? Usually yes—otherwise users hit confusion! Trim whitespace too!
+   - What type is `discount_pct` (`1`–`100` integer, or floats like `12.5`? Can `discount_pct` be `0` or `> 100`? Reject `<= 0` or `> 100`!).
+   - What timezone governs `expires_at` (`2026-12-31` — end of day `23:59:59 UTC` or start `00:00:00`?) and invalid formats (`31/12/2026` vs. `ISO-8601`)?
+   - Maximum CSV file size (`2 MB`? `10,000` rows max?) so a 300 MB CSV doesn't OOM the server!
+3. **Pass 3 (`Preconditions & Duplicates`):**
+   - Look closely at *"Duplicate codes should be skipped cleanly without failing the batch"*: does that mean duplicate against **existing database rows**, duplicates **repeated inside the uploaded CSV itself**, or **both**? (Must handle both cleanly!)
+   - Wait—what if row #42 in a 100-row CSV has a corrupt negative discount `-15`? Should **all 100 rows reject atomically (`422` showing row #42 line error)** or should valid rows import while skipping invalid rows? Huge product difference—ask upfront!
+4. **Pass 4 (`Postconditions`):** Return crisp JSON summary (`{ insertedCount, skippedDuplicateCount, rejectedRows: [{ row, reason }] }`) + write audit entry.
+5. **Pass 5 (`Contradictions Check`):** Confirm *"must not be activated"* means either reject row OR insert with `is_active = false` (`choose deliberately after clarifying`).
+
+Look at that transformation: **60 seconds of sharp reading** turned a vague 3-sentence ticket into **nine crystal-clear edge decisions** that would have caused bug tickets for weeks if guessed blindly!
+
+## 4. Writing `Given – When – Then` Acceptance Contracts Before Implementation
+
+Once ambiguities are clarified cleanly, write **3 to 6 concrete `Given / When / Then` examples** at the top of your scratchpad or test file *before* generating or writing code (`02.2.3` → `Part 04` TDD/spec-first workflow):
+
+```text
+SPEC CONTRACT: Bulk Coupon Import (`POST /v1/coupons/import`)
+
+1. [Auth Gate] Given a non-admin workspace member -> When uploading valid CSV -> Expect HTTP 403 & zero DB writes.
+2. [Normalization & Intra-CSV Dedupe] Given CSV rows ["save10,10,2027-01-01", "SAVE10 ,10,2027-01-01"]
+   -> Expect 1 inserted ("SAVE10") and 1 skippedDuplicateCount ("duplicate_in_batch").
+3. [Expired Guard] Given row ["OLD20,20,2020-01-01"] -> Expect row rejected/skipped with explicit reason "expired_date", NOT active!
+4. [Bounds Guard] Given row ["FREE,150,2027-01-01"] -> Expect HTTP 422 validation error citing row & discount_pct range (1..100).
+```
+
+Notice something magical when you feed **those exact 4 concrete `Given–When–Then` scenarios** into either your own manual implementation *or* an AI coding assistant (`Part 07`): **ambiguity drops to zero, and verification becomes automatic!**
+
+## 5. Reading Technical Docs & Library Specs (`API Contracts`, Not Just Tickets)
+
+"Reading specifications" applies equally when calling external libraries, REST APIs, or browser specs (`00.9.9`). Never copy a quick parameter flag from memory—check **four exact contract points** in primary docs (`MDN`, `PostgreSQL`, `FastAPI`, `Stripe`, `Gemini API`):
+1. **Required vs. Optional Defaults:** What happens if `timeout` is omitted? (`Node fetch` has **no default timeout** unless you attach `AbortSignal.timeout(...)`—leaving stalled sockets hanging!)
+2. **Boundary & Error Semantics:** Does `slice(start, end)` treat `end` as *inclusive* or *exclusive*? Does `upsert` return the inserted row or `null` on conflict? Does a webhook verify signatures over the **raw body bytes** before `JSON.parse()`?
+3. **Rate Limits & Quotas:** Does an external API cap requests per minute (`429` + `Retry-After`) or maximum payload sizes (`413 Payload Too Large`)?
+4. **Deprecation & Version Match:** Does the spec match **your installed version** (`Pydantic v2` vs `v1`, `Next.js App Router` vs `Pages Router`)?
+5. **Consistent Error Envelope Shapes:** Check whether callers expect `{ error: { code, message } }` uniformly across `400/401/403/404/422` rather than returning strings in one route and nested arrays in another—consistent failure contracts let frontend forms render exact field hints automatically (`Part 02` & `Part 04`).
+
+Notice the payoff: keeping a lightweight **Spec-to-Test Traceability Checklist** (linking each `Given–When–Then` rule straight to one automated check) guarantees zero requirements slip silently off the table between planning and deployment.
+
+## 6. Runnable Lab: Spec-First Validator Harness in Python
+
+Notice how directly those `Given–When–Then` contracts convert into an executable specification harness *first*—before writing complex persistence code! Run this concise test-first spec probe in Python:
+
+```bash
+python3 - << 'EOF'
+from datetime import date
+
+def parse_coupon_batch(rows: list[dict], existing_codes: set[str], today: date) -> dict:
+    seen = {c.strip().upper() for c in existing_codes}
+    inserted, skipped_dups, rejected = [], [], []
+
+    for idx, row in enumerate(rows, start=1):
+        code = str(row.get("code", "")).strip().upper()
+        pct = row.get("discount_pct")
+        exp = row.get("expires_at")
+
+        if not code:
+            rejected.append({"row": idx, "reason": "empty_code"})
+        elif not isinstance(pct, int) or not (1 <= pct <= 100):
+            rejected.append({"row": idx, "reason": "invalid_discount_pct"})
+        elif not isinstance(exp, date) or exp < today:
+            rejected.append({"row": idx, "reason": "expired_or_invalid_date"})
+        elif code in seen:
+            skipped_dups.append({"row": idx, "code": code, "reason": "duplicate"})
+        else:
+            seen.add(code)
+            inserted.append({"code": code, "discount_pct": pct, "expires_at": exp})
+
+    return {"inserted": inserted, "skipped_duplicates": skipped_dups, "rejected": rejected}
+
+# Execute exact Spec Scenarios 2, 3, 4 directly:
+today = date(2026, 11, 15)
+out = parse_coupon_batch(
+    rows=[
+        {"code": "save10", "discount_pct": 10, "expires_at": date(2027, 1, 1)},
+        {"code": "SAVE10 ", "discount_pct": 10, "expires_at": date(2027, 1, 1)},
+        {"code": "OLD20", "discount_pct": 20, "expires_at": date(2026, 1, 1)},
+        {"code": "FREE", "discount_pct": 150, "expires_at": date(2027, 1, 1)},
+    ],
+    existing_codes={"WELCOME5"},
+    today=today,
+)
+assert len(out["inserted"]) == 1 and out["inserted"][0]["code"] == "SAVE10"
+assert len(out["skipped_duplicates"]) == 1
+assert [r["reason"] for r in out["rejected"]] == ["expired_or_invalid_date", "invalid_discount_pct"]
+print("Spec-First Verification Harness PASSED:", out)
+EOF
+```
+
+## 7. Failure Modes & Common Pitfalls
+
+- **Treating `inclusive` vs. `exclusive` bounds lightly:** Does `"expired on 2026-11-15"` mean the coupon still works *during* Nov 15 (`exp < today` rejects) or stopped at `2026-11-15 00:00:00` (`exp <= today`)? Always nail down `<` vs. `<=` boundaries explicitly!
+- **Trusting sample JSON examples over full schema documentation:** Sample payloads in API docs usually show only the happy case, omitting nullable fields, optional pagination cursors, or error envelopes returned under `4xx/5xx`. Read the full response schema table!
+- **Starting implementation to "figure out requirements later":** Guessing silently writes tech debt into database schemas (`NOT NULL` mistakes, wrong primary keys) that cost 10x longer to migrate later than asking two crisp questions upfront.
+
+## 8. Hands-On Practice Exercises
+
+1. **Run a `P.I.C.E.T.` Audit on This Spec:**
+   > *"Build an API key generator endpoint so team owners can create named project API keys and revoke compromised keys immediately."*
+   List **five unstated ambiguities or security invariants** missing from that sentence (`hashed vs. plaintext DB storage?`, `show secret once at creation only?`, `expiration optional?`, `permission scope?`, `audit log when revoked?`) and write **three `Given–When–Then` assertions** pinning down exact expected behavior.
+2. **Verify a Real Primary Doc Subtlety:** Open MDN's documentation for `fetch()` (`developer.mozilla.org`) and check what `fetch()` does when an HTTP server returns **`404 Not Found`** or **`500 Internal Server Error`**: does `fetch()` throw a rejected Promise, or resolve cleanly with `response.ok === false`? Write one sentence explaining how failing to read that single spec line breaks real frontend apps!
+
+## Key Takeaways
+
+- Reading specifications before coding via **`P.I.C.E.T.`** (**Actors, Inputs, Preconditions, Postconditions, Ambiguities**) catches costly product misunderstandings *before* hours get invested in wrong assumptions.
+- Convert ambiguous prose upfront into crisp **`Given–When–Then` acceptance cases** that guide both manual coding and AI-assisted development (`Part 07`).
+- Read primary API/library docs for **edge bounds, defaults (`timeouts`), error semantics (`fetch` 404 behavior), and exact version rules**—never guess from memory.
+
+## Official Primary References
+
+- [MDN Web Docs — Using the Fetch API (Check `!response.ok` behavior)](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
+- [Martin Fowler — Given–When–Then Behavior Specifications](https://martinfowler.com/bliki/GivenWhenThen.html)
+- [OpenAPI Specification Overview (`swagger.io/specification`)](https://swagger.io/specification/)
+
+**Continue to Subchapter 02.3:** [02.3 Engineering Judgment in the AI Era](/book/part-01-foundations/02-critical-thinking-and-problem-solving/02-3-engineering-judgment-in-the-ai-era)
+
+</BookNodePage>

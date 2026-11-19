@@ -1,0 +1,86 @@
+---
+id: "10-1-1-routing-schemas-and-validation"
+title: "10.1.1 Routing, Schemas and Validation"
+sidebar_label: "10.1.1 Routing, Schemas and Validation"
+slug: "/part-03-python-development/10-python-for-apis-files-and-automation/10-1-building-apis-with-fastapi/10-1-1-routing-schemas-and-validation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-10-s1-t1">
+
+Let's go from an empty directory to a live, interactive, Pydantic-validated FastAPI server in under two minutes.
+
+## 1. Installation & Starting the Development Server
+
+Create a project folder, activate a virtual environment (`09.3.1`), and install `fastapi[standard]` (which includes the FastAPI CLI, Uvicorn ASGI server, and Pydantic v2):
+
+```bash
+mkdir notes-api && cd notes-api
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS / Linux / WSL 2: source .venv/bin/activate
+pip install "fastapi[standard]"
+```
+
+*(With `uv`: `uv init notes-api && cd notes-api && uv add "fastapi[standard]"`.)*
+
+Create `main.py`:
+
+```python
+from fastapi import FastAPI, HTTPException, Query, status
+from pydantic import BaseModel, Field
+
+app = FastAPI(title="Notes API", version="1.0.0")
+
+class NoteCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=100)
+    pinned: bool = False
+
+class NoteOut(NoteCreate):
+    id: int
+
+NOTES_DB: dict[int, NoteOut] = {}
+NEXT_ID = 1
+
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "ok"}
+
+@app.get("/notes", response_model=list[NoteOut])
+def list_notes(pinned: bool | None = Query(default=None)) -> list[NoteOut]:
+    items = list(NOTES_DB.values())
+    if pinned is not None:
+        return [n for n in items if n.pinned == pinned]
+    return items
+
+@app.post("/notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)
+def create_note(payload: NoteCreate) -> NoteOut:
+    global NEXT_ID
+    note = NoteOut(id=NEXT_ID, **payload.model_dump())
+    NOTES_DB[NEXT_ID] = note
+    NEXT_ID += 1
+    return note
+
+@app.get("/notes/{note_id}", response_model=NoteOut)
+def get_note(note_id: int) -> NoteOut:
+    note = NOTES_DB.get(note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail=f"Note {note_id} not found")
+    return note
+```
+
+Start the dev server:
+
+```bash
+fastapi dev main.py
+```
+
+Open `http://127.0.0.1:8000/docs` in your browser! FastAPI generates interactive **Swagger UI** automatically—click **POST /notes -> Try it out**, send `{"title": "Ship FastAPI"}`, and verify `201 Created` returns `{"id": 1, "title": "Ship FastAPI", "pinned": false}`. Send `{"title": "x"}` (1 char) and observe FastAPI automatically rejects it with `422 Unprocessable Entity` before your handler even executes!
+
+## Mastery Checklist
+
+- [ ] Installs `"fastapi[standard]"` cleanly inside `.venv` and runs `fastapi dev main.py`.
+- [ ] Separates input schemas (`NoteCreate`) from output schemas (`NoteOut`) and uses `HTTPException` for `404`s.
+
+</BookNodePage>

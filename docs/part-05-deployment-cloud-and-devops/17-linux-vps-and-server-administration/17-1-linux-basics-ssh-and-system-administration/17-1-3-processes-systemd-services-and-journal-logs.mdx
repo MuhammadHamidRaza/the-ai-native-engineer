@@ -1,0 +1,143 @@
+---
+id: "17-1-3-processes-systemd-services-and-journal-logs"
+title: "17.1.3 Processes, systemd Services and Journal Logs"
+sidebar_label: "17.1.3 Processes, systemd Services and Journal Logs"
+slug: "/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-1-linux-basics-ssh-and-system-administration/17-1-3-processes-systemd-services-and-journal-logs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-17-s1-t3">
+
+A server that depends on a human running `node server.js` after every reboot is a hobby, not a service. **systemd** is the init system that makes your app start at boot, restart on crash, and log everything — this lesson teaches processes first, then units, then the logs that tell you what happened at 03:12.
+
+## 1. Seeing Processes: ps, top, htop
+
+```bash
+ps aux                          # every process, BSD-style columns
+ps aux | grep node              # find the ShopCore API
+ps -p 1234 -o pid,ppid,stat,cmd # one process's identity (STAT: R running, S sleeping, Z zombie)
+```
+
+```bash
+top                             # live view; press q to quit
+htop                            # if installed: sudo apt install htop — friendlier, colored
+```
+
+In `top`: load averages (1/5/15 min), `%CPU`, `%MEM`, `RES` (resident memory). If `load average` exceeds your vCPU count for minutes, something is hot — usually the first clue to a runaway Node worker or an unindexed query.
+
+**Signals and killing:**
+
+```bash
+kill 1234         # SIGTERM — polite request to exit (app can clean up)
+kill -9 1234      # SIGKILL — instant death, no cleanup; last resort
+kill -HUP 1234    # SIGHUP — often "reload config" for daemons (e.g., nginx)
+pkill -f "node server.js"    # match by command line
+```
+
+A stuck process ignoring SIGTERM twice is your cue for `-9`; a database ignoring SIGKILL is a problem you fix by finding *why* it's stuck, not by reaching for `-9` faster.
+
+**Niceness:** `nice -n 10 command` starts a process with lowered priority (nicer = yields more); `renice -n 5 -p 1234` re-prioritizes live. Use for batch jobs sharing a box with the API.
+
+## 2. systemd — the Anatomy of a Unit
+
+Create `/etc/systemd/system/shopcore-api.service`:
+
+```ini
+[Unit]
+Description=ShopCore Express API
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/home/deploy/shopcore/server
+Environment=NODE_ENV=production
+EnvironmentFile=/home/deploy/shopcore/server/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Every line earns its place: `User=deploy` (never root), `EnvironmentFile` keeps secrets out of git and out of `ps`, `Restart=always` + `RestartSec=3` resurrects crashes (rate-limited so a crash-loop is visible, not infinite), `WantedBy=multi-user.target` is what "starts at boot" means.
+
+```bash
+sudo systemctl daemon-reload          # systemd re-reads unit files after ANY edit
+sudo systemctl enable --now shopcore-api   # enable at boot + start now
+systemctl status shopcore-api         # active (running)? last log lines, PID
+sudo systemctl restart shopcore-api
+sudo systemctl stop shopcore-api
+journalctl -u shopcore-api --since "-15 min"
+journalctl -u shopcore-api -f         # follow live (Ctrl+C to exit)
+```
+
+Expected (`systemctl status`, abbreviated):
+
+```text
+● shopcore-api.service - ShopCore Express API
+     Active: active (running) since Mon 2026-11-17 09:12:03 UTC; 2h ago
+   Main PID: 2142 (node)
+      Tasks: 11 (limit: 2266)
+     Memory: 68.2M
+```
+
+## 3. journalctl — Reading the Evidence
+
+```bash
+journalctl -u shopcore-api -n 100        # last 100 lines
+journalctl -u shopcore-api --since today
+journalctl -u shopcore-api --since "2026-11-17 09:00" --until "2026-11-17 09:30"
+journalctl -u shopcore-api -p err        # only priority err and worse
+journalctl -k                            # kernel ring (OOM kills!)
+journalctl --disk-usage                  # logs are not free space
+```
+
+If the API vanishes mysteriously: `journalctl -k | grep -i oom` — the kernel kills out-of-memory processes; a 512 MB box running Node + Postgres clients will do that eventually.
+
+## 4. Load Average, and Unit Hardening Previews
+
+`uptime` prints three numbers: load averages over 1/5/15 minutes. On a 1 vCPU box, sustained `>1.0` means demand exceeds capacity; on 4 vCPUs that threshold is 4.0. Node is single-threaded per process — a saturated event loop looks like high load with low per-core % in `top` only if many threads are involved; usually it is just one busy process pegged at 100%.
+
+Restart storms show up here too: `systemctl show shopcore-api -p NRestarts` tells you how many times systemd has resurrected it — if that number climbs, you have a crash loop, not a deploy.
+
+Hardening directives worth knowing exist (details in [17.2](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies) and Part 06):
+
+```ini
+[Service]
+NoNewPrivileges=true     # cannot gain privileges via suid binaries
+ProtectSystem=strict     # / read-only except a few writable paths
+PrivateTmp=true          # isolated /tmp for the service
+```
+
+Add them only after the plain unit works — a too-strict unit produces the same confusing crash loop as a syntax error.
+
+## 5. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `Unit shopcore-api.service not found` | File misplaced or daemon-reload forgotten | Path must be `/etc/systemd/system/*.service`; run `sudo systemctl daemon-reload` |
+| Status `activating (auto-restart)` loop | App crashes on boot (bad env, port taken) | `journalctl -u shopcore-api -n 50` — the stack trace is always there |
+| `Restart=always` doesn't restart | Start-limit hit (`StartLimitBurst`) | Fix the crash; `sudo systemctl reset-failed shopcore-api`; consider `RestartSec=5` |
+| Logs "missing" | journal volatile / disk full | `journalctl --disk-usage`; check `SystemMaxUse=` in `/etc/systemd/journald.conf` |
+| App starts manually but not under systemd | PATH/cwd/env differ | Use absolute paths in `ExecStart`; `EnvironmentFile=`; match `WorkingDirectory` |
+| Port 4000 already in use | Stale node from earlier | `ss -ltnp \| grep 4000`; kill it; `Restart=always` cleanly picks up |
+
+## 6. Practice
+
+**Guided exercise.** In WSL2 (or a scratch VPS): write the `shopcore-api.service` unit exactly as §2, pointing at a trivial `server.js` (`http.createServer(...).listen(4000)`), and drive the full cycle: `enable --now` → `status` → `restart` → `journalctl -n 20` → `systemctl stop`.
+
+**Independent exercise.** Kill the Node process with `kill -9` and confirm systemd restarts it within 3 seconds (`systemctl status` shows a new PID and a restart counter).
+
+**Challenge.** Add a deliberate syntax error to `server.js`, `restart`, and read `journalctl -u shopcore-api -n 30`. Then fix it and verify recovery. This is the exact workflow you will use on the VPS at 2 AM.
+
+**Assessment checklist**
+
+- [ ] I can find a process by name and by port.
+- [ ] I know SIGTERM vs SIGKILL and when each is appropriate.
+- [ ] I wrote a unit file and explain every directive in it.
+- [ ] I can retrieve the last 15 minutes of a service's logs with one command.
+
+</BookNodePage>

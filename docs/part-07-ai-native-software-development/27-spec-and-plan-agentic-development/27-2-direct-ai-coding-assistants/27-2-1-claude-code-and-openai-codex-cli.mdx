@@ -1,0 +1,179 @@
+---
+id: "27-2-1-claude-code-and-openai-codex-cli"
+title: "27.2.1 Claude Code and OpenAI Codex CLI"
+sidebar_label: "27.2.1 Claude Code and Codex CLI"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-2-direct-ai-coding-assistants/27-2-1-claude-code-and-openai-codex-cli"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s2-t1">
+
+Two terminal agents dominate professional agentic workflows in late 2026: Anthropic's **Claude Code** and OpenAI's **Codex CLI**. Both are verified here against official docs (November 2026). Both move fast — if a flag has changed by the time you read this, the docs win; the reasoning will not have changed.
+
+## 1. Claude Code: Install, Auth, Mental Model
+
+**Install (Windows-first).** The recommended path is the native installer; it auto-updates in the background:
+
+```powershell
+# Windows PowerShell
+irm https://claude.ai/install.ps1 | iex
+# then verify
+claude --version
+```
+
+```bash
+# macOS / Linux / WSL2
+curl -fsSL https://claude.ai/install.sh | bash
+# alternatives: winget install Anthropic.ClaudeCode  |  brew install --cask claude-code
+# npm also works (Node 22+ required): npm install -g @anthropic-ai/claude-code@latest
+```
+
+Native Windows lacks the built-in sandbox; the sandbox needs macOS, Linux or **WSL2** (WSL1: no). If Git for Windows is installed, Claude Code uses Git Bash for its Bash tool; otherwise it uses PowerShell.
+
+**Auth.** Run `claude`; sign in via browser. Claude Code requires a **Pro, Max, Ultra, Team, Enterprise, or Console** account — the free claude.ai plan does NOT include it. API-key (`ANTHROPIC_API_KEY`) and Bedrock/Vertex/Foundry routes exist for enterprises.
+
+**Models.** Aliases, not version soup (current as of Nov 2026; aliases re-point as models ship — pin full IDs like `claude-opus-5-5` if you need reproducibility):
+
+| Alias | Resolves to | Use |
+| :-- | :-- | :-- |
+| `opus` | newest Opus (Opus 5.5) | complex reasoning, hard refactors |
+| `sonnet` | newest Sonnet (Sonnet 5.5) | daily coding default |
+| `haiku` | newest Haiku (Haiku 5.5) | cheap, fast, simple tasks |
+| `fable` | Fable 5.2 | longest autonomous runs |
+| `opusplan` | Opus in plan mode -> Sonnet for execution | safe large changes |
+| `opus[1m]` / `sonnet[1m]` | 1M-token context variants | long sessions |
+
+Check `/model` to see what you actually got; versions move weekly.
+
+**Permission modes** (switch live with `Shift+Tab`):
+
+| Mode | Runs without asking | Best for |
+| :-- | :-- | :-- |
+| `default` (Manual) | reads only | sensitive or unfamiliar code |
+| `acceptEdits` | reads, edits, common fs commands (`mkdir`, `touch`, `mv`, `cp`) | supervised iteration |
+| `plan` | reads; no edits until you approve the plan | explore-then-build |
+| `auto` | everything, background classifier checks | long tasks; default since Claude Code v2.1.283 (terminal + VS Code) |
+| `dontAsk` | pre-approved tools only; the rest denied | CI and scripts |
+| `bypassPermissions` | everything | isolated containers/VMs ONLY — never on a trusted prod checkout |
+
+**Core commands** (all verified in the current docs): `/init` (generate CLAUDE.md), `/clear` (new conversation; aliases `/reset`, `/new`), `/compact [focus]` (summarize context), `/cost` (usage/spend, alias for `/usage`), `/diff` (review working-tree changes), `/model`, `/resume` (alias `/continue`), `/context` (what fills the window), `/permissions` (allow/ask/deny rules), `/plan`, `/mcp`, `/hooks`, `/memory`, `/rewind` (aliases `/checkpoint`, `/undo`).
+
+**Project structure:** `CLAUDE.md` (loaded every session; `/init` drafts it), `.claude/settings.json` (project) and `~/.claude/settings.json` (user) for permissions/hooks, `.mcp.json` for MCP servers, `.claude/agents/*.md` for subagents, `.claude/skills/<name>/SKILL.md` for skills, `.claude/commands/*.md` for legacy-format custom commands (still valid; skills are preferred now).
+
+**Hooks.** Deterministic, not advisory. Events: `PreToolUse`, `PostToolUse`, `SessionStart`, `Stop`, `Notification`. Hook input arrives as JSON on stdin; read it with `jq` (install it, or use PowerShell `ConvertFrom-Json`). Example — auto-format after edits, in `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Edit|Write", "hooks": [
+        { "type": "command", "command": "jq -r '.tool_input.file_path' | xargs -r npx prettier --write --ignore-unknown" }
+      ]}
+    ]
+  }
+}
+```
+
+(Windows: use PowerShell-friendly equivalents — e.g. `powershell -c \"$input | ConvertFrom-Json | %{$_.tool_input.file_path} | %{npx prettier --write --ignore-unknown $_}\"`. Exit code 2 blocks the action.)
+
+**MCP and subagents.** `claude mcp add <name> <cmd>` (or edit `.mcp.json`) connects external tools; subagents in `.claude/agents/` run isolated contexts with their own model and tools — e.g. a read-only `reviewer` agent for diff audits. Use `/mcp` and `/agents` to inspect what loaded.
+
+## 2. OpenAI Codex CLI: Install, Auth, Mental Model
+
+**Install:**
+
+```powershell
+# Windows PowerShell
+powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
+```
+
+```bash
+# macOS / Linux
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+# or: npm install -g @openai/codex   |   brew install --cask codex
+```
+
+**Auth.** `codex` first run: choose **Sign in with ChatGPT** (Plus, Pro, Business, Edu, Enterprise plans include Codex; best default) or an API key (needs extra setup, billed per token).
+
+**Models** (Nov 2026): `gpt-6.1-sol` (near-Astra quality at lower cost; 500k default context in Codex — the practical daily driver), `gpt-6.1-terra` (fast; needs CLI 0.159.0+), `gpt-6-luna` (cheapest, high-volume), `gpt-6-astra` (hardest work). GPT-5.5 retired from Codex for ChatGPT sign-in on 2026-10-14; GPT-5.4/5.4-mini retired 2026-08-31; `gpt-5.3-codex` deprecated — purge old model names from scripts and configs. Select with `codex -m gpt-6.1-sol`, or `/model` in-session. Reasoning efforts: Light/Low, Medium, High, Extra High; Max and Ultra (subagents) for the biggest jobs.
+
+**Sandbox + approvals** (config `~/.codex/config.toml`) — two independent layers:
+
+| Sandbox mode | Effect |
+| :-- | :-- |
+| `read-only` | read files, run commands; nothing written |
+| `workspace-write` | write inside workspace; `.git`, `.codex`, `.aws` stay read-only; network off by default |
+| `danger-full-access` | no sandbox (never outside a disposable container) |
+
+| Approval policy | Meaning |
+| :-- | :-- |
+| `on-request` | run allowed actions; ask before leaving sandbox / using network |
+| `never` | never ask (pair with `read-only` for CI) |
+| `granular` | per-category rules (sandbox prompts, MCP prompts, skill approvals) |
+
+The legacy names you may still see — `suggest`, `auto-edit`, `full-auto`, and `untrusted` — are **retired**; the last one now blocks startup in current builds. Auto preset is `workspace-write` + `on-request`. `--dangerously-bypass-approvals-and-sandbox` (alias `--yolo`) removes both layers — containers only. `codex exec "<task>"` is the non-interactive/CI path. Windows: Codex uses the MXC sandbox; in WSL2 it uses the Linux `bwrap` sandbox; WSL1 is unsupported since 0.115.
+
+**Key in-TUI commands:** `/model`, `/permissions`, `/status`, `/init` (creates `AGENTS.md`), `/review` (read-only review of your changes), `/resume`.
+
+## 3. Side-by-Side: The Same ShopCore Task
+
+Task: "implement Task 3 from `specs/abandoned-cart/` — job sends exactly one reminder per eligible cart."
+
+```text
+# Claude Code
+$ claude
+> /init          # (first session only) generates CLAUDE.md; review it
+> Read specs/abandoned-cart/spec.md and the TASK 3 file. Propose a plan; do not edit yet.
+Claude proposes 5 steps, touches 3 files -> you choose "Yes, and use auto mode" (or acceptEdits)
+> Implement the plan. Run npm test -- --grep abandoned-cart-send after each edit. Commit when green.
+<edits src/jobs/abandoned-cart-scan.js, src/jobs/index.js, test/...>
+> npm test -- --grep abandoned-cart-send
+  3 passing
+> /diff          # you audit the actual diff line by line
+> git commit -m "feat(cart): abandoned-cart scan sends one reminder per eligible cart"
+
+# Codex CLI
+$ codex -m gpt-6.1-sol
+codex> Read specs/abandoned-cart/ and implement Task 3 only.
+codex (workspace-write, on-request) proposes the same plan
+codex asks approval for each file edit + for running npm test
+codex> /review
+codex reviews its own diff read-only; you re-read it anyway
+> codex exec "npm test -- --grep abandoned-cart-send"   # or approve in-session
+> git commit -m "feat(cart): abandoned-cart scan sends one reminder per eligible cart"
+```
+
+The shape is identical; the difference is texture: Claude Code leans on CLAUDE.md + auto mode + richer slash UX; Codex leans on `config.toml` profiles, `/review`, and first-class `codex exec` for automation.
+
+## 4. Cost Reality Check (CLAIM TO VERIFY for exact prices)
+
+Prices change constantly; treat these as orders of magnitude, verified Nov 2026, and check current pricing pages before budgeting: Claude Code is included in Pro (~$20/mo), Max (~$100-200/mo) and Ultra plans, or pay-per-token on Console; heavy agentic use on API tokens commonly lands in low-to-mid double-digit $/day, lower with Sonnet over Opus. Codex CLI is included in ChatGPT Plus (~$20/mo) / Pro / Business / Enterprise sign-in, or metered API pricing with `gpt-6.1-sol`/`gpt-6-luna`. Typical focused feature phase: a few dollars of tokens on either, dominated by repo size and how often you let the agent re-read files. Cost levers: smaller tasks, `/compact` or fresh sessions, Sonnet/Luna for mechanical steps, Opus/Astra only where judgment is needed, and kill runaway sessions at the first drift sign.
+
+## 5. The Three Failure Modes and How to Detect Them
+
+| Mode | Tell | Detection recipe |
+| :-- | :-- | :-- |
+| Agent drift | Solves a different but adjacent problem; confident tone, wrong target | Stop at first divergence; compare plan vs spec section by section; `/rewind` (Claude Code) or discard and restart from files |
+| Test vandalism | Failing tests "fixed" by editing the test, not the code | `git diff --stat` — any test file edited before tests ran green is a red flag; `git diff` the tests; mutation check: see 27.3.2 |
+| Silent scope creep | New deps, renamed files, "while I was here" refactors | `git diff` + new-file list; reject diffs touching files outside the task's must/may lists (27.1.2); dependency additions require explicit approval |
+
+All three are caught by the same medicine: small tasks, real gates, human diffs. No agent polices itself.
+
+## 6. Practice
+
+**Guided exercise.** Install Claude Code (or Codex CLI) on a scratch repo. Run `/init`, read the generated CLAUDE.md/AGENTS.md critically, delete half of it, re-run. Notice what actually matters to the agent.
+
+**Independent exercise.** Configure one `settings.json`/`config.toml` with least-privilege defaults for a repo you know: allow `npm test`, `Read`, `Edit`; ask before `git push`; deny writes outside the project. Run one real task.
+
+**Challenge.** Break both tools deliberately: ask for a change in a repo with a failing test, and a change outside the allowed file scope. Record detection steps and time-to-detection for each.
+
+**Assessment checklist**
+
+- [ ] Both tools are installed and authenticated on my machine (or I know exactly why not).
+- [ ] I can switch permission/sandbox modes without reading the docs.
+- [ ] I know which model alias I default to and why.
+- [ ] I can spot test vandalism and silent scope creep from `git diff` alone.
+- [ ] I have one working hook or `config.toml` profile enforcing a project rule.
+
+</BookNodePage>

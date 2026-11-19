@@ -1,0 +1,141 @@
+---
+id: "04-1-3-scope-hoisting-and-closures"
+title: "04.1.3 Scope, Hoisting and Closures"
+sidebar_label: "04.1.3 Scope, Hoisting and Closures"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model/04-1-3-scope-hoisting-and-closures"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s1-t3">
+
+Closures power React hooks, event handlers, rate limiters, private module state, and factory functions—yet they are one of the most misunderstood features in JavaScript. Once you see how **lexical scope** and **hoisting** actually work under the hood, closures stop looking like a trick and become an obvious consequence of functions carrying their creation environment with them.
+
+## 1. Lexical Scope: Determined Where You Write Code, Not Where You Call It
+
+**Lexical scope** means inner blocks and inner functions can see variables declared in their outer enclosing scopes based on **where the function was written in source code**, regardless of where it is later invoked.
+
+```javascript
+const appCurrency = "USD"; // Module / outer scope
+
+function makePriceFormatter(locale) {
+  // Inner function sees `locale` AND `appCurrency`
+  return function format(cents) {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: appCurrency,
+    }).format(cents / 100);
+  };
+}
+
+const formatUS = makePriceFormatter("en-US");
+console.log(formatUS(2499)); // "$24.99"
+```
+
+Even after `makePriceFormatter("en-US")` returns and pops off the call stack, `formatUS` still remembers `locale = "en-US"`.
+
+## 2. Hoisting and the Temporal Dead Zone (`TDZ`)
+
+During the **Creation Phase** (`04.1.2`), the engine registers every binding in a scope *before* running line 1:
+
+- **`function` declarations:** Fully initialized with their body. Calling `greet()` above `function greet() {}` works.
+- **`var`:** Initialized immediately to `undefined` (`console.log(x); var x = 5;` logs `undefined` silently—easy bug source).
+- **`let` and `const`:** Registered in scope *but left uninitialized* in the **Temporal Dead Zone (`TDZ`)** until execution crosses their declaration line. Accessing them earlier throws `ReferenceError: Cannot access '...' before initialization`.
+
+```javascript
+console.log(declareFirst()); // Works: "ready"
+// console.log(count);       // Throws ReferenceError (TDZ!)
+const count = 3;
+
+function declareFirst() {
+  return "ready";
+}
+```
+
+## 3. How Closures Work Under the Hood (References, Not Copies)
+
+A **closure** is the combination of a function and its **Lexical Environment** (the hidden link `[[Environment]]` pointing to the outer scope record where the function was created).
+
+Crucial rule: **a closure captures a live binding (reference), not a frozen snapshot value.** If two inner functions close over the same `let balance` variable, updating `balance` inside one is visible to the other.
+
+### Classic `var` Loop Bug vs. `let` Fix
+
+Run this comparison in `closure_loop.js`:
+
+```javascript
+// Buggy with `var`: all 3 callbacks share ONE function-scoped `i`
+const buggyTimers = [];
+for (var i = 0; i < 3; i += 1) {
+  buggyTimers.push(() => i);
+}
+console.log("With var:", buggyTimers.map((fn) => fn())); // [3, 3, 3]
+
+// Fixed with `let`: each iteration gets a brand-new block binding
+const fixedTimers = [];
+for (let j = 0; j < 3; j += 1) {
+  fixedTimers.push(() => j);
+}
+console.log("With let:", fixedTimers.map((fn) => fn())); // [0, 1, 2]
+```
+
+## 4. Real-World Patterns Powered by Closures
+
+### Pattern A: Encapsulated State (Zero External Mutation)
+
+```javascript
+export function createRateLimiter(maxRequests, windowMs) {
+  const timestamps = []; // Private via closure — inaccessible outside!
+
+  return function allowRequest(nowMs = Date.now()) {
+    const cutoff = nowMs - windowMs;
+    while (timestamps.length > 0 && timestamps[0] <= cutoff) {
+      timestamps.shift();
+    }
+    if (timestamps.length >= maxRequests) {
+      return false;
+    }
+    timestamps.push(nowMs);
+    return true;
+  };
+}
+
+const limiter = createRateLimiter(2, 1000);
+console.log(limiter(100));  // true
+console.log(limiter(200));  // true
+console.log(limiter(300));  // false (2 requests already in 1000ms window)
+console.log(limiter(1200)); // true (first request expired)
+```
+
+### Pattern B: Single-Argument Memoization Cache
+
+```javascript
+export function memoize(fn) {
+  const cache = new Map();
+  return function cached(arg) {
+    if (cache.has(arg)) {
+      return cache.get(arg);
+    }
+    const result = fn(arg);
+    cache.set(arg, result);
+    return result;
+  };
+}
+```
+
+## 5. Common Pitfalls & Memory Leaks
+
+- **Stale React closures:** When an event listener or `setInterval` callback captures an old `count` variable from render #1, reading `count` inside it always sees `0` instead of the current value.
+- **Accidental memory retention:** Because a closure keeps its outer scope alive while the inner function remains referenced, avoid closing over giant unused arrays or buffers inside long-lived event listeners.
+
+## 6. Practice Exercises
+
+1. Build `createCounter(start = 0, step = 1)` returning `{ increment, decrement, value }` where the internal `count` cannot be directly modified from outside.
+2. Add a test file verifying `createRateLimiter` rejects a 3rd call inside 1000ms and allows a call once the window advances past 1000ms.
+
+## Mastery Checklist
+
+- [ ] Can trace why `let` inside a `for` loop behaves differently from `var` inside closures.
+- [ ] Understands the Temporal Dead Zone (`TDZ`) for `let` and `const`.
+- [ ] Can write a closure factory to hide private state without classes.
+
+</BookNodePage>

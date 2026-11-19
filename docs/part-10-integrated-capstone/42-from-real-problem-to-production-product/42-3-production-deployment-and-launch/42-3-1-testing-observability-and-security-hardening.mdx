@@ -1,0 +1,100 @@
+---
+id: "42-3-1-testing-observability-and-security-hardening"
+title: "42.3.1 Testing, Observability and Security Hardening"
+sidebar_label: "42.3.1 Testing, Observability and Security Hardening"
+slug: "/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-3-production-deployment-and-launch/42-3-1-testing-observability-and-security-hardening"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-42-s3-t1">
+
+A capstone that works on your laptop is a prototype. A capstone that works on Monday at 3am, survives a Stripe retry storm, and doesn't leak your client's customer emails is a professional deliverable. This lesson is the hardening layer — small, boring, non-negotiable.
+
+## 1. The Testing Pyramid, Practically
+
+```text
+        ┌─────────┐
+        │   E2E   │  1–2 critical paths only (seeded data, real browser)
+        ├─────────┤
+        │Integr.  │  API + DB (testcontainers or dedicated test DB)
+        ├─────────┤
+        │  Unit   │  reconcile.js fixtures, pure functions, guardrails
+        └─────────┘
+```
+
+For the capstone: **aim for 60–70% line coverage on the reconcile/money-path only**. Auth and schema-migration logic must have integration tests; UI needs one smoke test. Do not chase coverage on email templates.
+
+Required test cases (minimum):
+
+- `reconcile.test.js`: match / missing payment / missing booking / duplicate / zero-amount
+- `webhook.test.js`: valid Stripe signature / invalid signature / replay attack
+- `authz.test.js`: member A cannot read member B's bookings (403)
+- `api.test.js`: GET /health 200, GET /unknown 404, POST without CSRF/secret → 401
+
+## 2. Observability That Actually Helps
+
+Logs, metrics, and traces are not decoration. Minimum viable observability:
+
+| Layer | What to emit | Tool |
+| :-- | :-- | :-- |
+| Logs | Structured JSON: `{level, request_id, route, member_id?, status, latency_ms}` | `pino` or `winston` → stdout → platform log drain |
+| Metrics | request count/latency by route, nightly-run success/failure, mismatches count | Platform metrics or `prom-client` if self-hosted |
+| Traces | One trace per webhook → job → notification chain | OpenTelemetry if client uses it; else skip |
+| Error tracking | Unhandled exceptions with stack + request_id | Sentry free tier or platform native |
+
+Add **one** alert: nightly reconciliation fails or returns 0 runs. That is the entire alert policy. Anything more and you will ignore everything; anything less and you will discover failure by client complaint.
+
+## 3. Security Hardening Checklist
+
+| # | Control | Implementation |
+| :-- | :-- | :-- |
+| 1 | Stripe webhook signature | `stripe.webhooks.constructEvent()` — reject on mismatch **before** parsing |
+| 2 | AuthN | SSO/OIDC from client's existing provider; no bespoke passwords |
+| 3 | AuthZ | Row-level: `WHERE studio_id = $1 AND member_id = $2` — test cross-tenant |
+| 4 | PII minimization | No raw card numbers in logs; Stripe IDs only; redact emails in error payloads |
+| 5 | Secrets | `.env` outside git; CI secrets in platform vault; `.env.example` has fake keys |
+| 6 | Rate limiting | Webhook + API routes limited (e.g. 100 req/min/IP) — or Stripe retries kill you |
+| 7 | Dependency scan | `npm audit` in CI; fail on high/critical |
+| 8 | Error messages | No stack traces to clients; generic message + `request_id` |
+
+## 4. The Pre-Launch Red-Team Pass (30 Minutes)
+
+Before demo day, attack your own capstone:
+
+1. Hit every route without auth → expect 401/403, never 200
+2. Send malformed JSON → expect 400, never 500 stack trace
+3. Replay the same Stripe webhook twice → expect idempotent no-op
+4. Fetch member B's bookings as member A → expect 403
+5. Trigger nightly job with missing secret → expect 401
+6. Delete the database file and restart → app must recreate schema or refuse with clear error
+
+Fix every one you find before the demo. These are the failures your client will hit in week 1 if you don't.
+
+## 5. The Demo Environment
+
+- Seeded with **realistic fake data** (12 members, 3 studios, 1 month of history) — not `member_1`, `test_foo`
+- Client can click through without your hand on the mouse
+- You can reset to seed state in one command for the demo
+- Admin credentials for the client, read-only member creds for demo, separate staff creds
+
+## 6. Common Failure Modes
+
+- **Tests only on the happy path** — first production retry corrupts your data
+- **Logs you can't read** — `console.log("error")` tells you nothing at 3am
+- **"Security through obscurity"** — unauthenticated webhook endpoints that "nobody knows about" — Stripe knows, and so does the next attacker
+- **Demo on broken data** — "the seed hasn't loaded, just pretend this is a booking" — you have already lost
+- **No rollback plan** — migration N fails; do you have a documented downgrade or backup? Write it before demo day
+
+## 7. Exercise
+
+Run the 30-minute red-team pass against your own capstone. Record every finding with severity (Critical/High/Medium/Low). Fix all Critical and High findings. Push the diff. Post the before/after.
+
+**Acceptance criteria.**
+- [ ] Zero Critical or High findings remain.
+- [ ] Webhook rejects bad signatures and replays idempotently (both tested).
+- [ ] Member A cannot read member B's data (403, tested).
+- [ ] One logged page loads in &lt;1s on the seeded demo; nightly job emits a structured log line.
+- [ ] Staging environment reachable without your laptop.
+
+</BookNodePage>

@@ -1,0 +1,183 @@
+---
+id: "20-3-2-practical-multi-cloud-deployment-lab"
+title: "20.3.2 Practical Multi-Cloud Deployment Lab"
+sidebar_label: "20.3.2 Practical Multi-Cloud Deployment Lab"
+slug: "/part-05-deployment-cloud-and-devops/20-kubernetes-production-scaling-and-multi-cloud/20-3-multi-cloud-architecture-and-cross-provider-engineering/20-3-2-practical-multi-cloud-deployment-lab"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-20-s3-t2">
+
+Time to prove the thesis of the subchapter with your hands: one image, two Kubernetes distributions, same manifests, real endpoints — and then a full teardown. Budget first, always.
+
+## 0. Read Before Touching Anything — Budget & Scope
+
+**Path A (required, $0):** two local clusters — **kind** (`shopcore-a`, upstream Kubernetes in Docker) and **k3d** (`shopcore-b`, k3s in Docker: a genuinely different distribution and runtime). No cloud account, no cost. This is your multi-cloud rehearsal.
+
+**Path B (optional, real second cloud, GATED on billing alert):** one managed/VM Kubernetes on a second cloud (Oracle Always Free ARM VM + k3s, or GKE within the free-tier credit). **Set a budget alert BEFORE creating anything.** EKS has **no** free control plane ($0.10/cluster/hr ≈ $73/mo — skip it for this lab). Teardown steps below are **mandatory**, not optional.
+
+Pricing to know (Nov 2026; **CLAIM TO VERIFY** — pricing changes):
+
+| Path | Control plane | Nodes | Egress | Realistic lab cost |
+| :-- | :-- | :-- | :-- | :-- |
+| kind + k3d on laptop | $0 | your laptop | $0 | **$0** |
+| Oracle Always Free (ARM A1, k3s) | $0 (self-managed) | $0 within Always Free shapes | 10 TB/mo free | **$0** if you stay in Always Free shapes |
+| GKE zonal/Autopilot | covered by $74.40/mo free-tier credit (one cluster/billing account) | tiny node, maybe < $1/day | billed per GB after 1 GB free | **≈ $0–3** for a one-hour lab |
+| EKS | $0.10/hr, no free tier | EC2 billed | $0.09/GB after 100 GB | **≈ $0.20+/hr — do not use for this lab** |
+
+Official references: [GKE pricing (free tier)](https://cloud.google.com/kubernetes-engine/pricing) · [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) · [AWS EKS pricing](https://aws.amazon.com/eks/pricing/).
+
+## 1. Path A — Build Once, Deploy Twice
+
+Where to run: WSL2/Linux shell with Docker, kind, k3d, kubectl and Helm from 20.1.
+
+```bash
+# install k3d (single binary): pick ONE
+curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+# or: winget install k3d-io.k3d  /  brew install k3d
+
+kind create cluster --name shopcore-a
+k3d cluster create shopcore-b --port "8081:80@loadbalancer"
+kind load docker-image shopcore-api:1.0.0 --name shopcore-a
+k3d image import shopcore-api:1.0.0 --cluster shopcore-b
+kubectl get nodes --context kind-shopcore-a
+kubectl get nodes --context k3d-shopcore-b
+```
+
+Expected: `shopcore-a-control-plane Ready` and `k3d-shopcore-b-server-0 Ready` (note k3d nodes are servers/agents, k3s runs both roles).
+
+**One manifest, both clusters** (`shopcore-api.yaml` — identical file applied twice):
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: shopcore-api, namespace: shopcore }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: shopcore-api } }
+  template:
+    metadata: { labels: { app: shopcore-api } }
+    spec:
+      containers:
+        - name: api
+          image: shopcore-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 4000 }]
+          readinessProbe: { httpGet: { path: /health, port: 4000 } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: shopcore-api, namespace: shopcore }
+spec:
+  selector: { app: shopcore-api }
+  ports: [{ port: 80, targetPort: 4000 }]
+```
+
+```bash
+kubectl --context kind-shopcore-a apply -f shopcore-api.yaml -n shopcore --create-namespace
+kubectl --context k3d-shopcore-b apply -f shopcore-api.yaml -n shopcore --create-namespace
+kubectl --context kind-shopcore-a rollout status deployment/shopcore-api -n shopcore
+kubectl --context k3d-shopcore-b rollout status deployment/shopcore-api -n shopcore
+```
+
+**Ingress — same config, one honest caveat.** k3s bundles Traefik, so the identical Ingress works out of the box there:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: { name: shopcore, namespace: shopcore }
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: shopcore-api, port: { number: 80 } }
+```
+
+```bash
+kubectl --context k3d-shopcore-b apply -f ingress.yaml
+curl -i http://localhost:8081/health          # straight through k3d's loadbalancer → Traefik → pods
+kubectl --context kind-shopcore-a port-forward -n shopcore svc/shopcore-api 8080:80 &
+curl -i http://localhost:8080/health          # kind side (port-forward; or install Traefik via helm for identical Ingress)
+```
+
+Expected: HTTP 200 from **both**. The caveat to internalize: the Ingress *resource* is portable; the **controller and ingressClassName are not** — Traefik (k3s default) vs kind's native ingress (cloud-provider-kind) vs cloud controllers each own the data plane. That portability boundary is exactly what 20.3.1's scorecard predicted.
+
+**Compare latency** (honest loopback comparison — measures variance and overhead, not geography):
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -s -o /dev/null -w "kind: %{time_total}s\n" http://localhost:8080/health
+  curl -s -o /dev/null -w "k3s:  %{time_total}s\n" http://localhost:8081/health
+done
+```
+
+Both will be milliseconds. Record them anyway — the habit (measuring, comparing, writing it down) is the deliverable.
+
+## 2. Path B (Optional) — The Same on a Real Second Cloud
+
+Only after a budget alert exists. Recommended, $0: **Oracle Always Free ARM VM** (shape `VM.Standard.A1.Flex`, e.g., 2 OCPU / 12 GB — free forever if you stay in Always Free shapes), then:
+
+```bash
+ssh ubuntu@<vm-public-ip>
+curl -sfL https://get.k3s.io | sh -           # single-node k3s, real cloud VM
+sudo kubectl get nodes
+# build image locally, export, import remotely:
+docker save shopcore-api:1.0.0 | ssh ubuntu@<vm-public-ip> 'docker load'
+kubectl apply -f shopcore-api.yaml --server=https://<vm-public-ip>:6443 --insecure-skip-tls-verify=true   # throwaway VM only; never point --insecure at a cluster you care about
+```
+
+Alternative $0-ish: **GKE** zonal cluster — free-tier credit covers the management fee; nodes are tiny; still set a $10 budget alert. **Do not** run EKS for this. Full teardown (mandatory): delete the Deployment/Services/Ingress, then **terminate the VM / delete the cluster**, verify the bill shows $0 new spend, and delete the kubeconfig context.
+
+## 3. Cost & Result Table (fill in during the lab)
+
+| Measure | kind (A) | k3d/k3s (B) | Cloud (optional) |
+| :-- | :-- | :-- | :-- |
+| Cluster create time | | | |
+| Image load/import time | | | |
+| curl /health p50 | | | |
+| curl /health max | | | |
+| Cost so far | $0 | $0 | |
+| What breaks if deleted | laptop session | laptop session | real DNS/traffic |
+
+## 4. Mandatory Teardown — Last Step, Not Optional
+
+```bash
+kubectl --context kind-shopcore-a delete ns shopcore
+kubectl --context k3d-shopcore-b delete ns shopcore
+kind delete cluster --name shopcore-a
+k3d cluster delete shopcore-b
+kind get clusters && k3d cluster list     # must both report empty/none
+# cloud path only: terminate VM / delete cluster in the console; confirm $0 in billing;
+# remove the cloud kubeconfig context; confirm no stray disks/IPs remain.
+```
+
+A lab you didn't tear down is a bill, not an exercise.
+
+## 5. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| k3d cluster create hangs at port 8081 | Port already bound | Use `--port "8091:80@loadbalancer"` and curl 8091 |
+| Pods `ImagePullBackOff` on k3d | `k3d image import` skipped | Re-import; k3d nodes can't see your host image store |
+| `8081` connection refused | Loadbalancer mapping wrong / k3d proxy down | `k3d cluster stop shopcore-b` then start; verify `docker ps` shows k3d proxy |
+| kind context missing | kubeconfig merge issue | `kind export kubeconfig --name shopcore-a` |
+| curl via cloud VM times out | k3s Traefik only on vm IP; 6443 vs 80 confusion | Security list must allow 80/443 to the VM; test from your laptop |
+| Both clusters show same pods? | Context confusion | Always pass `--context`; add `kubectl config current-context` sanity check to your muscle memory |
+
+## 6. Assessment
+
+**Assessment checklist**
+
+- [ ] I deployed the same image with identical manifests to two Kubernetes distributions and verified HTTP 200 from both.
+- [ ] I can explain why the Ingress resource is portable but the controller/class is not.
+- [ ] I compared latency and wrote it down, with the caveat of what it does and doesn't measure.
+- [ ] I tore every environment down and verified it (clusters gone, cloud VM terminated, bill at $0).
+
+**Challenge.** Swap the k3d environment for the GKE free-tier path. Document the exact commands, the free-tier credit consumption, and the teardown proof (console screenshot + billing page showing credit).
+
+</BookNodePage>

@@ -1,0 +1,61 @@
+---
+id: "12-4-6-postgresql-vs-mongodb-choosing-for-real-projects"
+title: "12.4.6 PostgreSQL vs MongoDB: Choosing for Real Projects"
+sidebar_label: "12.4.6 Postgres vs MongoDB"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-6-postgresql-vs-mongodb-choosing-for-real-projects"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4-t6">
+
+You now know both engines hands-on. This lesson turns that into **judgment**: when to pick which — with reasons, trade-offs, and the honest default for your own projects.
+
+## 1. The Side-by-Side You Should Memorize
+
+| Criterion | Choose PostgreSQL | Choose MongoDB |
+| :-- | :-- | :-- |
+| Multi-table joins & foreign keys | **Best fit** — indexed JOINs, FKs enforced | Awkward — `$lookup` works but scales poorly and multiplies round-trips |
+| Strict schema / financial ACID | **Best fit** — CHECK/UNIQUE/FK/transactions | Possible (`$jsonSchema` + multi-doc transactions) but constraints are younger and opt-in |
+| Polymorphic nested documents (product with 40 varying spec fields) | Good via JSONB + GIN | **Very natural** — documents differ freely |
+| Hierarchical trees read whole (comments + replies + likes in one read) | JSONB or recursive CTEs | **Very natural** — nested subdocuments |
+| High write throughput of identical small docs | Very good | Very good (with sharding available) |
+| Ad-hoc analytics/reporting | **SQL + window functions** — unmatched | Aggregation pipelines are powerful but verbose |
+| Team/tooling gravity | SQL is universal (every ORM, BI tool) | Document drivers are first-class in JS stacks |
+| Default for this book's apps | **Yes** — ShopCore core data | Use only where document shape truly dominates |
+
+## 2. Common Myths, Debunked
+
+- **"MongoDB is schemaless, so no design needed."** False — you must design documents, validation and indexes deliberately, or you get 12 undocumented shapes in one collection. See 12.4.4.
+- **"PostgreSQL can't do documents."** False — JSONB + GIN covers the polymorphic-catalog case cleanly inside ACID (12.3.3).
+- **"MongoDB is always faster."** Depends — for reads of whole nested documents, yes; for anything with joins, groupings, or strict aggregates, Postgres wins. Measure with your real data.
+- **"One project, one database."** Ideal default. Two databases only when a named workload proves it needs one (analytics warehouse, vector store at scale, cache tier).
+
+## 3. A Decision Tree You Can Actually Use
+
+1. Does the data have real relationships and invariants (orders, payments, inventory, users)? → **PostgreSQL.**
+2. Money or legal history involved? → **PostgreSQL, always.**
+3. Documents with widely varying per-record shape, read/written as whole units? → **MongoDB (or JSONB, if it stays one workload).**
+4. AI embeddings/semantic search? → **pgvector in PostgreSQL** (12.3.3) until you outgrow ~10M vectors.
+5. Still unsure? → **Start in PostgreSQL.** You can migrate specific workloads to MongoDB later with a thin sync job; the reverse migration is harder.
+
+## 4. Polyglot Persistence — When Two Databases Is Correct
+
+A real architecture might be: PostgreSQL (system of record) + Redis (cache/session) + MongoDB (product content/CMS) + pgvector or Pinecone (embeddings). Each earns its place by a workload, never by fashion. Adding a second database means: second backup story, second monitoring story, second on-call page. Budget for it.
+
+## 5. Practice
+
+**Guided exercise.** For each: (a) airline booking system; (b) social network activity feed; (c) inventory for a hardware store; (d) IoT sensor readings, 50k/sec; (e) e-commerce CMS pages — name your store (PostgreSQL/MongoDB/Other) and one-line reason.
+
+**Independent exercise.** ShopCore suddenly needs: user-generated product reviews with photos, markdown, votes, threaded replies. Keep Postgres? Move to Mongo? Answer with the decision tree and justify.
+
+**Challenge.** Design the *minimum viable* polyglot architecture for a food-delivery app (restaurants, menus, orders, payments, location pings). Which parts go where and why?
+
+**Assessment checklist**
+
+- [ ] I can compare the two engines on joins, ACID, document flexibility and tooling.
+- [ ] I follow the choose-Postgres-first default and know when to break it.
+- [ ] I can name one workload where MongoDB is genuinely better, and one where it isn't.
+- [ ] I understand polyglot persistence costs and won't adopt it on a whim.
+
+</BookNodePage>

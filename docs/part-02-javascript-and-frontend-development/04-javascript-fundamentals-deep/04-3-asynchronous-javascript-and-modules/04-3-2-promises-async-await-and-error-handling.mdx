@@ -1,0 +1,107 @@
+---
+id: "04-3-2-promises-async-await-and-error-handling"
+title: "04.3.2 Promises, Async/Await and Error Handling"
+sidebar_label: "04.3.2 Promises, Async/Await and Error Handling"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-3-asynchronous-javascript-and-modules/04-3-2-promises-async-await-and-error-handling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s3-t2">
+
+A **Promise** is an object representing the eventual completion or failure of an asynchronous operation. Modern `async/await` is clean syntax built directly on top of Promises—and knowing both together helps you fetch APIs in parallel, cancel slow requests with timeouts, and never swallow errors silently.
+
+## 1. The Three States of a Promise
+
+Every Promise is in exactly one state:
+- **`pending`:** Initial state—still waiting.
+- **`fulfilled`:** Succeeded with a resolved value.
+- **`rejected`:** Failed with an error reason.
+
+Once settled (`fulfilled` or `rejected`), a Promise's state is **permanent** and immutable.
+
+## 2. `async/await` and the `fetch()` Error Trap
+
+Many beginners assume `fetch("https://example.com/missing")` rejects on HTTP `404` or `500`. **It does not!** `fetch()` only rejects on network disconnection, DNS failure, or abort. HTTP error statuses (`404`, `500`) still fulfill with `response.ok === false`!
+
+Always check `response.ok` and add an explicit timeout via `AbortSignal.timeout(ms)`:
+
+```javascript
+// fetchJson.js — Safe production wrapper around built-in fetch()
+export async function fetchJson(url, { timeoutMs = 5000 } = {}) {
+  const response = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
+  }
+
+  return response.json();
+}
+```
+
+### Handling Rejections Explicitly (`try / catch / finally`)
+
+```javascript
+async function loadProfile(username) {
+  try {
+    const user = await fetchJson(`https://api.github.com/users/${encodeURIComponent(username)}`);
+    return { login: user.login, publicRepos: user.public_repos };
+  } catch (err) {
+    if (err.name === "TimeoutError" || err.name === "AbortError") {
+      throw new Error(`GitHub request timed out for ${username}`, { cause: err });
+    }
+    throw err;
+  } finally {
+    // Runs on BOTH success and failure (ideal for stopping loading spinners)
+  }
+}
+```
+
+## 3. Avoid the Sequential `await` Waterfall
+
+When two asynchronous tasks do **not** depend on each other, awaiting them one after another wastes half your latency:
+
+```javascript
+// SLOW (Sequential waterfall: total time = time(A) + time(B))
+// const profile = await fetchJson("/api/profile");
+// const notifications = await fetchJson("/api/notifications");
+
+// FAST (Parallel start: total time = max(time(A), time(B)))
+async function loadDashboard(fetchFn) {
+  const [profile, notifications] = await Promise.all([
+    fetchFn("/api/profile"),
+    fetchFn("/api/notifications"),
+  ]);
+  return { profile, notifications };
+}
+```
+
+### Choosing the Right Combinator
+
+| Method | Behavior on Rejection | Best Use Case |
+| :--- | :--- | :--- |
+| `Promise.all(list)` | Rejects immediately if **any** item rejects | Dependent data all required to render |
+| `Promise.allSettled(list)` | Never rejects; returns `{ status, value \| reason }` for every item | Batch jobs / optional dashboard widgets |
+| `Promise.race(list)` | Settles with the **first** settled promise (resolved or rejected) | Racing a task against a custom deadline |
+| `Promise.any(list)` | Resolves with the first **fulfilled** promise (ignores rejections unless all fail) | Fastest healthy mirror/endpoint |
+
+## 4. Common Beginner Bugs
+
+1. **`array.forEach(async (item) => ...)`:** `forEach` completely ignores returned Promises—your outer function finishes *before* the loop callbacks finish! Use `for (const item of items) { await ... }` for sequential work, or `await Promise.all(items.map((item) => ...))` for parallel work.
+2. **Unhandled rejections crashing Node:** In Node.js, an unhandled rejected Promise crashes the process. Always `await`, `return`, or attach `.catch()` to every Promise you create.
+
+## 5. Practice Exercises
+
+1. Write a tiny mock async function `fakeRequest(name, ms, shouldFail = false)` and prove in `node` that `Promise.all([fakeRequest("A", 100), fakeRequest("B", 100)])` finishes in ~100ms instead of ~200ms.
+2. Test `Promise.allSettled` with one fulfilled and one rejected `fakeRequest`, printing separate counts of `fulfilled` and `rejected` outcomes.
+
+## Mastery Checklist
+
+- [ ] Always checks `if (!response.ok)` when calling `fetch()`.
+- [ ] Uses `Promise.all` / `Promise.allSettled` for independent parallel tasks instead of sequential awaits.
+- [ ] Never uses `async` callbacks inside `Array.prototype.forEach`.
+
+</BookNodePage>

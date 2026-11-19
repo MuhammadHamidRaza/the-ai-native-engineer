@@ -1,0 +1,47 @@
+---
+id: "index"
+title: "34. AI Workers"
+sidebar_label: "34. AI Workers"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-34">
+
+Chapters 29–33 gave ShopCore an agent (the Postmaster) and the plumbing to run automations. This chapter is about the operational middle layer: **AI workers** — bounded-role, always-on, auditable automation roles that own a real business process end-to-end. Not a chatbot your team talks to. Not a script that silently rots. A worker has a mission, inputs, guardrails, a budget, an SLA, an owner, a kill-switch, and a paper trail.
+
+## Worker vs Agent vs Automation — the Honest Distinction
+
+| | Automation (33) | Agent (30) | AI Worker (34) |
+| :-- | :-- | :-- | :-- |
+| Scope | One workflow, deterministic | One reasoning loop, general tools | One **job role**, ongoing, owns an outcome |
+| Lifespan | Per execution | Per conversation/task | Weeks–months, versioned like a service |
+| State | None / per-run | Session memory | Durable queue + audit log + run history |
+| Accountability | "The flow ran" | "The agent answered" | An SLA, an error budget, an owner, a kill-switch |
+| Example | New order → Slack | Postmaster triage in a chat | **AR Nudge worker** chasing overdue invoices for 90 days |
+
+Every worker in this chapter is built on the n8n + LLM + Postgres substrate from Chapter 33 — this is where the visual canvas becomes a staffed operation. The three ShopCore workers:
+
+- **Inbox Triage worker** — new support email → classify → draft response grounded in Ch 28 policy docs → approval gate → send or escalate.
+- **AR Nudge worker** — invoice 7 days overdue → tone-laddered reminder sequence (day 1 → 7 → 14 → 21), stopping on payment, dispute or max touches.
+- **Research Brief worker** — weekly cron → competitor list in → cited Notion page out, for leadership Monday mornings.
+
+## Chapter Contents
+
+- **34.1 Designing Role-Specific AI Workers** ([34.1.1 Scoping Operational Boundaries and SLAs](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-1-scoping-operational-boundaries-and-slas), [34.1.2 Event-Driven vs Scheduled Worker Execution](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-2-event-driven-vs-scheduled-worker-execution)) — the worker design spec: mission, guardrails, SLA, kill-switch, and the execution-model choice.
+- **34.2 End-to-End Business Workers** ([34.2.1 Inbox Triage, Support and Research Workers](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers/34-2-1-inbox-triage-support-and-research-workers), [34.2.2 Audit Trails and Escalation Queues](/book/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-2-end-to-end-business-workers/34-2-2-audit-trails-and-escalation-queues)) — three complete workers plus the audit/escalation machinery that makes them employable.
+
+## The Rules That Apply to Every Worker
+
+1. **Red line:** no worker sends anything customer-facing without a passing approval gate (or an explicit, logged "auto-approve" policy with dollar/sentiment limits).
+2. **Every decision is logged**: input hash, prompt version, model version, output, approver, latency — schema in 34.2.2.
+3. **Kill-switch first**: each worker can be disabled in under 60 seconds by its owner, no deploy required.
+4. **Budget**: a monthly token/API cap with a hard stop, alerting at 70%.
+5. **Honest ROI**: measure hours saved, error rate, and escalation volume — not tokens generated.
+
+## Prerequisites and Outcomes
+
+Prerequisites: Part 04 (Postgres), Part 05 (operations), Chapters 28 (RAG), 29 (agent architecture), 33 (n8n). After this chapter you will have three designed-and-specified ShopCore workers, an audit schema, an escalation queue UX, and an ROI measurement plan — the artifacts a real ops lead would demand before letting automation touch customers. Verified November 2026.
+
+</BookNodePage>

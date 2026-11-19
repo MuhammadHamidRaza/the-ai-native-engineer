@@ -1,0 +1,171 @@
+---
+id: "18-1-2-dockerfiles-layers-caching-and-multi-stage-builds"
+title: "18.1.2 Dockerfiles, Layers, Caching and Multi-Stage Builds"
+sidebar_label: "18.1.2 Dockerfiles, Layers, Caching and Multi-Stage Builds"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-1-docker-setup-images-and-multi-stage-builds/18-1-2-dockerfiles-layers-caching-and-multi-stage-builds"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18-s1-t2">
+
+A Dockerfile is a recipe; the image is the baked cake. This lesson teaches you to write recipes that bake fast — exploiting layer caching — and small — by splitting build-time from run-time dependencies. We build the ShopCore API image both ways and measure the difference.
+
+## 1. Anatomy of a Dockerfile
+
+Create `Dockerfile` in the app root (no extension). A typical Node service:
+
+```dockerfile
+FROM node:22-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY . .
+EXPOSE 3000
+CMD ["node", "src/server.js"]
+```
+
+| Instruction | Purpose |
+| :-- | :-- |
+| `FROM` | Base image — every build starts here; pin a digest or at least a minor tag for reproducibility |
+| `WORKDIR` | Sets (and creates) the working directory for everything after it |
+| `COPY src dest` | Copies from the **build context** (the folder you `docker build` from) into the image |
+| `RUN` | Executes a command at **build time**; each `RUN` creates a layer |
+| `EXPOSE` | Documents the port (does not publish it — that is `-p`'s job) |
+| `CMD` | Default command at **container start**; `ENTRYPOINT` + `CMD` when you want a fixed binary |
+| `ENV` | Bake in defaults — never secrets (build args and runtime `-e` exist for those) |
+
+**Where to run:** every `docker build` below runs from the app folder (e.g., `cd ~/shopcore/api`) in PowerShell, bash or WSL2.
+
+## 2. Layers and the Cache — Order Is Everything
+
+Each instruction produces an immutable **layer**. Docker reuses a cached layer until one of its inputs changes — then it rebuilds that layer **and every layer after it**. Hence the golden rule:
+
+**Order from least- to most-frequently changing.** Dependency manifests change rarely; source changes constantly. That is why `COPY package.json …` + `RUN npm ci` come *before* `COPY . .`. Put `COPY . .` first and every source edit reinstalls `node_modules` — builds go from 5 s to 90 s.
+
+```bash
+docker build -t shopcore-api:dev .
+# Re-run with no changes: every line shows CACHED
+# Edit one .js file: only the final COPY layer and later re-run
+```
+
+`.dockerignore` keeps junk out of the context (and out of cache-invalidations):
+
+```text
+node_modules
+npm-debug.log
+.git
+.env
+Dockerfile
+.dockerignore
+coverage
+```
+
+## 3. Multi-Stage Builds — Deps Out, Artifact In
+
+Build tools (TypeScript compiler, devDependencies, headers) do not belong in production. Multi-stage builds run earlier stages, then copy **only the artifact** into a clean final stage:
+
+```dockerfile
+# ---------- build stage ----------
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build        # e.g. tsc -> dist/
+
+# ---------- runtime stage ----------
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
+USER node
+EXPOSE 3000
+CMD ["node", "dist/server.js"]
+```
+
+Measure the win:
+
+```bash
+docker build --target build   -t shopcore-api:build .   # fat
+docker build                  -t shopcore-api:1.0.0 .   # final only
+docker images shopcore-api
+```
+
+Observed (your numbers will vary slightly): the naive single-stage image lands around **~1.0–1.2 GB**; the multi-stage runtime lands around **~180–250 MB**. The savings come from dropping devDependencies, the npm cache and build toolchain — not from compression.
+
+Useful flags and inspection:
+
+```bash
+docker build --target deps -t shopcore-api:deps .   # stop at a named stage
+docker history shopcore-api:1.0.0                    # layer sizes, biggest first
+docker image inspect shopcore-api:1.0.0              # full config JSON
+```
+
+## 3.5 Build Arguments and Cache Discipline
+
+`ARG` declares build-time variables — useful for version pins, never for secrets (they persist in history):
+
+```dockerfile
+ARG NODE_IMAGE=node:22-bookworm-slim
+FROM ${NODE_IMAGE}
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+```
+
+```bash
+docker build --build-arg NODE_IMAGE=node:22-alpine -t shopcore-api:1.0.1 .
+```
+
+`HEALTHCHECK` lets Docker (and later, Compose and orchestrators) know when your app is *actually* ready, not merely "process started":
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+```
+
+**Pinning by digest** (`node:22-bookworm-slim@sha256:…`) freezes the exact bytes forever — the most reproducible option, at the cost of stale bases unless you bump deliberately. Always clean package-manager caches in the same `RUN` that installs (`rm -rf /var/lib/apt/lists/*`, `npm cache clean --force`) — a separate `RUN rm` does not shrink the layer that created the files.
+
+## 4. Tagging Discipline
+
+```bash
+docker tag shopcore-api:1.0.0 yourdockerhubuser/shopcore-api:1.0.0
+docker tag shopcore-api:1.0.0 yourdockerhubuser/shopcore-api:latest
+```
+
+`latest` is a moving pointer, not a version — production should pin `1.0.0` (or a digest `@sha256:…`). One image, two tags is normal. You will push these in [18.2.2](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries).
+
+## 5. Troubleshooting the Classics
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| `npm ci` fails: lock file missing | `package-lock.json` not copied / not committed | Commit the lockfile; copy it explicitly |
+| Every build reinstalls deps | Manifest copied *after* `COPY . .` | Reorder: manifest first, install, then source |
+| Image huge despite multi-stage | `RUN npm ci` (with dev) in final stage, or fat base | `--omit=dev` in final stage; prefer `-slim`/`alpine` bases |
+| `COPY failed: file not found` | Path outside build context | Build from repo root or fix context (`docker build -f Dockerfile api/`) |
+| `CMD` container exits instantly | Wrong entrypoint path | `docker logs`; verify path with `docker run --rm -it img sh` |
+| Env var "missing" at runtime | Baked with `ENV` instead of passed with `-e` | Use `-e`/`--env-file` at run time for per-env values |
+
+## 6. Practice
+
+**Guided.** Write the single-stage Dockerfile above for the ShopCore API; build; `docker history`; note the largest layer.
+
+**Independent.** Convert it to the three-stage version; confirm `docker images` shows the size drop; run it: `docker run --rm -p 3000:3000 shopcore-api:1.0.0` and `curl localhost:3000/api/health`.
+
+**Challenge.** Swap `node:22-bookworm-slim` in the final stage for `node:22-alpine`, rebuild, and document one gotcha Alpine causes (musl vs glibc, missing native modules). Also build with `--target deps` and explain when stopping at an intermediate stage is useful (CI caching, debugging).
+
+**Assessment checklist**
+
+- [ ] I can name the purpose of `FROM`, `WORKDIR`, `COPY`, `RUN`, `EXPOSE`, `CMD`.
+- [ ] I can explain why layer order determines build time and how the cache invalidates.
+- [ ] I wrote a `.dockerignore` and know what it protects.
+- [ ] My multi-stage image is under 300 MB and runs the API correctly.
+- [ ] I never bake secrets with `ENV`; I use `-e`/`--env-file` (18.2.1) instead.
+- [ ] I tag with explicit versions, not only `latest`.
+
+</BookNodePage>

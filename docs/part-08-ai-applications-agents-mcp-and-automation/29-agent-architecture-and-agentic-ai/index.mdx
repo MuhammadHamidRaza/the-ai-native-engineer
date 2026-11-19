@@ -1,0 +1,45 @@
+---
+id: "index"
+title: "29. Agent Architecture & Agentic AI"
+sidebar_label: "29. Agent Architecture & Agentic AI"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/29-agent-architecture-and-agentic-ai"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-29">
+
+Part 07 taught you to work *with* AI. Chapter 28 shipped an AI feature *inside* ShopCore — a HelpBot that answers from policy documents. Chapter 29 is where you make the decision most teams get wrong: **whether the problem in front of you is a workflow, an agent, or both — and what keeps an agent from becoming an unbounded liability.** Everything here is framework-agnostic. Chapter 30 implements the same design with the OpenAI Agents SDK.
+
+## What This Chapter Builds: The ShopCore Postmaster
+
+The running example for the rest of Part 08's agent arc is the **ShopCore Postmaster**: an agent that triages the inbound operations mailbox. Each morning it reads new tickets and routes them:
+
+- **Refund disputes** — customer claims a charge is wrong; the Postmaster verifies the order, the policy window, and proposes or issues the refund.
+- **Address changes** — customer wants shipping address changed before dispatch; the Postmaster validates identity and inventory state, then updates the order.
+- **Inventory shortfalls** — a SKU went below reorder threshold; the Postmaster checks movements, flags affected open orders, and proposes a restock order.
+
+The Postmaster is deliberately unglamorous. It is not a "research agent" answering open-ended questions — it is an operations inbox with money attached, which makes it the perfect place to learn where agents help and where they detonate.
+
+## Chapter 29 Structure
+
+- **29.1 Workflows vs Autonomous Agents:** The spectrum from deterministic pipeline to tool-using workflow to autonomous agent; when each wins (compliance-heavy flows stay deterministic, ambiguous exploration earns autonomy); planning strategies, reflection, and how models choose among hundreds of tools.
+- **29.2 Reliability Boundaries for Agents:** Stopping criteria and budgets, human approval gates, the failure taxonomy, recovery ladders, and the deterministic fallback that must always exist.
+
+## What You Will Have After This Chapter
+
+- A written, reviewable Postmaster specification: entry point, routing rules, tool inventory, forbidden actions, approval tiers, budgets.
+- The ability to argue pipeline-vs-agent in a design review — with criteria, not vibes.
+- A failure-mode checklist you can apply to any agent you are about to ship.
+
+## How to Work Through This Chapter
+
+1. Read 29.1.1 before any code. The decision you make there — deterministic entry, agent only where judgment is required — shapes every file in Chapter 30.
+2. Do the failure-mode exercises in 29.2 even if you are eager to build. Agents that fail *containably* are shippable; agents that fail mysteriously are research projects.
+3. Keep the ShopCore world in your head: React SPA, Express API, PostgreSQL, Stripe. The Postmaster operates on that system — tickets arrive from the HelpBot world you built in Chapter 28.
+
+Prerequisites: Parts 04–07, especially Part 07 (tokens, context, structured outputs, prompt injection). No SDK knowledge required yet — that is Chapter 30.
+
+**Hours honesty.** Budget 6–8 focused hours. This is the shortest chapter in Part 08 on paper and the one that saves you the most money; do not skim it "to get to the SDK."
+
+</BookNodePage>

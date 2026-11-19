@@ -1,0 +1,24 @@
+---
+id: "index"
+title: "04.1 Language Core & Execution Model"
+sidebar_label: "04.1 Language Core & Execution Model"
+slug: "/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-04-s1">
+
+Many beginners learn JavaScript by memorizing rules like *"use `const` by default"* or *"avoid `==`"* without ever learning **why** those rules exist. Subchapter **04.1** builds your mental model of the JavaScript engine from the inside out: how values are stored, why implicit coercion happens, how execution contexts stack during function calls, and how lexical closures keep variables alive after outer functions return.
+
+## What You Will Master
+
+1. **[04.1.1 Variables, Types and Coercion](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model/04-1-1-variables-types-and-coercion):** `const`/`let`/`var`, the 7 primitive types + objects, operators, conditions, loops, `===` vs `==`, truthiness, and IEEE 754 traps.
+2. **[04.1.2 Execution Contexts and Call Stack](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model/04-1-2-execution-contexts-and-call-stack):** Creation phase vs. execution phase, LIFO call stack frames, stack overflows, and reading Node/browser stack traces.
+3. **[04.1.3 Scope, Hoisting and Closures](/book/part-02-javascript-and-frontend-development/04-javascript-fundamentals-deep/04-1-language-core-and-execution-model/04-1-3-scope-hoisting-and-closures):** Lexical scope, Temporal Dead Zone (`TDZ`), why closures capture references (not snapshots), and practical module/memoization patterns.
+
+## Study Habit for Subchapter 04.1
+
+Run every code snippet inside a dedicated practice folder (`mkdir ch04-practice && cd ch04-practice`) using `node filename.js`. Before running a script, **write down what you predict it prints**, then compare your prediction against the terminal output.
+
+</BookNodePage>

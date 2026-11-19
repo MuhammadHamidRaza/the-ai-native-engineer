@@ -1,0 +1,183 @@
+---
+id: "16-1-1-local-to-production-builds-ports-env-vars-and-cors"
+title: "16.1.1 Local to Production: Builds, Ports, Env Vars and CORS"
+sidebar_label: "16.1.1 Local to Production: Builds, Ports, Env Vars and CORS"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-1-deployment-fundamentals-and-hosting-models/16-1-1-local-to-production-builds-ports-env-vars-and-cors"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s1-t1">
+
+Every failed first deploy has the same anatomy: the app worked on `localhost`, and nobody asked *why it worked there*. This lesson removes the magic — builds, ports, environment variables and CORS are the four things that genuinely differ between your dev machine and a server.
+
+## 1. What `npm run build` Actually Emits
+
+`npm run dev` (Vite) serves modules on demand with hot-module replacement — it is a development convenience, not a deployable artifact. Production is different: `vite build` walks your import graph from `index.html`, bundles everything into **static files**, minifies them, and fingerprints file names (`assets/index-a1b2c3d4.js`) so caches can be told to "keep this forever."
+
+```powershell
+# Windows PowerShell / macOS / Linux — in the ShopCore SPA root
+npm run build
+```
+
+Expected (abbreviated):
+
+```text
+vite v7.x.x building for production...
+✓ 412 modules transformed.
+dist/index.html                   0.46 kB │ gzip:  0.30 kB
+dist/assets/index-a1b2c3d4.js   214.10 kB │ gzip: 69.85 kB
+dist/assets/index-e5f6a7b8.css   31.20 kB │ gzip:  6.40 kB
+✓ built in 3.2s
+```
+
+The `dist/` folder is the entire product. Static hosts serve it; nothing on disk outside `dist/` is needed in production. `.env` files, `node_modules`, source `.jsx` — none of it ships.
+
+**Verify the artifact before anyone else sees it** — this is the cheapest production rehearsal you own:
+
+```powershell
+npx vite preview --port 4173
+# then open http://localhost:4173
+```
+
+If the app works on `:4173` but not `:5173`, the build is what differs — not your code. Blank page after deploy? The browser console in production almost always tells you why (usually a bad asset path or an undefined env var - see §3).
+
+## 2. Ports: Dev Defaults vs Reality
+
+| Context | Typical port | Notes |
+| :-- | :-- | :-- |
+| Vite dev server | 5173 | Dev only; never exposed publicly |
+| `vite preview` | 4173 | Local artifact check |
+| Express API (dev) | 4000 | Must match SPA's API base URL |
+| Hosted API (Render) | 443 (public) | Platform assigns/routes 443 → your 4000 |
+| Static host | 443 | CDN edge, you choose nothing |
+
+A well-known fact with a well-known failure mode: hard-coding `http://localhost:4000` as the API base URL in the SPA works on your machine and fails everywhere else. The fix is an **environment variable** (§3), not a find-and-replace at deploy time.
+
+## 3. Environment Variables: dev vs prod
+
+Environment variables are the sanctioned way to vary behavior per environment without changing code. Two rules cover 95% of incidents:
+
+**Rule 1 — Vite bakes env vars into the bundle at build time.** Only variables prefixed `VITE_` are visible to browser code, and they are *inlined as literals*. They are public by definition — never put secrets in `VITE_` variables.
+
+**Rule 2 — Server-side secrets (API keys, `DATABASE_URL`) live on the server**, read via `process.env`, never shipped to the browser, never committed.
+
+```powershell
+# .env.development (local dev — gitignored)
+VITE_API_URL=http://localhost:4000
+
+# .env.production (used by `vite build` — gitignored)
+VITE_API_URL=https://shopcore-api.onrender.com
+```
+
+```js
+// src/api/client.js
+const API = import.meta.env.VITE_API_URL;
+export async function getProducts() {
+  const res = await fetch(`${API}/api/products`);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+```
+
+For the Express API:
+
+```powershell
+# .env in the API root locally (gitignored)
+DATABASE_URL=postgres://postgres:localpw@localhost:5432/shopcore
+PORT=4000
+```
+
+```js
+// server.js
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+```
+
+Both `.env` files must be in `.gitignore`. If a secret ever lands in git history, rotate it — deleting the commit is not enough. See [13.1 Node.js and npm](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-1-nodejs-and-npm-from-zero) for npm scripts and `.env` hygiene.
+
+**On the platform** (Vercel/Render/Netlify dashboards), the same variables are set as "Environment Variables" — they override/replace your local files and are never in the repo. This is the one source of truth in production.
+
+## 4. CORS, Explained at the Browser Level
+
+**What CORS is:** the browser enforces the *same-origin policy* — JavaScript on `shopcore.vercel.app` may not read responses from `shopcore-api.onrender.com` unless the API explicitly permits it via response headers. CORS protects *your data from other sites' scripts*; it is not server-side access control.
+
+**When it triggers:** for "non-simple" requests (e.g., `Content-Type: application/json` or any `Authorization` header) the browser first sends a preflight:
+
+```text
+OPTIONS /api/products HTTP/1.1
+Origin: https://shopcore.vercel.app
+Access-Control-Request-Method: GET
+```
+
+The server must answer with allow headers, or the browser blocks the real request:
+
+```text
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://shopcore.vercel.app
+Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
+Access-Control-Allow-Headers: Content-Type,Authorization
+```
+
+**The exact error you will see** in the browser console, and what it means:
+
+```text
+Access to fetch at 'https://shopcore-api.onrender.com/api/products' from origin
+'https://shopcore.vercel.app' has been blocked by CORS policy: No
+'Access-Control-Allow-Origin' header is present on the requested resource.
+```
+
+Translation: your API responded, but without the header, so the *browser* hid the response from your JS. The server logs show a healthy 200 — which is why people misdiagnose this as "network down." Also watch for: `Method GET is not allowed by Access-Control-Allow-Methods` (preflight needs the method listed).
+
+Fix on the API (Express 5):
+
+```js
+import cors from 'cors';
+app.use(cors({
+  origin: ['https://shopcore.vercel.app', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true, // required if you use cookies/sessions cross-site
+}));
+```
+
+`credentials: true` with `Origin: *` is rejected by browsers — with cookies you must name exact origins. In dev you can proxy instead (`vite.config.js` `server.proxy` `/api` → `http://localhost:4000`), which sidesteps CORS entirely on localhost; the hosted pair (SPA domain → API domain) cannot use that trick, so learn the headers for real.
+
+## 5. The Deploy-Readiness Checklist (before touching any platform)
+
+```powershell
+npm run build                       # artifact builds clean
+npm test                            # tests still pass
+grep -r "localhost" dist/           # no baked-in localhost URLs (PowerShell: Select-String)
+grep -ri "VITE_.*=.*secret\|api_key\|password" dist/assets/*.js   # nothing secret inlined
+```
+
+A clean `dist/` with zero `localhost:4000` strings means your env vars were wired correctly. That grep is the single highest-value pre-deploy command in this book.
+
+## 6. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Blank page after deploy, works in `vite preview` | Asset path base wrong (repo deploys under `/subpath/`) | Set `base: '/your-repo/'` in `vite.config.js` for project sites; `'/'` for custom domain root |
+| `VITE_API_URL` is undefined in prod build | Env var set only in `.env.development` or dashboard name typo | `.env.production` + rebuild; on platform, set var then **redeploy** (build-time inline) |
+| API calls fail but `curl` works | CORS headers missing (browser-only enforcement) | Add `cors()` or correct `origin`; check `credentials: true` needs exact origins |
+| Cookie session never persists cross-site | SPA and API on different eTLD+1 | Set `SameSite=None; Secure` on session cookie, `credentials: 'include'` on fetch, HTTPS both sides |
+| Old version still served after deploy | CDN cache, or you deployed the wrong folder | Purge CDN / redeploy; confirm hashed asset names changed |
+| `npm run build` fails only on CI | DevDependency missing or Node version mismatch | Match Node version locally and on CI (`engines` in `package.json`, `.nvmrc`) |
+
+## 7. Practice
+
+**Guided exercise.** Build the ShopCore SPA (`npm run build`), serve `dist/` with `npx vite preview`, and confirm the catalog loads. Then point `VITE_API_URL` at a deliberately wrong port and rebuild — observe the exact failure, and fix it via env var only.
+
+**Independent exercise.** Add `curl -I` verification against your built site: confirm `content-type: text/html` for `/` and `application/javascript` for the hashed asset, so you know what the CDN will serve before you deploy it.
+
+**Challenge.** Reproduce the CORS error on purpose: serve the SPA on `:4173` and an API on `:4000` WITHOUT `cors()`, capture the browser console message verbatim, then fix it and capture the preflight succeeding in the Network tab (OPTIONS → 204).
+
+**Assessment checklist**
+
+- [ ] I can explain what `npm run build` emits and what a static host actually serves.
+- [ ] I know why `VITE_` variables are public and where server secrets live.
+- [ ] I can verify a production build locally before deploying.
+- [ ] I can name the four CORS response headers from memory and read a real preflight.
+- [ ] I greped my `dist/` for `localhost` and found nothing.
+
+</BookNodePage>

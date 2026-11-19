@@ -1,0 +1,182 @@
+---
+id: "30-1-1-defining-agents-instructions-and-models"
+title: "30.1.1 Defining Agents, Instructions and Models"
+sidebar_label: "30.1.1 Defining Agents, Instructions and Models"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/30-openai-agents-sdk-with-python/30-1-sdk-primitives-and-agent-loops/30-1-1-defining-agents-instructions-and-models"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-30-s1-t1">
+
+This lesson gets a model answering as *your* Postmaster, locally, in under ten minutes — then explains every argument you just passed. All SDK details verified against the official docs and PyPI in **November 2026**; the SDK ships weekly, so re-verify anything you type from memory.
+
+## 1. Install — the Name Is `openai-agents`
+
+```bash
+# Windows PowerShell (bash/WSL2 alternate shown below)
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install openai-agents          # the package; pip resolves 0.25.0 as of Nov 2026 (verified 2026-11-18, Python 3.14)
+pip show openai-agents             # verify version
+```
+```bash
+# bash / WSL2
+python3 -m venv .venv && source .venv/bin/activate
+pip install openai-agents
+```
+
+Three traps, all common: the repo is `openai-agents-python` but the **package is `openai-agents`**; you need **Python ≥ 3.10**; and nothing works without `OPENAI_API_KEY` in the environment (`setx OPENAI_API_KEY "sk-..."` on Windows, then open a new terminal — or export it in the session). If a teammate asks for the environment, give them `.env` handling via your env manager, never the key itself.
+
+## 2. The `Agent(…)` Constructor — Current Shape (Verified)
+
+```python
+from agents import Agent
+
+agent = Agent(
+    name="Postmaster triager",          # required — humans and traces see this
+    instructions="...",                 # system prompt (or a dynamic callback)
+    model="gpt-5.6-luna",               # the SDK's built-in cost-sensitive default
+    model_settings=ModelSettings(...),  # reasoning effort, verbosity, tool_choice…
+    tools=[...],                        # function tools (Chapter 30.2.1)
+    handoffs=[...],                     # agents this one may delegate to (30.2.2)
+    output_type=None,                   # Pydantic model → structured outputs (30.1.2)
+    input_guardrails=[...],             # run on FIRST agent's input only
+    output_guardrails=[...],            # run on FINAL agent's output only
+    hooks=None,                         # lifecycle callbacks (log, meter)
+    tool_use_behavior="run_llm_again",  # default; or "stop_on_first_tool" / StopAtTools
+    reset_tool_choice=True,             # default; prevents tool-use infinite loops
+)
+```
+
+`handoff_description` also exists — it is what the model sees when deciding whether to hand off *to* this agent; set it on specialists. Guardrails attach to agents but fire only at chain boundaries (first input / final output) — per-tool policy lives in tool guardrails and your code (29.2.1), not here.
+
+## 3. Hello, Agent — 10 Lines, Runs End-to-End
+
+```python
+# hello_agent.py
+from agents import Agent, Runner
+
+agent = Agent(name="Assistant", instructions="You are a helpful assistant.")
+result = Runner.run_sync(agent, "Write a haiku about recursion in programming.")
+print(result.final_output)
+```
+
+```bash
+python hello_agent.py
+# Code within the code,
+# Functions calling themselves,
+# Infinite loop's dance.
+```
+
+`Runner.run_sync` is the blocking wrapper (see 30.1.2). If this prints a haiku, your install, key and network are all correct — do not proceed until it does.
+
+## 3.5 Install & Key — The Four Errors You Will Actually See
+
+| Error | Cause | Fix |
+| :-- | :-- | :-- |
+| `ModuleNotFoundError: No module named 'agents'` | Wrong venv / package not installed | Activate venv; `pip install openai-agents`; `pip show openai-agents` |
+| `OpenAIError: Missing credentials` (or 401) | `OPENAI_API_KEY` unset or stale | `setx OPENAI_API_KEY "sk-..."` + **new terminal**; or `$env:OPENAI_API_KEY="sk-..."` for one session |
+| `ModuleNotFoundError: No module named 'openai.types.shared'` | Old `openai` package pinned by another dep | `pip install -U openai` (agents SDK requires a current `openai`) |
+| Haiku prints but trace dashboard is empty | Project mismatch or tracing disabled env var | Check `OPENAI_AGENTS_DISABLE_TRACING`; check you are looking at the right org/project at platform.openai.com |
+
+**Model-selection decision table (verified Nov 2026 — prices move monthly, check platform.openai.com):**
+
+| Workload | Model | Reasoning | Why |
+| :-- | :-- | :-- | :-- |
+| Triager / routing (high volume) | `gpt-5.6-luna` (SDK default) | none | Cheapest path; classification-ish work; you measure latency in ms |
+| Refund specialist | `gpt-5.6-luna` or `gpt-6-sol` | low→medium | Money decisions deserve better judgment; still cap tokens |
+| Escalation summarizer | `gpt-5.6-luna` | none | Summarizing a packed context is mechanical now |
+| Frontier reasoning (rare) | `gpt-6-sol` | high | Only when you have evals proving it wins; otherwise you are donating margin |
+| Cheapest experimentation | `gpt-5-nano` | none | Fixtures, CI smoke tests, not for money paths |
+
+## 4. The Postmaster Triager — Real Instructions
+
+```python
+from agents import Agent, Runner, ModelSettings
+from openai.types.shared import Reasoning
+
+POSTMASTER_INSTRUCTIONS = """
+You are the ShopCore Postmaster triager. You read ONE inbound operations
+ticket and route it. You are a dispatcher, not an executor: you may read
+orders and customer data via tools; you may NOT move money, change addresses,
+or place purchase orders. Those belong to specialists via handoff.
+
+Hard rules (also enforced in code — your output is checked against them):
+- refund proposals > $500: escalate, never draft
+- address change on a shipped/delivered order: refuse and escalate
+- missing facts: say what is missing; do not invent order IDs or amounts
+- if the ticket is not an operations ticket, hand off to escalation
+Return a short decision note: intent, order_id (or unknown), next agent.
+"""
+
+triager = Agent(
+    name="Postmaster triager",
+    instructions=POSTMASTER_INSTRUCTIONS,
+    model="gpt-5.6-luna",   # SDK default for high-volume, cost-sensitive work;
+    model_settings=ModelSettings(
+        reasoning=Reasoning(effort="none"),  # low-latency path for GPT-5-class
+        verbosity="low",
+    ),
+)
+```
+
+**On model names and temperature (verified Nov 2026):** the SDK default model is `gpt-5.6-luna` (`reasoning.effort="none"`, verified in `agents/models/default_models.py` — `get_default_model()` returns `gpt-5.6-luna`; override with the `OPENAI_DEFAULT_MODEL` env var); `gpt-5.6-sol` / `gpt-6-sol` are the frontier siblings. `ModelSettings(temperature=0.1)` exists and works on non-reasoning models (docs show it with `gpt-4.1`); GPT-5-class reasoning models steer via `reasoning.effort`/`verbosity` — **CLAIM TO VERIFY: exact per-model temperature support for the current GPT-5.6 line, and what happens to `temperature` when `reasoning.effort != "none"` — check the model's page before relying on either.** For the triager, `effort="none"` + low verbosity is the documented low-latency pattern; for the refund specialist you may raise effort and keep low verbosity.
+
+## 5. Tracing Is On by Default — Look at It
+
+Every `Runner.run*` call emits a trace to the OpenAI **Traces dashboard** ([platform.openai.com/traces](https://platform.openai.com/traces)): agent spans, LLM generation spans, function-tool spans, handoff spans, guardrail spans. Disable per-run (`RunConfig(tracing_disabled=True)`), per process (`set_tracing_disabled(True)`), or globally (`OPENAI_AGENTS_DISABLE_TRACING=1`). Disable sensitive capture with `RunConfig(trace_include_sensitive_data=False)` or `OPENAI_AGENTS_TRACE_INCLUDE_SENSITIVE_DATA=false` — tool arguments and LLM outputs are otherwise captured verbatim (that is how refunds leak into dashboards). Zero-data-retention organizations cannot use tracing at all — the SDK detects and the dashboard stays empty.
+
+**Run it:** give the triager a fake tool and a ticket, then open the dashboard and find your run:
+
+```python
+from agents.decorators import function_tool
+
+@function_tool
+def lookup_order(order_id: str) -> str:
+    """Fetch one order by exact ID (format ORD-YYYY-NNNNNN)."""
+    return f"order {order_id}: status=delivered, paid=8999, customer=cus_8x2 (FAKE DATA)"
+
+triager_with_tool = triager.clone(tools=[lookup_order])
+print(Runner.run_sync(triager_with_tool,
+    "Ticket tk_2291: my order ORD-2026-004417 arrived broken, I want money back.").final_output)
+```
+
+You now have (a) a working agent, (b) a trace URL to compare against after every change from here on, and (c) a fake-tool pattern for local development without touching ShopCore's API.
+
+**What the trace contains (open it now and follow along):** your `workflow_name` ("Agent workflow" default) at the root; a `task` span; per agent an `agent` span (name, tools offered, output type); per LLM call a `generation` span with model, input/output items and token counts; per tool a `function` span with arguments and result; and (30.2.2) `handoff` spans. Cost check while you are here: note the token totals — that is your budget input from 29.2.1, measured, not estimated. If you see the arguments you expected *and* secrets you didn't — that is the `trace_include_sensitive_data=False` flag you skipped.
+
+**Expected sanity output for the fake-tool run** (values will differ — your model's sentence varies; the shape does not):
+
+```text
+Refund dispute for ORD-2026-004417: delivered, paid 8999, gold tier.
+Intent: refund_dispute → hand off to refund specialist. Corr: pm-xxxxxxxxxxxx
+```
+
+Anything wildly different (a refund executed! an address changed!) means the model did not understand the role fence — tighten the instructions before adding any more machinery.
+
+## 6. Common Mistakes
+
+- `pip install openai-agents-python` → package not found. It is `openai-agents`.
+- `Runner.run_sync` inside FastAPI/Jupyter/async code → RuntimeError ("event loop already running"). Use `await Runner.run(...)` there (30.1.2).
+- Instructions that negotiate ("if you think it's okay, you may…"). Instructions are a fence, not a conversation.
+- Shipping `trace_include_sensitive_data=True` in prod with real customer PII.
+- Assuming `result.final_output` is non-empty when the run tripped a guardrail or hit `max_turns` — catch `MaxTurnsExceeded`/tripwire exceptions (30.1.2, 29.2.1).
+
+## 7. Practice
+
+**Guided exercise.** Reproduce hello_agent.py; then clone the triager with the fake `lookup_order` and run the broken-order ticket above; open the trace and name the four span types you see.
+
+**Independent exercise.** Write the escalation agent's instructions (5–8 lines) using only material from Chapter 29.2 — no tools yet.
+
+**Challenge.** Add `OPENAI_AGENTS_TRACE_INCLUDE_SENSITIVE_DATA=false`, rerun, and diff the trace contents. Note exactly which fields disappeared.
+
+**Assessment checklist**
+
+- [ ] I installed `openai-agents` and verified `pip show` reports the current version.
+- [ ] `python hello_agent.py` prints a completion on my machine.
+- [ ] I can name every `Agent` constructor argument used in Section 2 and what it does.
+- [ ] I can state the four verified current model names and when to use each.
+- [ ] I found my run in the Traces dashboard and can identify agent/generation/function spans.
+
+</BookNodePage>

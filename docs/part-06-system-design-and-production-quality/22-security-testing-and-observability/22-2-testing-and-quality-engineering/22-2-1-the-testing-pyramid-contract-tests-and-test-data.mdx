@@ -1,0 +1,156 @@
+---
+id: "22-2-1-the-testing-pyramid-contract-tests-and-test-data"
+title: "22.2.1 The Testing Pyramid: Contract Tests and Test Data"
+sidebar_label: "22.2.1 The Testing Pyramid: Contract Tests and Test Data"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-2-testing-and-quality-engineering/22-2-1-the-testing-pyramid-contract-tests-and-test-data"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s2-t1">
+
+"The tests pass" means nothing until you know *which* tests, how fast they run, and what they prove. A shop suite of 3,000 slow E2E tests is worse than 300 fast ones — nobody runs them, and they fail for the weather. This lesson builds ShopCore's suite the standard shape: the pyramid, with contract tests as the missing middle, property-based tests where logic is tricky, and test data you can trust.
+
+## 1. The Pyramid, With ShopCore Percentages
+
+```text
+                 /\          E2E: ~10%   checkout smoke only
+                /  \         "one user walks through" - expensive, flaky-prone
+               /----\
+              /      \       Integration: ~20%   API + real PG/Redis boundaries
+             /--------\      supertest + disposable Postgres, seeded
+            /__________\     Unit: ~70%   pure logic, no I/O - ms each
+```
+
+Ratios are heuristics, not doctrine — but every percentage inversion (more E2E than unit) is a suite that gets slower and meaner with every PR. Unit tests live in [14.3.1](/book/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-3-automated-testing-and-code-review/14-3-1-unit-integration-and-end-to-end-tests)'s coverage discussion; here is the full stack.
+
+## 2. Unit Tests — Pure Functions Only
+
+Targets: pricing, order-total math, state machine transitions, DTO validators, the discount engine from 21.1.3. No network, no DB, no clock unless injected. Example (jest; vitest equivalent: same API, swap `jest.fn` → `vi.fn`):
+
+```js
+// pricing.test.js
+import { orderTotal } from '../src/pricing/orderTotal.js';
+
+describe('orderTotal', () => {
+  it('applies percent discount then tax, rounding once per line', () => {
+    const items = [{ sku: 'SKU-1001', qty: 2, unitCents: 1299 }];
+    // 2 x 1299 = 2598; 10% off => 2338.2; 8% tax on the discounted line => 2525 (rounded once per line)
+    expect(orderTotal({ items, discountPct: 10, taxPct: 8 })).toBe(2525);
+  });
+  it('never returns a negative line after stacking discounts', () => {
+    expect(orderTotal({ items: [{ sku: 'X', qty: 1, unitCents: 100 }],
+      discountPct: 150, taxPct: 0 })).toBeGreaterThanOrEqual(0);
+  });
+});
+```
+
+Property-based companion (`fast-check`) — assert the invariants across 1,000 generated carts instead of your three hand-picked cases:
+
+```js
+import fc from 'fast-check';
+it('total never negative for any cart', () =>
+  fc.assert(fc.property(fc.array(fc.record({
+    sku: fc.string(), qty: fc.integer({ min: 1, max: 100 }), unitCents: fc.integer({ min: 0, max: 100000 }) })),
+    cart => orderTotal({ items: cart, discountPct: 10, taxPct: 8 }) >= 0)));
+```
+
+## 3. Integration Tests — Real Database, Real Boundary
+
+Unit tests cannot catch: bad SQL, bad migrations, constraint violations, connection-pool exhaustion. ShopCore's recipe — disposable Postgres per test file:
+
+```js
+// orders.api.test.js (supertest + testcontainers)
+import { PostgreSqlContainer } from '@testcontainers/postgresql';
+let pg;
+beforeAll(async () => {
+  pg = await new PostgreSqlContainer('postgres:16-alpine').start();
+  process.env.DATABASE_URL = pg.getConnectionUri();
+  await runMigrations();               // same migrations as prod
+  await seed(fixtureMinimal);          // 3 products, 1 customer
+});
+afterAll(() => pg.stop());
+
+it('POST /v1/orders is idempotent on replay', async () => {
+  const agent = request(app).post('/v1/orders')
+    .set('Idempotency-Key', crypto.randomUUID())
+    .set('Cookie', authCookie)
+    .send({ items: [{ sku: 'SKU-1001', qty: 1 }] });
+  const r1 = await agent; const r2 = await agent;
+  expect(r1.status).toBe(201);
+  expect(r2.status).toBe(201);
+  expect((await db('orders')).length).toBe(1);   // no duplicate order
+});
+```
+
+Docker must be running (see [18.2.2](/book/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment/18-2-volumes-networks-compose-and-registries/18-2-2-docker-compose-stacks-and-container-registries)); testcontainers handles start/stop. CI equivalent: GitHub Actions `services: postgres:16-alpine` with health checks — see 22-2-2.
+
+## 4. Contract Tests — Pact-Style, the Missing Middle
+
+Unit tests validate your code against your assumptions; the contract test validates **your assumptions against your provider's reality** — without calling the provider from tests. ShopCore has one critical cross-service seam: Order API calls Shipping to quote fulfilment:
+
+```js
+// consumer side (pact-js — PactV3 API, current as of 2026; check your installed version)
+// npm i -D @pact-foundation/pact
+import { PactV3 } from '@pact-foundation/pact';
+const provider = new PactV3({ consumer: 'Ordering', provider: 'Shipping' });
+it('quotes fulfilment for a valid order', async () => {
+  provider.addInteraction({
+    state: 'SKU-1001 is ship-eligible',
+    uponReceiving: 'a fulfilment quote request',
+    withRequest: { method: 'POST', path: '/quotes', body: { sku: 'SKU-1001', qty: 1 } },
+    willRespondWith: { status: 200, body: { carrier: 'dhl', etaDays: 2, cents: 700 } },
+  });
+  await provider.executeTest(async (mockServer) => {
+    const quote = await shippingClient.quote(`${mockServer}/quotes`, { sku: 'SKU-1001', qty: 1 });
+    expect(quote.carrier).toBe('dhl');
+  });
+});
+```
+
+The pact file is published to a broker (or committed and shared in monorepos); Shipping's CI replays it against its real implementation — if Shipping changes `eta_days` to `etaDays` or drops a field, **their build fails, not yours at 2 a.m.** This is the cheapest integration confidence money can buy for the seams you don't control.
+
+## 5. End-to-End — Few, Honest, Smoke-Only
+
+One critical path, one browser: guest checkout end-to-end (browse → cart → Stripe test card `4242 4242 4242 4242` → confirmation) via Playwright, run on merge-to-main only, not on every PR. E2E covers wiring no other layer can (CSP headers, service worker, CDN HTML), and nothing else. Do not replicate unit coverage here — that's how suites rot.
+
+## 6. Test Data — Factories Over Fixtures
+
+- **Fixtures** (`fixtures/orders.json` with 400 lines of hand-written rows) rot silently: add a NOT NULL column and 200 fixtures lie to you.
+- **Factories** generate valid objects on demand with named overrides:
+
+```js
+const order = buildOrder({ status: 'paid', items: [buildItem({ sku: 'SKU-1001' })] });
+```
+
+`fishery` + `@faker-js/faker` is the standard; defaults must be *valid* — a factory with 12 mandatory overrides is a fixture in disguise.
+
+Seeded CI database: compose service `postgres` + init script `001-seed.sql` creating fixed SKUs (`SKU-1001`…) and one known customer; tests reference only those seeds, never row positions; every test wraps in a transaction rolled back at teardown (or truncate-between-files). Parallel test files must never share mutable rows.
+
+## 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Integration tests pass locally, fail in CI | DB state leaked between files | Truncate/rollback per file; unique `idempotency_key` per test |
+| Suite takes 12 min | E2E doing unit work | Move to unit/integration layers; E2E only critical path |
+| Green build, prod 500s on /orders | No contract test on seam you don't own | Add Pact for Shipping; review pact files quarterly |
+| Factories produce invalid orders intermittently | Faker output vs constraints drift | Add factory invariants: `expect(buildOrder()).to satisfy ordersSchema` |
+| "flaky" 3 tests retried until green | Hidden shared state | Root-cause with `jest --runInBand`; quarantine honestly (22-2-2) |
+
+## 8. Practice
+
+**Guided exercise.** Add testcontainers integration for `POST /v1/orders` idempotency (copy Section 3), including the replay assertion against a real Postgres. Run it twice in parallel files; confirm zero interference.
+
+**Independent exercise.** Write one Pact contract between Ordering and Shipping, publish it, and flip a field name in a Shipping stub to watch the provider verification fail. Revert; watch it pass.
+
+**Challenge.** Measure your suite: `npx jest --coverage`, count tests per layer; produce the ratio table and the three slowest tests. Propose the migration of your worst E2E into integration — with before/after times.
+
+**Assessment checklist**
+
+- [ ] I can state my repo's unit/integration/E2E ratio and defend it.
+- [ ] I can write a supertest + disposable Postgres integration test from memory.
+- [ ] I can explain what a contract test catches that E2E cannot — and vice versa.
+- [ ] I can write one property-based test for a pricing invariant with fast-check.
+- [ ] I know the factory/fixture trade-off and why factories win at scale.
+
+</BookNodePage>

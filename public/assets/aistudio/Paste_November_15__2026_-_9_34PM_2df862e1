@@ -1,0 +1,1950 @@
+# MASTER AUTHORING PROMPT — PART 04 + PART 05
+## Databases, Backend, Full-Stack Development, Deployment, Cloud & DevOps
+### The AI-Native Engineer — Think. Build. Solve. Ship.
+
+You are acting as a senior software engineering educator, database architect, backend engineer, full-stack developer, DevOps engineer, cloud architect, technical author, and rigorous curriculum auditor.
+
+Your assignment is to **fully author Part 04 and Part 05 together** in my existing Docusaurus textbook repository.
+
+This is a substantial textbook-authoring project, not a short tutorial-writing task.
+
+You must produce professional, technically accurate, deeply explained, practical learning material that takes a learner from understanding database fundamentals to building a complete full-stack application and deploying, securing, monitoring, maintaining, and operating it in a real production environment.
+
+Do not merely create files or expand word counts. Teach the engineering knowledge required to understand, build, debug, verify, deploy, and operate real software.
+
+---
+
+# 1. PROJECT IDENTITY
+
+**Book:** The AI-Native Engineer — Think. Build. Solve. Ship.
+
+**Author:** Muhammad Hamid Raza
+
+**Documentation platform:** Existing Docusaurus project.
+
+**Writing standard:** Professional technical textbook with practical engineering depth.
+
+**Target learner:** Someone who has learned computing foundations, JavaScript, TypeScript, HTML, CSS, React, Next.js, and Python in earlier parts and now needs to become capable of engineering complete backend systems and delivering them to production.
+
+Assume the learner has completed Parts 00–03, but do not assume that they already understand databases, server architecture, infrastructure, deployment, or production operations.
+
+Explain the concepts required to understand each subject properly.
+
+# 2. FIRST: INSPECT THE ACTUAL REPOSITORY
+
+Before writing anything, inspect the repository.
+
+You must inspect:
+
+1. `src/data/bookData.ts`
+2. The complete existing Part 04 curriculum structure.
+3. The complete existing Part 05 curriculum structure.
+4. Existing Part 00, Part 01, Part 02, and Part 03 content where necessary to understand prerequisite knowledge.
+5. Existing Part 06–10 structure to understand what should be taught here versus later.
+6. Existing Docusaurus configuration, sidebars, navigation, front matter, MDX conventions, diagrams, and reusable components.
+7. Existing lesson files, exercises, labs, assessments, and cross-references.
+
+Use the repository's actual files as the source of truth.
+
+**Do not invent the curriculum. Do not create a different chapter structure.**
+
+The roadmap currently identifies the following chapters:
+
+## PART 04 — DATABASES, BACKEND & FULL-STACK DEVELOPMENT
+
+92 learning hours · 5 chapters
+
+**Chapter 11 — Database Design & Fundamentals** · 8 hours
+
+**Chapter 12 — SQL, PostgreSQL & MongoDB** · 20 hours
+
+**Chapter 13 — Backend Engineering with Node.js** · 24 hours
+
+**Chapter 14 — Git Teamwork, Testing & Code Review** · 10 hours
+
+**Chapter 15 — Complete Full-Stack Application** · 30 hours
+
+## PART 05 — DEPLOYMENT, CLOUD & DEVOPS
+
+62 learning hours · 5 chapters
+
+**Chapter 16 — Linux, Servers & Networking** · 12 hours
+
+**Chapter 17 — Domains, DNS, HTTPS & Hosting** · 8 hours
+
+**Chapter 18 — Docker & Containerization** · 12 hours
+
+**Chapter 19 — CI/CD & Cloud Fundamentals** · 12 hours
+
+**Chapter 20 — Production Deployment & Operations** · 18 hours
+
+These are the known chapter titles and learning-hour allocations. Verify every other structural detail against `bookData.ts`.
+
+The existing repository determines:
+
+- Chapter descriptions.
+- Subchapter titles.
+- Topic titles.
+- Topic numbering.
+- File paths.
+- Slugs and IDs.
+- Existing lesson counts.
+- Page hierarchy.
+- Learning objectives.
+- Existing labs and assessments.
+- Navigation and cross-references.
+
+Preserve all of them unless a specific structural correction is absolutely necessary. If a correction is necessary, document it and explain why before making it.
+
+# 3. NON-NEGOTIABLE PRESERVATION RULES
+
+You are authoring content, not redesigning the book.
+
+You MUST:
+
+- Preserve Part 04 and Part 05 chapter numbering.
+- Preserve existing chapter and subchapter hierarchy.
+- Preserve existing page IDs and slugs.
+- Preserve existing file paths and URLs.
+- Preserve front matter and required metadata.
+- Preserve Docusaurus navigation and sidebar relationships.
+- Preserve the learning-hour allocations.
+- Preserve existing cross-references.
+- Preserve existing Part 00–03 content.
+- Preserve Parts 06–10 and Appendices A–E.
+- Avoid unrelated changes to project configuration.
+- Avoid deleting existing useful lessons.
+- Avoid duplicating content unnecessarily.
+- Avoid breaking links from other parts.
+
+Do not rename, renumber, move, or delete existing curriculum pages merely to make your work easier.
+
+If a page already exists, inspect and improve it rather than blindly replacing useful material.
+
+If the repository contains additional canonical topics not listed in this prompt, include them. The repository is the source of truth for the complete topic hierarchy.
+
+# 4. CORE EDUCATIONAL OBJECTIVE
+
+By the end of Part 04 and Part 05, a learner must be capable of:
+
+1. Understanding how databases store and organize information.
+2. Designing data models for real applications.
+3. Understanding relational and document databases.
+4. Writing SQL queries and managing PostgreSQL databases.
+5. Working with MongoDB and its document model.
+6. Choosing appropriate database structures for application requirements.
+7. Building maintainable backend services with Node.js.
+8. Designing REST APIs and understanding HTTP.
+9. Implementing authentication and authorization.
+10. Validating data and handling errors safely.
+11. Managing configuration, secrets, and environment variables.
+12. Testing backend systems.
+13. Collaborating through Git branches, pull requests, and code reviews.
+14. Building a complete frontend-to-backend application.
+15. Connecting React or Next.js applications to backend APIs.
+16. Understanding Linux, processes, permissions, filesystems, and servers.
+17. Understanding IP addresses, ports, protocols, DNS, and networking.
+18. Configuring domains, DNS records, HTTPS, and reverse proxies.
+19. Understanding hosting and cloud infrastructure.
+20. Containerizing applications with Docker.
+21. Understanding images, containers, volumes, networks, and registries.
+22. Building CI/CD pipelines.
+23. Deploying applications to cloud infrastructure.
+24. Managing production configuration and secrets.
+25. Running database migrations and backups.
+26. Monitoring logs, application health, uptime, and resource usage.
+27. Diagnosing deployment failures.
+28. Performing safe updates, rollbacks, and recovery.
+29. Understanding the operational responsibilities of production software.
+
+The learner should finish with the ability to take an application from local development to a reliable production deployment.
+
+# 5. WRITING DEPTH — VERY IMPORTANT
+
+My previous textbook pages were sometimes too short and superficial. Do not repeat that problem.
+
+I want deep educational chapters, not brief documentation summaries.
+
+Use these targets as planning guidance, not as permission to add filler:
+
+| Page type | Target depth |
+|---|---:|
+| Part landing page | 2,000–3,000 words |
+| Chapter landing page | 2,000–3,000 words |
+| Subchapter landing page | 1,500–2,500 words |
+| Standard technical topic | 1,800–2,800 words |
+| Complex technical topic | 2,500–4,000+ words |
+| Practical lab or major project | As much as necessary for complete execution |
+
+Do not force every page to have identical length.
+
+A complex subject such as database transactions, indexing, API authentication, Docker networking, DNS, reverse proxies, CI/CD, or production deployment may need substantially more explanation.
+
+A simple introductory subject may need less.
+
+**Quality and conceptual completeness matter more than word count.**
+
+Every page must teach something meaningful.
+
+Do not:
+
+- Write one-paragraph lessons.
+- Produce generic introductions followed by shallow bullet lists.
+- Repeat the same definition across several pages.
+- Inflate pages with unnecessary history.
+- Add irrelevant motivational content.
+- Use unexplained jargon.
+- Give code without explaining how it works.
+- Say "implement this yourself" without providing sufficient instructions.
+- Leave exercises without expected outcomes or evaluation criteria.
+- Use fake production examples that cannot actually run.
+
+A learner should be able to understand the subject without needing to search for a separate beginner tutorial for every important concept.
+
+# 6. REQUIRED TEACHING STRUCTURE
+
+Adapt the structure to the subject. Do not mechanically repeat identical headings everywhere.
+
+However, each substantial technical lesson should cover the relevant elements below.
+
+## A. Learning context
+
+Explain:
+
+- What the learner will understand.
+- Why the concept exists.
+- What problem it solves.
+- Where it appears in real software.
+- What knowledge is required beforehand.
+
+## B. First-principles explanation
+
+Explain the concept from the beginning.
+
+Start with the underlying problem before introducing the technology.
+
+For example:
+
+Do not begin database indexing by simply defining a B-tree.
+
+First explain why searching every row becomes expensive, what an index changes, how data lookup works conceptually, and what trade-offs indexing introduces.
+
+Do not begin Docker by saying it packages applications.
+
+First explain the deployment consistency problem, environment differences, dependency problems, process isolation, and why containers help.
+
+## C. Internal working
+
+Where relevant, explain:
+
+- Architecture.
+- Components.
+- Execution flow.
+- Data flow.
+- Request lifecycle.
+- Storage behavior.
+- Resource usage.
+- System interactions.
+- Failure conditions.
+
+Use diagrams and traces when they improve understanding.
+
+## D. Practical implementation
+
+Provide complete, realistic examples.
+
+Explain:
+
+- Project structure.
+- Required files.
+- Dependencies.
+- Configuration.
+- Commands.
+- Code.
+- Expected output.
+- Verification.
+- Common mistakes.
+
+Avoid isolated code fragments when a complete runnable example is needed.
+
+## E. Engineering decisions
+
+Explain trade-offs.
+
+Compare alternatives when appropriate.
+
+Teach the learner how to choose rather than simply telling them what to use.
+
+## F. Debugging and troubleshooting
+
+Include realistic failures.
+
+Explain:
+
+- Symptoms.
+- Root causes.
+- Diagnostic steps.
+- Correct fixes.
+- Prevention.
+
+## G. Security and reliability
+
+Cover security and reliability implications wherever relevant.
+
+## H. Practice
+
+Include meaningful exercises, progressively harder challenges, and real-world scenarios.
+
+Provide expected outcomes and ways to verify solutions.
+
+## I. Mastery
+
+End substantial lessons with a concise summary, key mental models, and questions that test actual understanding.
+
+# 7. PART 04 — DATABASES, BACKEND & FULL-STACK DEVELOPMENT
+
+This part must teach the learner to build the complete application layer.
+
+Do not treat databases, backend APIs, testing, and frontend integration as disconnected subjects.
+
+Teach how they fit together in a real software system.
+
+## CHAPTER 11 — DATABASE DESIGN & FUNDAMENTALS
+
+8 hours
+
+Teach the underlying principles of data storage and database design.
+
+Cover all canonical topics in the repository.
+
+Ensure the material adequately explains relevant subjects such as:
+
+- What a database is and why applications need one.
+- Database management systems.
+- Data models and schemas.
+- Tables, rows, columns, documents, and records.
+- Entities and relationships.
+- Primary keys and foreign keys.
+- Unique constraints.
+- Required and optional values.
+- One-to-one, one-to-many, and many-to-many relationships.
+- Data integrity.
+- Database constraints.
+- Normalization and denormalization.
+- Database transactions.
+- ACID properties.
+- Consistency and isolation.
+- Concurrency problems.
+- Indexing fundamentals.
+- Query performance fundamentals.
+- Database design trade-offs.
+- Practical schema design.
+
+Do not assume all these topics are separate canonical pages. Map them to the actual repository structure.
+
+### Required practical case study
+
+Design a realistic database for a business application.
+
+For example, an e-commerce platform containing:
+
+- Users.
+- Products.
+- Categories.
+- Orders.
+- Order items.
+- Payments.
+- Inventory.
+
+Explain how to identify entities, relationships, constraints, and data ownership.
+
+Show how the design changes as requirements become more complex.
+
+Explain common schema design mistakes and how to prevent them.
+
+## CHAPTER 12 — SQL, POSTGRESQL & MONGODB
+
+20 hours
+
+Teach relational and document databases deeply.
+
+The learner must understand both how to use them and how to reason about their differences.
+
+### SQL fundamentals
+
+Cover relevant canonical topics including:
+
+- Relational database concepts.
+- SQL statement categories.
+- Creating databases and tables.
+- Data types.
+- Constraints.
+- INSERT, SELECT, UPDATE, DELETE.
+- Filtering and sorting.
+- Joins.
+- Aggregations.
+- GROUP BY and HAVING.
+- Subqueries.
+- Common table expressions where appropriate.
+- Transactions.
+- Indexes.
+- Query plans and EXPLAIN.
+- Migrations.
+- Backup and restore fundamentals.
+
+Provide realistic SQL examples with explanations and expected results.
+
+### PostgreSQL
+
+Teach PostgreSQL as a practical relational database.
+
+Explain:
+
+- Installation and setup appropriate to the learner's environment.
+- Database and user management.
+- Schemas.
+- Tables and relationships.
+- Constraints.
+- Indexes.
+- Transactions.
+- Roles and permissions.
+- Connection management.
+- Migrations.
+- Backup and restoration.
+- Query analysis.
+- Practical application integration.
+
+Explain PostgreSQL-specific features only when they are verified and relevant.
+
+### MongoDB
+
+Teach:
+
+- Document databases.
+- BSON and JSON relationships.
+- Collections and documents.
+- CRUD operations.
+- Filtering and projections.
+- Embedded documents and references.
+- Schema validation.
+- Indexes.
+- Aggregation pipelines.
+- Data modeling.
+- Transactions where relevant.
+- Connection management.
+- Backup and restore.
+- MongoDB security fundamentals.
+
+Explain when embedding is appropriate and when references are more suitable.
+
+### PostgreSQL versus MongoDB
+
+Provide an honest comparison.
+
+Compare:
+
+- Data structure.
+- Relationships.
+- Query patterns.
+- Schema flexibility.
+- Transactions.
+- Consistency considerations.
+- Indexing.
+- Application requirements.
+- Operational considerations.
+- Scaling considerations.
+
+Do not claim one database is universally better.
+
+Teach decision-making through real requirements.
+
+### Required practical work
+
+Build equivalent data models or application features using PostgreSQL and MongoDB where educationally useful.
+
+Include complete examples and demonstrate how application requirements influence database choice.
+
+## CHAPTER 13 — BACKEND ENGINEERING WITH NODE.JS
+
+24 hours
+
+This is a major engineering chapter.
+
+Teach professional backend development using Node.js and the existing TypeScript/JavaScript knowledge from Part 02.
+
+Use the actual repository curriculum as the boundary.
+
+Relevant concepts should include:
+
+### Backend foundations
+
+- What a backend does.
+- Client-server architecture.
+- HTTP request and response lifecycle.
+- Node.js runtime.
+- Event loop and asynchronous execution.
+- Modules and application organization.
+- Environment configuration.
+- Dependency management.
+- Application startup and shutdown.
+
+### API engineering
+
+- REST principles.
+- HTTP methods.
+- Status codes.
+- Headers.
+- Request parameters.
+- Query strings.
+- Request bodies.
+- JSON.
+- API route design.
+- Resource naming.
+- Pagination.
+- Filtering.
+- Sorting.
+- API versioning where appropriate.
+- Error response design.
+- API documentation.
+
+### Backend architecture
+
+Explain practical organization such as:
+
+- Routes.
+- Controllers.
+- Services.
+- Data access layer.
+- Middleware.
+- Validation.
+- Configuration.
+- Error handling.
+- Shared utilities.
+
+Explain why separation of responsibilities matters and when unnecessary abstraction becomes harmful.
+
+### Validation and error handling
+
+Teach:
+
+- Input validation.
+- Type safety.
+- Schema validation.
+- Trust boundaries.
+- Centralized error handling.
+- Safe error messages.
+- Logging.
+- Handling asynchronous failures.
+
+### Authentication and authorization
+
+Teach the difference clearly.
+
+Cover relevant concepts:
+
+- Authentication flows.
+- Password hashing.
+- Sessions.
+- Cookies.
+- Token-based authentication.
+- JWT structure and limitations.
+- Access and refresh tokens where appropriate.
+- Authorization.
+- Role-based access control.
+- Resource ownership.
+- Secure logout.
+- Token expiration and revocation considerations.
+- CORS.
+- CSRF.
+- XSS.
+- SQL injection and NoSQL injection.
+- Rate limiting.
+- Brute-force protection.
+- Security headers.
+- Secret management.
+
+Do not teach insecure shortcuts as acceptable production practice.
+
+Never store plaintext passwords.
+
+Never expose secret keys in frontend code.
+
+Do not treat JWT as automatically secure.
+
+Explain cookie security attributes and browser security implications where relevant.
+
+### Database integration
+
+Teach how Node.js services connect to PostgreSQL and MongoDB.
+
+Explain:
+
+- Connection strings.
+- Connection pooling.
+- ORM and query-builder concepts where appropriate.
+- Migrations.
+- Repository/data-access patterns.
+- Transactions.
+- Error handling.
+- Resource cleanup.
+- Connection failures.
+
+Do not introduce a tool or library without explaining why it is useful.
+
+### Backend testing and reliability
+
+Include relevant testing strategies, integration testing, API testing, test data, dependency isolation, and handling failure scenarios.
+
+### Required backend project
+
+Create a realistic backend API with:
+
+- User registration and login.
+- Authentication.
+- Authorization.
+- CRUD functionality.
+- Database integration.
+- Validation.
+- Error handling.
+- Pagination.
+- Search or filtering.
+- Logging.
+- Tests.
+- API documentation.
+
+Provide complete, consistent project files where a full project is needed.
+
+Explain how to run and verify the application.
+
+## CHAPTER 14 — GIT TEAMWORK, TESTING & CODE REVIEW
+
+10 hours
+
+Teach professional software collaboration.
+
+Cover relevant canonical topics such as:
+
+- Git internals at a practical level.
+- Branching strategies.
+- Feature branches.
+- Commits.
+- Pull requests.
+- Merge conflicts.
+- Rebasing versus merging.
+- Code review.
+- Review etiquette.
+- Automated checks.
+- Unit testing.
+- Integration testing.
+- End-to-end testing.
+- Test fixtures.
+- Mocking and stubbing.
+- Test isolation.
+- Regression testing.
+- CI test execution.
+- Test coverage and its limitations.
+- Debugging failing tests.
+
+Explain how a professional team moves from a requirement to a reviewed, tested, merged change.
+
+### Required practical workflow
+
+Demonstrate a realistic team workflow:
+
+1. Understand a task.
+2. Create a branch.
+3. Implement a feature.
+4. Write tests.
+5. Run checks.
+6. Commit changes.
+7. Open a pull request.
+8. Review the code.
+9. Address feedback.
+10. Merge safely.
+
+Show common Git mistakes and recovery procedures.
+
+Teach learners to review code for correctness, security, maintainability, performance, and clarity rather than merely formatting.
+
+## CHAPTER 15 — COMPLETE FULL-STACK APPLICATION
+
+30 hours
+
+This is the major integration project of Part 04.
+
+The learner must combine frontend, backend, and database knowledge into a complete working application.
+
+Inspect the canonical topic structure and author every required page.
+
+Teach the full lifecycle:
+
+- Requirements.
+- User stories.
+- Functional requirements.
+- Non-functional requirements.
+- Data modeling.
+- Architecture.
+- Project setup.
+- Frontend structure.
+- Backend structure.
+- Database setup.
+- API contracts.
+- Frontend/backend integration.
+- Authentication.
+- Authorization.
+- Form validation.
+- Error states.
+- Loading states.
+- CRUD operations.
+- Search and pagination.
+- File handling where appropriate.
+- Testing.
+- Security.
+- Logging.
+- Documentation.
+- Local execution.
+- Production readiness.
+
+### Project requirement
+
+Use one coherent application throughout the chapter rather than unrelated toy examples.
+
+An example could be a task-management, inventory-management, booking, or e-commerce system. Select the project that best fits the canonical curriculum.
+
+The project must include:
+
+1. A clear problem statement.
+2. User roles and permissions.
+3. Functional requirements.
+4. Non-functional requirements.
+5. Data model.
+6. API contract.
+7. Frontend architecture.
+8. Backend architecture.
+9. Database implementation.
+10. Authentication and authorization.
+11. Main application workflows.
+12. Input validation.
+13. Error handling.
+14. Automated tests.
+15. Security considerations.
+16. Development instructions.
+17. Environment configuration.
+18. README and API documentation.
+19. A complete local verification procedure.
+20. A production-readiness checklist.
+
+All code must remain consistent across the project.
+
+Do not show a PostgreSQL schema in one lesson and silently switch to MongoDB in another.
+
+Do not change API endpoints, field names, authentication formats, or project structure without explaining the change.
+
+If multiple alternatives are taught, clearly identify the main project implementation and keep it consistent.
+
+### Part 04 completion standard
+
+The learner should have a complete, tested, documented full-stack application running locally.
+
+This application must become the foundation for Part 05 deployment.
+
+# 8. PART 05 — DEPLOYMENT, CLOUD & DEVOPS
+
+62 hours
+
+Part 05 must take the application developed in Part 04 and teach how to deliver it to a real server or cloud environment.
+
+This is not a collection of disconnected deployment tutorials.
+
+Create a coherent path from local development to production operations.
+
+Teach what actually happens when a user opens a deployed application in a browser.
+
+Explain the complete journey:
+
+Browser → DNS → Network → Server → Reverse Proxy → Application → Database → Response.
+
+The learner must understand the infrastructure rather than merely copying deployment commands.
+
+## CHAPTER 16 — LINUX, SERVERS & NETWORKING
+
+12 hours
+
+Teach Linux and networking as practical foundations for deploying and operating software.
+
+Relevant topics should include:
+
+### Linux fundamentals
+
+- What Linux is.
+- Linux distributions.
+- Kernel and user space.
+- Filesystem hierarchy.
+- Paths.
+- Files and directories.
+- File permissions.
+- Ownership.
+- Users and groups.
+- Processes.
+- Signals.
+- Services.
+- Systemd where appropriate.
+- Package managers.
+- Shell fundamentals.
+- Environment variables.
+- SSH.
+- Logs.
+- Disk and memory inspection.
+- Resource monitoring.
+- Process management.
+
+Explain the commands rather than giving command lists.
+
+For every important command, explain:
+
+- Purpose.
+- Syntax.
+- Options.
+- Example.
+- Expected result.
+- Common errors.
+- Safe usage.
+
+### Networking fundamentals
+
+Teach:
+
+- What a network is.
+- LAN and WAN.
+- IP addresses.
+- IPv4 and IPv6 basics.
+- Private and public IPs.
+- Subnets and CIDR fundamentals.
+- Ports.
+- TCP and UDP.
+- DNS basics.
+- HTTP and HTTPS.
+- TLS fundamentals.
+- Client-server communication.
+- Firewalls.
+- Network troubleshooting.
+- Routing fundamentals.
+
+Explain how a browser reaches a server.
+
+### Server administration
+
+Teach:
+
+- What a server is.
+- Virtual machines and physical servers.
+- Remote server access.
+- SSH keys.
+- Secure administration.
+- Users and permissions.
+- Firewall configuration.
+- Running application processes.
+- Service management.
+- Log inspection.
+- Basic server health checks.
+
+### Practical lab
+
+Provision or access a suitable Linux environment.
+
+Guide the learner through:
+
+1. Connecting through SSH.
+2. Inspecting the server.
+3. Creating a non-root user.
+4. Configuring permissions.
+5. Installing required packages.
+6. Running a simple application.
+7. Inspecting processes and logs.
+8. Configuring basic firewall rules.
+9. Diagnosing connectivity problems.
+
+Explain how to avoid locking yourself out of a remote server.
+
+## CHAPTER 17 — DOMAINS, DNS, HTTPS & HOSTING
+
+8 hours
+
+Teach how an application becomes accessible through a public domain.
+
+Cover:
+
+### Domains and DNS
+
+- Domain names.
+- Registrars.
+- DNS hosting.
+- Authoritative nameservers.
+- DNS resolution.
+- A records.
+- AAAA records.
+- CNAME records.
+- MX records.
+- TXT records.
+- TTL.
+- DNS propagation and caching.
+- Subdomains.
+- Domain configuration.
+
+Explain the actual resolution process.
+
+Teach how to diagnose incorrect DNS configuration.
+
+### Hosting
+
+Explain the differences between:
+
+- Shared hosting.
+- VPS.
+- Dedicated servers.
+- Managed hosting.
+- Platform-as-a-Service.
+- Infrastructure-as-a-Service.
+- Static hosting.
+- Application hosting.
+- Managed databases.
+
+Explain cost, control, responsibility, limitations, and use cases.
+
+Do not claim that one hosting type is always best.
+
+### HTTPS and TLS
+
+Teach:
+
+- Why HTTPS matters.
+- HTTP versus HTTPS.
+- TLS fundamentals.
+- Certificates.
+- Certificate authorities.
+- Certificate issuance.
+- Certificate renewal.
+- Redirects.
+- Mixed content.
+- Secure cookies.
+- Reverse proxy TLS termination.
+
+### Reverse proxies
+
+Explain what a reverse proxy does and why production applications commonly use one.
+
+Teach relevant Nginx concepts where appropriate:
+
+- Server blocks.
+- Upstream services.
+- Proxy headers.
+- Port forwarding.
+- Static assets.
+- TLS termination.
+- Reverse proxy configuration.
+- Basic troubleshooting.
+
+### Practical domain deployment lab
+
+Guide the learner through connecting a domain to a server or suitable hosting platform, configuring DNS, enabling HTTPS, and verifying the final result.
+
+Never invent DNS values or provider-specific screens.
+
+Use clearly identified example values and explain that real values come from the selected provider.
+
+## CHAPTER 18 — DOCKER & CONTAINERIZATION
+
+12 hours
+
+Teach Docker from first principles.
+
+Do not assume the learner understands containers.
+
+Explain the problems Docker solves:
+
+- Different development environments.
+- Dependency inconsistencies.
+- Deployment reproducibility.
+- Application isolation.
+- Environment configuration.
+- Portability.
+- Consistent runtime behavior.
+
+Cover:
+
+### Container fundamentals
+
+- Virtual machines versus containers.
+- Images.
+- Containers.
+- Registries.
+- Layers.
+- Filesystems.
+- Container processes.
+- Networking.
+- Volumes.
+- Environment variables.
+- Resource limits.
+- Container lifecycle.
+
+Explain the relationship between Docker and the host operating system.
+
+### Docker implementation
+
+Teach:
+
+- Installing Docker using official instructions.
+- Docker CLI.
+- Pulling images.
+- Running containers.
+- Inspecting containers.
+- Logs.
+- Executing commands inside containers.
+- Stopping and removing containers.
+- Building images.
+- Dockerfiles.
+- Build context.
+- Layers and caching.
+- `.dockerignore`.
+- Port mapping.
+- Volumes.
+- Networks.
+- Environment configuration.
+- Image tagging.
+- Container registries.
+
+### Production-quality Dockerfiles
+
+Teach:
+
+- Minimal base images.
+- Dependency installation.
+- Multi-stage builds.
+- Non-root users.
+- Reproducible builds.
+- Build caching.
+- Image size.
+- Security considerations.
+- Health checks where appropriate.
+- Runtime configuration.
+
+Do not recommend unsafe practices such as copying secrets into images.
+
+### Docker Compose
+
+Teach multi-service development and deployment where appropriate.
+
+Explain:
+
+- Services.
+- Networks.
+- Volumes.
+- Dependencies.
+- Environment variables.
+- Health checks.
+- Service communication.
+- Database persistence.
+- Startup and shutdown.
+- Troubleshooting.
+
+### Required practical project
+
+Containerize the Part 04 application.
+
+Include the frontend, backend, and database according to the selected project architecture.
+
+Provide:
+
+- Complete Dockerfiles.
+- `.dockerignore`.
+- Compose configuration if appropriate.
+- Environment variable examples.
+- Build commands.
+- Run commands.
+- Verification.
+- Logs and debugging.
+- Data persistence checks.
+- Cleanup instructions.
+
+Explain what should and should not run inside containers in the chosen architecture.
+
+## CHAPTER 19 — CI/CD & CLOUD FUNDAMENTALS
+
+12 hours
+
+Teach the learner how code moves from a Git repository into a deployed environment.
+
+### CI/CD foundations
+
+Explain:
+
+- Continuous Integration.
+- Continuous Delivery.
+- Continuous Deployment.
+- Build pipelines.
+- Automated testing.
+- Static checks.
+- Dependency installation.
+- Build artifacts.
+- Deployment stages.
+- Environments.
+- Secrets.
+- Approvals.
+- Rollbacks.
+
+Explain why automation improves reliability and where it can introduce risk.
+
+### Git-based workflows
+
+Teach practical CI/CD workflows using the provider and tooling that best fit the existing curriculum.
+
+If using GitHub Actions, explain:
+
+- Workflow files.
+- Events.
+- Jobs.
+- Steps.
+- Runners.
+- Actions.
+- Environment variables.
+- Secrets.
+- Permissions.
+- Artifacts.
+- Caching.
+- Build and test jobs.
+- Deployment jobs.
+
+Do not invent workflow syntax or use deprecated examples.
+
+### Cloud fundamentals
+
+Explain:
+
+- What cloud computing means.
+- IaaS, PaaS, and SaaS.
+- Compute.
+- Storage.
+- Networking.
+- Virtual machines.
+- Managed databases.
+- Object storage.
+- Regions and availability zones.
+- Identity and access management.
+- Firewall and security groups.
+- Monitoring.
+- Billing.
+- Resource lifecycle.
+
+Teach cloud concepts in a vendor-neutral way first.
+
+Then use one appropriate real provider for practical demonstrations if the canonical curriculum supports it.
+
+Clearly distinguish general cloud concepts from provider-specific features.
+
+### Cost and security
+
+Teach:
+
+- Pricing models.
+- Compute billing.
+- Storage costs.
+- Data transfer costs.
+- Managed service costs.
+- Free-tier limitations.
+- Budget alerts.
+- Least privilege.
+- IAM fundamentals.
+- Secret storage.
+- Access key rotation.
+- Resource cleanup.
+
+Never encourage learners to create expensive resources without explaining cost and cleanup.
+
+### Required CI/CD lab
+
+Build a pipeline for the Part 04 application.
+
+It should:
+
+1. Trigger on the appropriate Git event.
+2. Install dependencies.
+3. Run quality checks.
+4. Run tests.
+5. Build the application.
+6. Prepare a deployable artifact or image.
+7. Deploy through a safe, documented process where appropriate.
+8. Verify deployment.
+9. Explain failure handling and rollback.
+
+Use a coherent implementation that can be continued in Chapter 20.
+
+## CHAPTER 20 — PRODUCTION DEPLOYMENT & OPERATIONS
+
+18 hours
+
+This is the final integration chapter for Part 05.
+
+Teach the learner how to operate software after deployment.
+
+A successful deployment is not merely a website that opens once.
+
+The learner must understand reliability, security, observability, backups, updates, incidents, and ongoing maintenance.
+
+### Production architecture
+
+Explain the complete production architecture of the Part 04 application.
+
+Show how the following components interact:
+
+- Browser.
+- DNS.
+- HTTPS.
+- Reverse proxy.
+- Frontend.
+- Backend API.
+- Database.
+- File or object storage if required.
+- Logs.
+- Monitoring.
+- CI/CD.
+- Backup system.
+
+Use a clear architecture diagram.
+
+Explain traffic flow and dependencies.
+
+### Production deployment
+
+Teach:
+
+- Environment separation.
+- Production configuration.
+- Secret management.
+- Database provisioning.
+- Database migrations.
+- Build and release processes.
+- Domain configuration.
+- HTTPS.
+- Reverse proxy.
+- Application process management.
+- Container deployment where appropriate.
+- Firewall configuration.
+- Health checks.
+- Smoke tests.
+- Release verification.
+
+### Security
+
+Teach practical production security:
+
+- Principle of least privilege.
+- Secure environment variables.
+- Secret rotation.
+- Database access restrictions.
+- HTTPS enforcement.
+- Secure headers.
+- Authentication security.
+- Authorization checks.
+- Rate limiting.
+- Input validation.
+- Dependency updates.
+- Image security.
+- SSH security.
+- Firewall rules.
+- Backup access control.
+
+### Observability
+
+Explain the differences between:
+
+- Logs.
+- Metrics.
+- Traces.
+- Monitoring.
+- Alerting.
+- Health checks.
+
+Teach how to inspect:
+
+- Application logs.
+- Server logs.
+- Reverse proxy logs.
+- Container logs.
+- Database health.
+- CPU and memory usage.
+- Disk usage.
+- Network problems.
+- HTTP errors.
+- Latency.
+- Availability.
+
+Use practical tools and commands appropriate to the selected environment.
+
+Do not pretend that a basic log file is a complete observability platform.
+
+### Database operations
+
+Teach:
+
+- Backup strategy.
+- Automated backups.
+- Restore procedures.
+- Point-in-time recovery concepts where supported.
+- Migration safety.
+- Data integrity checks.
+- Database permissions.
+- Connection management.
+- Storage capacity.
+- Recovery testing.
+
+Emphasize that an untested backup is not a reliable recovery plan.
+
+### Reliability and incident response
+
+Teach:
+
+- Common production incidents.
+- Application crashes.
+- Failed deployments.
+- Database outages.
+- DNS misconfiguration.
+- Expired certificates.
+- Resource exhaustion.
+- Disk-full incidents.
+- Network failures.
+- High latency.
+- Failed background tasks where applicable.
+
+Provide a structured incident response approach:
+
+1. Detect.
+2. Assess impact.
+3. Stabilize.
+4. Diagnose.
+5. Recover.
+6. Verify.
+7. Document.
+8. Prevent recurrence.
+
+### Updates and rollback
+
+Explain:
+
+- Safe releases.
+- Rolling updates where appropriate.
+- Blue-green deployment concepts.
+- Canary deployment concepts.
+- Rollback strategy.
+- Database migration compatibility.
+- Backward-compatible changes.
+- Maintenance windows.
+- Downtime planning.
+
+Do not present advanced deployment strategies as mandatory for every small application.
+
+Explain when they are useful and when they add unnecessary complexity.
+
+### Required final deployment project
+
+Deploy the same Part 04 application using the architecture taught throughout Part 05.
+
+The final result must include:
+
+- A working production URL if the learner follows the lab with real infrastructure.
+- Domain and DNS configuration.
+- HTTPS.
+- Frontend deployment.
+- Backend deployment.
+- Database connectivity.
+- Production environment configuration.
+- Secure secrets.
+- Docker deployment where appropriate.
+- CI/CD workflow.
+- Health checks.
+- Logs.
+- Monitoring.
+- Backup and restore instructions.
+- Deployment verification.
+- Rollback procedure.
+- Troubleshooting guide.
+- Operational README.
+
+Provide a realistic low-cost deployment path and explain all costs that may apply.
+
+Never promise a provider is permanently free.
+
+Never hide paid requirements behind a "free deployment" claim.
+
+When providers are used, distinguish:
+
+- Free tier.
+- Trial credit.
+- Usage-based pricing.
+- Paid minimums.
+- Optional paid services.
+
+Explain how to shut down and remove resources to prevent unexpected charges.
+
+# 9. PART 04 AND PART 05 MUST FORM ONE CONTINUOUS ENGINEERING JOURNEY
+
+This requirement is extremely important.
+
+Do not write Part 04 and Part 05 as two unrelated books.
+
+The same application should progress through both parts.
+
+## The intended progression
+
+**Part 04:**
+
+Understand data → Design schema → Build backend → Test code → Integrate frontend → Complete application.
+
+**Part 05:**
+
+Understand Linux → Understand networking → Connect domain → Configure HTTPS → Containerize application → Build CI/CD → Deploy → Monitor → Maintain.
+
+Use consistent:
+
+- Project name.
+- Repository structure.
+- Database schema.
+- API endpoints.
+- Environment variable names.
+- Authentication model.
+- Service names.
+- Ports.
+- Container names where appropriate.
+- Deployment architecture.
+
+If a technical decision changes between parts, explain the reason and update all affected examples consistently.
+
+Create a clear transition from Chapter 15 into Chapter 16.
+
+Create a clear transition from Chapter 19 into Chapter 20.
+
+The final project should feel like one continuous professional engineering experience.
+
+# 10. TECHNOLOGY RESEARCH AND CURRENT ACCURACY
+
+This book must use current, technically correct information.
+
+Before writing each technology-dependent topic, research the current official documentation.
+
+Prefer primary sources:
+
+- Official Node.js documentation.
+- Official PostgreSQL documentation.
+- Official MongoDB documentation.
+- Official Docker documentation.
+- Official Linux distribution documentation.
+- Official Git documentation.
+- Official GitHub Actions documentation if selected.
+- Official Nginx documentation if selected.
+- Official hosting and cloud-provider documentation.
+- Official HTTP and TLS standards documentation where appropriate.
+
+Rules:
+
+1. Verify current stable APIs and commands.
+2. Verify installation instructions.
+3. Verify configuration syntax.
+4. Verify security recommendations.
+5. Verify current framework behavior.
+6. Verify provider-specific deployment steps.
+7. Verify pricing claims before including them.
+8. Include documentation links near relevant technical explanations.
+9. Prefer stable releases for the main learning path.
+10. Clearly label experimental features.
+11. Clearly distinguish provider-specific features from general principles.
+12. Never invent a version number.
+13. Never invent a command-line option.
+14. Never invent an API.
+15. Never copy outdated tutorials without checking them.
+16. Never state that a feature is free without verifying its current limitations.
+
+When a feature changes frequently, explain the underlying principle and direct the learner to the official documentation for the latest details.
+
+Do not make the entire book dependent on a particular provider's interface.
+
+# 11. CODE QUALITY REQUIREMENTS
+
+All examples must be technically sound.
+
+Use modern JavaScript and TypeScript conventions consistent with Parts 02–03 and the selected project.
+
+For each substantial code example:
+
+- Show the relevant filename.
+- Provide complete code when required.
+- Explain important lines.
+- Explain the execution flow.
+- Show how to run it.
+- Show expected output.
+- Show how to verify it.
+- Explain common errors.
+- Include security considerations.
+- Avoid unexplained dependencies.
+
+Code must be consistent across lessons.
+
+Do not mix incompatible versions or package APIs.
+
+Do not use pseudocode while presenting it as runnable code.
+
+If an example is abbreviated, clearly identify what has been omitted and why.
+
+Never use placeholder implementations for critical production features.
+
+Examples of unacceptable shortcuts:
+
+- Plaintext password storage.
+- Hardcoded production credentials.
+- Exposing database credentials to the browser.
+- Disabling TLS verification to "fix" HTTPS.
+- Running everything as root without explanation.
+- Opening all server ports without justification.
+- Using wildcard CORS as a universal solution.
+- Storing important production data only inside an ephemeral container filesystem.
+- Claiming a deployment is secure merely because HTTPS is enabled.
+- Treating a successful build as proof of production readiness.
+
+# 12. DIAGRAMS AND VISUAL EXPLANATIONS
+
+Use diagrams where they materially improve understanding.
+
+Suitable subjects include:
+
+- Relational data models.
+- Database relationships.
+- SQL query execution concepts.
+- Request-response lifecycle.
+- Backend architecture.
+- Authentication flow.
+- Full-stack architecture.
+- Git collaboration workflow.
+- Linux process relationships.
+- DNS resolution.
+- Browser-to-server networking.
+- Reverse proxy architecture.
+- Docker image and container lifecycle.
+- Docker networking.
+- CI/CD pipeline.
+- Cloud architecture.
+- Production deployment architecture.
+- Backup and recovery flow.
+
+Use the diagram syntax already supported by the repository.
+
+Keep diagrams accurate, readable, and explained in surrounding prose.
+
+Do not add diagrams merely for decoration.
+
+# 13. EXERCISES, LABS AND ASSESSMENTS
+
+The book must teach through practice.
+
+For each relevant chapter, include:
+
+- Concept checks.
+- Short coding exercises.
+- Debugging challenges.
+- Real-world scenarios.
+- Guided labs.
+- Independent tasks.
+- Chapter assessments.
+
+Exercises must increase in difficulty.
+
+For every substantial exercise, provide:
+
+1. Objective.
+2. Starting conditions.
+3. Requirements.
+4. Steps or constraints.
+5. Expected result.
+6. Verification method.
+7. Common mistakes.
+8. Evaluation criteria.
+
+Do not reveal every answer immediately if the exercise is intended for independent practice. Put solutions in the existing solution structure if the repository provides one.
+
+Major projects must include clear acceptance criteria.
+
+# 14. PROFESSIONAL ENGINEERING SCENARIOS
+
+Teach beyond toy examples.
+
+Use realistic engineering scenarios such as:
+
+- An application whose database becomes slow as data grows.
+- A user submitting invalid or malicious input.
+- Two users updating the same record.
+- An API returning inconsistent errors.
+- A backend losing its database connection.
+- A deployment failing because an environment variable is missing.
+- A server running out of disk space.
+- DNS pointing to the wrong IP address.
+- An HTTPS certificate expiring.
+- A container restarting repeatedly.
+- A database disappearing after a container is recreated.
+- A CI pipeline failing after a dependency update.
+- A production release introducing a breaking database migration.
+- A service becoming unavailable after a server reboot.
+- A backup that exists but cannot be restored.
+
+For every scenario, teach how an engineer investigates and solves the problem.
+
+# 15. CONNECTION TO THE REST OF THE BOOK
+
+Use prior knowledge appropriately.
+
+Connect to:
+
+- Part 01: Computing, networking foundations, problem-solving, Git, debugging.
+- Part 02: JavaScript, TypeScript, HTML, CSS, React, Next.js.
+- Part 03: Python, APIs, files, and automation.
+
+Prepare learners for:
+
+- Part 06: System Design & Production Quality.
+- Part 07: AI-Native Software Development.
+- Part 08: AI Applications, Agents, MCP & Automation.
+- Part 09: Career, Client Work, Products & Startups.
+- Part 10: Integrated Capstone.
+
+Do not teach all the later subjects prematurely.
+
+For example:
+
+- Introduce backend reliability here, but reserve deep system design for Part 06.
+- Teach application security essentials here, but reserve comprehensive security and observability engineering for Part 06.
+- Teach conventional backend deployment here, then build on it for AI agents in Part 08.
+- Teach CI/CD foundations here, then use them in the integrated capstone.
+
+Use accurate cross-references and preserve existing links.
+
+# 16. MDX AND DOCUSAURUS QUALITY
+
+The output must work in the existing Docusaurus project.
+
+Before editing, inspect the existing conventions.
+
+Follow them exactly.
+
+Avoid:
+
+- Invalid JSX.
+- Unescaped special characters.
+- Broken code fences.
+- Malformed MDX expressions.
+- Invalid component usage.
+- Duplicate front matter.
+- Broken links.
+- Incorrect relative paths.
+- Unsupported diagram syntax.
+- Incorrect heading hierarchy.
+- Accidental JSX parsing of code examples.
+
+Use fenced code blocks with correct language identifiers.
+
+Escape content when MDX requires it.
+
+Keep page metadata and front matter intact.
+
+Do not change dependencies or configuration unless necessary.
+
+# 17. EXECUTION STRATEGY — COMPLETE BOTH PARTS SAFELY
+
+This is a large assignment.
+
+Do not attempt to generate all content in one enormous response if that risks incomplete files or context loss.
+
+Work systematically.
+
+## Phase 1 — Repository audit
+
+- Inspect the curriculum.
+- Inventory all canonical Part 04 and Part 05 pages.
+- Record all file paths.
+- Record current content quality.
+- Identify missing, shallow, incomplete, and outdated pages.
+- Identify shared project requirements.
+- Identify dependencies between lessons.
+- Build a complete execution checklist.
+
+Do not begin mass editing before understanding the structure.
+
+## Phase 2 — Technical planning
+
+- Define the consistent full-stack project.
+- Define the database choice and explain why.
+- Define the API contract.
+- Define the application architecture.
+- Define the local development workflow.
+- Define the deployment architecture.
+- Identify the technologies and official documentation needed.
+- Plan how the project transitions from Part 04 to Part 05.
+
+Do not make unnecessary architectural decisions that conflict with the canonical curriculum.
+
+## Phase 3 — Part 04 authoring
+
+Complete Chapters 11–15.
+
+Author every canonical page.
+
+Do not stop after creating chapter landing pages.
+
+Do not move to Part 05 while Part 04 contains shallow or incomplete pages.
+
+## Phase 4 — Part 04 audit
+
+Check every page.
+
+Verify the full-stack project is internally consistent.
+
+Run the relevant checks.
+
+Fix all discovered problems.
+
+## Phase 5 — Part 05 authoring
+
+Complete Chapters 16–20.
+
+Author every canonical page.
+
+Continue the same application from Part 04.
+
+## Phase 6 — Part 05 audit
+
+Check every page.
+
+Verify the deployment project is internally consistent.
+
+Run relevant commands and checks.
+
+Fix all discovered problems.
+
+## Phase 7 — Whole-part integration audit
+
+Check the transition between the two parts.
+
+Verify that a learner can follow the application from local development to production.
+
+Check all cross-references and navigation.
+
+## Phase 8 — Final verification and report
+
+Provide an evidence-based completion report.
+
+# 18. RESOURCE AND SESSION MANAGEMENT
+
+The repository may be large, and the development environment may have limited memory.
+
+Therefore:
+
+- Work in manageable batches.
+- Do not run unnecessary concurrent development and production builds.
+- Avoid repeatedly running expensive builds after every single page.
+- Run focused validation during authoring.
+- Run full validation at sensible milestones.
+- Avoid memory-intensive operations where possible.
+- Preserve progress after every batch.
+- Maintain a progress checklist.
+- Record completed and pending files.
+- Resume from the last verified point after interruption.
+- Never mark unfinished work as complete.
+
+Do not overwrite the whole repository.
+
+Do not regenerate Parts 00–03 or Parts 06–10.
+
+Only modify files required for Parts 04 and 05, plus strictly necessary navigation or shared project updates.
+
+# 19. PAGE-BY-PAGE QUALITY AUDIT
+
+This is mandatory.
+
+Do not judge quality using only:
+
+- Total word count.
+- Number of files.
+- Percentage of completed files.
+- Successful build.
+- Number of code blocks.
+
+Inspect every canonical page.
+
+Classify each page as:
+
+- **Shallow:** Insufficient explanation or mostly generic statements.
+- **Incomplete:** Important concepts, examples, steps, or verification are missing.
+- **Developing:** Useful content exists, but important educational or practical depth is missing.
+- **Deep:** Complete, technically accurate, practical, understandable, and appropriately detailed.
+
+The final result must have:
+
+- Zero shallow pages.
+- Zero incomplete pages.
+- No unresolved critical technical errors.
+- No broken internal links introduced by this work.
+- No unverified production claims.
+- No missing canonical pages.
+
+A page is not deep merely because it is long.
+
+A page is not complete merely because it contains code.
+
+Review the actual content.
+
+For every page, ask:
+
+1. Does it explain the problem?
+2. Does it explain the underlying concept?
+3. Does it explain how the technology works?
+4. Does it provide a realistic example?
+5. Is the code technically correct?
+6. Can the learner execute the instructions?
+7. Is the expected result explained?
+8. Are common failures covered?
+9. Are relevant security implications explained?
+10. Does the learner have a way to practice?
+11. Does the page connect to the broader learning journey?
+12. Is the material free from unnecessary repetition?
+
+Rewrite pages that fail.
+
+# 20. TECHNICAL VERIFICATION
+
+Run the checks supported by the existing repository.
+
+At minimum:
+
+- Check all modified MDX files for syntax issues.
+- Run the project's lint command.
+- Run the production build when resources allow.
+- Validate internal links.
+- Validate navigation.
+- Check for missing files.
+- Check for duplicate or conflicting IDs.
+- Check code examples for consistency.
+- Check project commands and dependencies.
+- Check Docker configurations where present.
+- Check CI/CD workflow syntax where present.
+- Check deployment instructions against official documentation.
+- Check that all required pages are reachable.
+
+For practical code projects, perform actual execution and testing where the environment supports it.
+
+If external infrastructure is unavailable, do not falsely claim that a real production deployment was completed.
+
+Distinguish clearly between:
+
+- Verified locally.
+- Verified through automated tests.
+- Verified through a build.
+- Verified against official documentation.
+- Not executed because external infrastructure or credentials were unavailable.
+
+Never claim a test passed unless it was actually run and passed.
+
+# 21. FINAL DELIVERABLE REPORT
+
+After completing both parts, provide:
+
+## A. Curriculum coverage
+
+- Total canonical pages.
+- Pages authored.
+- Pages substantially rewritten.
+- Pages preserved without changes.
+- Pages requiring structural corrections, if any.
+
+Report Part 04 and Part 05 separately.
+
+## B. Chapter completion
+
+Report each chapter individually:
+
+- Chapter 11.
+- Chapter 12.
+- Chapter 13.
+- Chapter 14.
+- Chapter 15.
+- Chapter 16.
+- Chapter 17.
+- Chapter 18.
+- Chapter 19.
+- Chapter 20.
+
+## C. Content quality
+
+For each chapter, report:
+
+- Page count.
+- Approximate word count.
+- Shallow pages.
+- Incomplete pages.
+- Developing pages.
+- Deep pages.
+
+The final counts must come from inspecting actual files.
+
+## D. Practical projects
+
+Explain:
+
+- Which full-stack application was built.
+- Which database was used.
+- Which backend architecture was implemented.
+- Which tests were added.
+- Which Docker setup was created.
+- Which CI/CD workflow was implemented.
+- Which deployment architecture was documented.
+- Which operational procedures were covered.
+
+## E. Verification
+
+List the exact commands executed and their actual results.
+
+Separate successful checks from checks that could not be run.
+
+## F. Remaining limitations
+
+Disclose anything not verified, any external infrastructure requirements, and any remaining work.
+
+Do not hide problems to make the report look successful.
+
+# 22. FINAL INSTRUCTIONS
+
+Your priority order is:
+
+1. Preserve the canonical curriculum.
+2. Produce technically accurate material.
+3. Teach first principles deeply.
+4. Provide complete practical implementations.
+5. Keep Part 04 and Part 05 connected through one application.
+6. Teach production deployment and operations realistically.
+7. Make every page independently useful.
+8. Verify the work.
+9. Report honestly.
+
+Do not stop after planning.
+
+Do not stop after generating a few sample pages.
+
+Do not produce only a roadmap.
+
+Do not ask me to manually write the content.
+
+Do not replace deep explanations with summaries.
+
+Do not mark a chapter complete while its pages are still shallow.
+
+**Complete both Part 04 and Part 05 in the actual repository.**
+
+The final standard is simple:
+
+A learner who studies these two parts should be able to design a database, build a secure backend, integrate a complete frontend, collaborate through professional Git workflows, containerize the application, deploy it to a real environment, and understand how to monitor, troubleshoot, secure, back up, and maintain it in production.
+
+**Think deeply. Build correctly. Explain completely. Verify everything. Ship both parts.**

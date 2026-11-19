@@ -1,0 +1,89 @@
+---
+id: "00-10-3-creating-a-developer-portfolio"
+title: "00.10.3 Creating a Developer Portfolio"
+sidebar_label: "00.10.3 Creating a Developer Portfolio"
+slug: "/part-00-about-this-book/00-10-projects-portfolio-and-career-outcomes/00-10-3-creating-a-developer-portfolio"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="topic-00-10-3">
+
+A developer portfolio is **not** a showroom of glowing hover animations, arbitrary skill progress meters (*"Python: 85%, Docker: 70%"*), or fifteen half-finished repository cards. Engineering managers, founders, and technical clients open a portfolio link with one urgent, practical question: **"Can this engineer diagnose messy operational problems, build dependable full-stack and AI systems cleanly, and explain architectural trade-offs with clarity?"**
+
+Notice an important design truth: **quiet editorial clarity outperforms flashy clutter.** A fast, cleanly typeset personal portfolio site—or even a crisp single-page index linking directly into **three to four deeply engineered, live case studies**—signals engineering seniority within thirty seconds far more effectively than twelve noisy clone thumbnails.
+
+## Structuring Portfolio Evidence Around Depth Over Volume
+
+Hiring leads rarely click past your first three pinned builds. Curate your portfolio intentionally so every featured system demonstrates complementary proof across the full curriculum stack (`00.10.1`):
+
+- **Slot #1 — Flagship Integrated Capstone (`Ch 42`):** End-to-end AI-native operational product or FDE-style workflow system with auth, PostgreSQL + `pgvector` or bounded tools/MCP, evaluation metrics, CI, live URL, and architecture docs.
+- **Slot #2 — Focused Backend / Data / Automation System (`Part 04` or `Part 08`):** Proves you engineer reliability without hiding behind templates—covering webhooks, idempotency, worker queues, SQL performance, or typed MCP integrations.
+- **Slot #3 — Frontend / Interactive Workbench (`Part 02` + API):** Proves sharp UI engineering—clean accessibility, streaming state management, evidence side-by-side inspection, and crisp responsive layout.
+
+## Anatomy of a 90-Second Engineering Case Study
+
+For every flagship project (`00.6.7`), skip empty summaries like *"Built a full-stack AI app using Next.js and FastAPI to boost productivity."* Structure every portfolio project page cleanly around five high-signal blocks:
+
+| Case-Study Block | Concrete Content (3–5 Focused Sentences Each) | What Senior Reviewers Extract Immediately |
+| :--- | :--- | :--- |
+| **1. Problem & Constraints** | Identify who faced the workflow friction, why existing spreadsheets/manual tools failed, and exact technical constraints (data format, tenant security, latency budget) | Confirms FDE problem framing ([00.8](/book/part-00-about-this-book/00-8-fde-mindset)) over random syntax demos |
+| **2. System & Deterministic/AI Split** | Compact architecture diagram clearly showing what stays **deterministic** (auth, SQL invariants, idempotency, financial math) vs. **probabilistic** (RAG, JSON extraction, agent loop) | Signals production architectural judgment immediately |
+| **3. Hardest Bug or Trade-Off Solved** | One real engineering challenge you resolved—such as stopping cross-tenant retrieval leakage, preventing duplicate webhook runs under retries, or capping runaway token loops | Separates authentic builders from people copying happy-path tutorials |
+| **4. Empirical Verification** | Concrete checks you actually ran: passing integration tests, golden eval score across `N` test cases (`Ch 36`), `EXPLAIN ANALYZE` improvement, or observed error reduction | Proves verification discipline (`00.4.6`) rather than wishful guessing |
+| **5. Zero-Friction Proof Links** | Live working deployment URL (with instant sandbox credentials!), clean GitHub repository link, and a crisp 60–90 second narrated product walkthrough video | Lets busy evaluators verify real software running in under two minutes |
+
+```text
++-----------------------------------------------------------------------------+
+| PORTFOLIO CASE STUDY PAGE (SCANNABLE IN < 90 SECONDS)                       |
++-----------------------------------------------------------------------------+
+| [Project Title]  —  One-sentence operational outcome                        |
+| Links: [ Live Sandbox Demo ]   [ GitHub Repo + Docs ]   [ 90s Video Demo ]  |
++-----------------------------------------------------------------------------+
+| 1. Operational Problem  |  2. Architecture (UI -> API -> Postgres -> AI)    |
+| 3. Deterministic vs AI  |  4. Hard Bug Diagnosed  |  5. Verified Metrics    |
++-----------------------------------------------------------------------------+
+```
+
+## Five Portfolio Mistakes That Destroy Credibility Fast
+
+1. **Fake numeric skill percentages ("TypeScript 92%, SQL 75%"):** Against what benchmark? Arbitrary self-ratings immediately telegraph beginner inexperience. Replace percentages with real projects built in each language.
+2. **Broken live demos (`502 Bad Gateway` / expired free DBs):** Clicking a featured portfolio link and hitting a crashed container or blank white error screen leaves a worse impression than having no live link. Audit every live portfolio link once a month.
+3. **Mandatory email-verification walls before previewing anything:** Busy engineering leads will not register an account and wait for an activation email just to see your dashboard. Provide a clear **"One-Click Demo Sandbox Login"** or public read-only sample workspace loaded with realistic seed data (`00.10.2`).
+4. **Equal billing for toy early scripts and serious systems:** Archive trivial early drills cleanly on GitHub and pin only your strongest **3–4 real engineering repositories** at the top of your profile.
+5. **Fabricated impact statistics ("Saved clients $200K" on a student demo):** Senior interviewers spot invented metrics within two follow-up questions. Report real measured test/eval behavior and honest benchmark observations strictly on systems you genuinely built and tested.
+
+## Keeping Portfolio Maintenance Effort Lightweight
+
+Do not spend three months over-engineering your portfolio website itself when you could be strengthening the systems inside it. Build one fast, accessible, responsive site (or crisp static Next.js / Astro page), deploy it cleanly with zero broken links, embed concise case-study pages written straight from your repository ADRs (`00.10.4`), and update it cleanly as each milestone concludes.
+
+## Practical Exercise: Draft One 5-Block Case Study Outline
+
+Select a system you plan to build—or an earlier project you already completed—and write a tight 250-word draft covering all five case-study blocks in the table above without using vague phrases (*"cutting-edge"*, *"seamless AI"*, *"powerful platform"*). Check whether a stranger reading only those five short blocks can answer cleanly: *what breaks without this system, what data lives in SQL, where AI runs, what fails gracefully, and how correctness was verified?*
+
+## Tailoring Your Top 3 Pinned Case Studies to Your Target Track
+
+While the underlying engineering quality stays identical, adjust the emphasis of your **3 pinned case studies (`00.3`)** so recruiters and clients recognize exact alignment within seconds:
+
+| Target Career Track (`00.3`) | Strongest Case Study Lead-In Angle | Evidence Reviewers Immediately Hunt For |
+| :--- | :--- | :--- |
+| **Forward Deployed / Solutions Engineer** | Operational pain uncovered, As-Is vs. To-Be workflow map, human review gates, handover runbook | Measurable turnaround friction removed, dirty sample handling, clear client-readable ADR |
+| **Applied AI / Agentic AI Engineer** | Hybrid retrieval (`pgvector` + SQL), structured Pydantic/Zod extraction contracts, bounded `MAX_STEPS`, golden eval metrics | Retrieval precision/citation accuracy, hallucination/injection guardrails, token FinOps ledger |
+| **Full-Stack / Founding Engineer** | Multi-tenant PostgreSQL schema, auth/RBAC boundaries, idempotent workers, crisp accessible TypeScript/React UI | Automated API + negative-path tests, container deploy parity, clean modular code structure |
+
+## Scripting a High-Signal 90-Second Product Walkthrough
+
+Busy staff engineers often skip registering accounts—yet they reliably click a silent or concisely narrated **90-second video demo** pinned at the top of your portfolio card. Follow this exact four-beat pacing without music intros or throat clearing:
+
+1. **0:00–0:15 — Live Pain & Input:** *"Hospital intake coordinators spend 12 minutes matching incoming referral PDFs against payer rules. Watch this multi-page anonymized referral enter the queue."*
+2. **0:15–0:45 — Deterministic + AI Verification Action:** Show the split-pane review workbench highlighting flagged missing fields alongside clickable policy page citations—and demonstrate an operator clicking **Verify & Stage**.
+3. **0:45–1:10 — Negative Path & Architecture:** Switch briefly to an intentional failure (or integration test output): *"When a PDF omits signatures or returns mismatched totals, validation holds the record rather than silently pushing bad data."*
+4. **1:10–1:30 — Eval Score & Repo Pointers:** Show the terminal golden eval summary (`40 cases · 92.5% match`) and point cleanly to the `README.md` quickstart and `docs/adr/` folder.
+
+## Official Primary References
+
+- [Write the Docs — Documentation Guide (`writethedocs.org`)](https://www.writethedocs.org/guide/)
+- [C4 Model for Visualizing Software Architecture (`c4model.com`)](https://c4model.com/)
+- [GitHub Profile README Customization Docs](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme)
+
+</BookNodePage>

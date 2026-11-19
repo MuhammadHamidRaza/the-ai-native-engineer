@@ -1,0 +1,23 @@
+---
+id: "index"
+title: "16.3 Managed Platform & Full-Stack Deployment"
+sidebar_label: "16.3 Managed Platform & Full-Stack Deployment"
+slug: "/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-3-managed-platform-and-full-stack-deployment"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-16-s3">
+
+**Subchapter 16.3** is where everything so far becomes a public URL. You will deploy the real ShopCore — SPA to a frontend platform, API to PaaS, database to hosted Postgres — with preview deployments, custom domains, secrets management and a rehearsed rollback.
+
+## Lessons in Subchapter 16.3
+
+1. **[16.3.1 Deploying Frontend Apps on Vercel, Netlify and Cloudflare](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-3-managed-platform-and-full-stack-deployment/16-3-1-deploying-frontend-apps-on-vercel-netlify-and-cloudflare):** Step-by-step ShopCore SPA deploys on Vercel (import, framework preset, env vars, custom domain, preview URLs), the Netlify equivalent, and Cloudflare Pages Git integration — plus `curl -I` verification and rollback by redeploying an older commit.
+2. **[16.3.2 Deploying Node, Python APIs and Hosted Databases](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-3-managed-platform-and-full-stack-deployment/16-3-2-deploying-node-python-apis-and-hosted-databases):** Deploy the ShopCore Express API to Render with `DATABASE_URL` as a secret, connect Neon hosted Postgres over SSL, verify with `psql` from your machine, understand connection pooling — and the 30-day free-Postgres caveat and billing safety.
+
+Do 16.3.1 before 16.3.2 — in 16.3.2 you will set the SPA's `VITE_API_URL` to the Render URL, which only exists after the API is up.
+
+**Cost safety before you start:** every provider here has a free plan that cannot silently bill you on its own, but each one *does* have a "you attached a card" path to costs. Set a spend limit/alert (or stay strictly on Free) before the first deploy, and see [16.1.2](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting/16-1-deployment-fundamentals-and-hosting-models/16-1-2-hosting-types-and-free-vs-paid-limits) for the full limits table.
+
+</BookNodePage>

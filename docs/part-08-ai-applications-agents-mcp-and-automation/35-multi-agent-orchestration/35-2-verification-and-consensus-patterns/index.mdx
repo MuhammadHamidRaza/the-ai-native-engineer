@@ -1,0 +1,43 @@
+---
+id: "index"
+title: "35.2 Verification & Consensus Patterns"
+sidebar_label: "35.2 Verification & Consensus Patterns"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-35-s2">
+
+One agent producing an answer is a claim. Two agents checking each other is (sometimes) evidence. This section is about the machinery that makes multi-agent output trustworthy — and about the loops that make it worse when built naively.
+
+## The Core Loop
+
+```text
+generate --> evaluate --> (pass) --> publish
+   ^            |
+   |        (fail) --> feedback --> regenerate
+   +------------------- max 3 iterations -------------------┘
+```
+
+The evaluator can be an LLM critic, a deterministic verifier (schema check, test suite, policy rule), a retrieval-grounding check, or a human. The **stop conditions are the design**: pass the rubric, or hit the iteration cap, or exhaust the budget — never "until it feels done".
+
+## The Two Topics in This Section
+
+- **[35.2.1 Critics, Evaluators and Quality Gates](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns/35-2-1-critics-evaluators-and-quality-gates)** — critic/evaluator patterns, rubric construction, max-iteration loops with real stop conditions, 2-of-3 consensus with heterogeneous models, and quality gates before irreversible actions.
+- **[35.2.2 Debugging Multi-Agent Deadlocks and Cost](/book/part-08-ai-applications-agents-mcp-and-automation/35-multi-agent-orchestration/35-2-verification-and-consensus-patterns/35-2-2-debugging-multi-agent-deadlocks-and-cost)** — cycle detection, the signature failure modes (agreement loops, rubber-stamp critics, infinite clarification), trace-per-agent debugging, replay determinism, and an honest worked cost model with numbers.
+
+## Why Verification Is Not Optional Above One Agent
+
+A single agent's failure is visible: it's wrong, you catch it. A multi-agent system's failure is often *agreeable*: agents confirming each other's errors with confidence. Verification patterns restore an independent vantage point — a critic who sees different evidence, a deterministic check the model cannot argue with, a human at the irreversible edge.
+
+## Section Exit Criteria
+
+- You can build a generate→evaluate→regenerate pipeline with a hard iteration cap and a rubric-scored pass gate.
+- You can explain when consensus helps (subjective judge-work) and when it's theater (verifiable facts).
+- You can look at a multi-agent cost quote and sanity-check it arithmetically.
+- You can name three failure modes from memory and the telemetry that exposes them.
+
+Prerequisites: 35.1 complete; Chapter 28 (grounded generation) and Chapter 31 (guardrails) helpful. Verified November 2026.
+
+</BookNodePage>

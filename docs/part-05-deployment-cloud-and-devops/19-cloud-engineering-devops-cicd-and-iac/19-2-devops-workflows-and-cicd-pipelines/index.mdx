@@ -1,0 +1,21 @@
+---
+id: "index"
+title: "19.2 DevOps Workflows and CI/CD Pipelines"
+sidebar_label: "19.2 DevOps Workflows & CI/CD Pipelines"
+slug: "/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-2-devops-workflows-and-cicd-pipelines"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-19-s2">
+
+**Subchapter 19.2** turns "it works on my machine" into "it merged, it built, it deployed, it's logged." You will wire GitHub Actions into the ShopCore repo and end with a pipeline that tests, packages and (via OIDC, no stored passwords) can deploy — and rolls back when told to.
+
+## Lessons in Subchapter 19.2
+
+1. **[19.2.1 Git Workflows and GitHub Actions Fundamentals](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-2-devops-workflows-and-cicd-pipelines/19-2-1-git-workflows-and-github-actions-fundamentals):** Trunk-based flow refresher (main branch, short-lived branches, PRs), workflow YAML anatomy (`on:`, `jobs`, `runs-on`, `steps`, `actions/checkout@v4` + `actions/setup-node@v4`), a lint+build workflow that runs on every push and PR, and how to read Actions logs when it goes red.
+2. **[19.2.2 Testing, Artifacts, CI Secrets and Rollback Pipelines](/book/part-05-deployment-cloud-and-devops/19-cloud-engineering-devops-cicd-and-iac/19-2-devops-workflows-and-cicd-pipelines/19-2-2-testing-artifacts-ci-secrets-and-rollback-pipelines):** A test job, `actions/upload-artifact@v4`, `GITHUB_TOKEN` and AWS via **OIDC** (never stored passwords), a deploy job that redeploys the previous SHA on failure, and failure notifications.
+
+**Prerequisites:** ShopCore in a GitHub repo ([Chapter 14](/book/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review)); the 19.1.1 billing alert if you connect AWS. On version pins: these lessons pin `@v4` as taught; as of Nov 2026 newer majors exist (checkout v7, setup-node v7, upload-artifact v7) — the patterns are identical, bump deliberately.
+
+</BookNodePage>

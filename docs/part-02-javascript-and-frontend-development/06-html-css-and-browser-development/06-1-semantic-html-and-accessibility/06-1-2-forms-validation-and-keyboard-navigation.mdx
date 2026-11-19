@@ -1,0 +1,77 @@
+---
+id: "06-1-2-forms-validation-and-keyboard-navigation"
+title: "06.1.2 Forms, Validation and Keyboard Navigation"
+sidebar_label: "06.1.2 Forms, Validation and Keyboard Navigation"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-1-semantic-html-and-accessibility/06-1-2-forms-validation-and-keyboard-navigation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s1-t2">
+
+Forms are where users actually pay, log in, and submit data. Yet poorly built forms omit `<label>` tags, rely on placeholders as labels, trap keyboard focus, or hide outline indicators (`outline: none`). Native `<form>` and `<input>` semantics handle keyboard submission (`Enter`), screen-reader announcements, and constraint validation cleanly out of the box.
+
+## 1. Accessible, Validated Form Example
+
+```html
+<form id="signup-form" novalidate>
+  <div class="field">
+    <label for="email-input">Work Email</label>
+    <input
+      id="email-input"
+      name="email"
+      type="email"
+      autocomplete="email"
+      required
+      aria-describedby="email-hint"
+    />
+    <p id="email-hint" class="hint">We never share your email.</p>
+  </div>
+
+  <div class="field">
+    <label for="role-select">Team Role</label>
+    <select id="role-select" name="role" required>
+      <option value="">Choose a role...</option>
+      <option value="engineer">Engineer</option>
+      <option value="designer">Designer</option>
+    </select>
+  </div>
+
+  <button type="submit">Create Workspace</button>
+</form>
+```
+
+**Why every attribute here matters:**
+- `<label for="email-input">` binds the label to the input so clicking the label focuses the input *and* screen readers announce `"Work Email, edit text"`. Placeholders disappear as soon as you type and are **not** replacements for labels.
+- `autocomplete="email"` improves mobile autofill and password manager integration.
+- Note `<button type="button">` vs. `<button type="submit">`: inside a `<form>`, a bare `<button>` with no `type` defaults to `submit`! Always specify `type="button"` on non-submit buttons (like "Cancel" or "Show Password") so pressing them never accidentally submits the form.
+
+## 2. Keyboard Navigation & `:focus-visible`
+
+Never write `*:focus { outline: none; }` without providing an equally clear visual focus ring. Modern CSS gives you **`:focus-visible`**, which shows a crisp focus ring for keyboard `Tab` users while avoiding noisy outlines on mouse clicks:
+
+```css
+:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+```
+
+Unplug your mouse (or press `Tab` / `Shift+Tab` / `Enter` / `Space`) across your form: you should be able to reach every control, see clearly where focus currently sits, and submit using `Enter`.
+
+## 3. Client Validation vs. Server Validation
+
+HTML constraints (`required`, `minlength="8"`, `type="email"`) improve user feedback before a network round trip, **not security**. Anyone can bypass HTML validation with `curl` or DevTools—your backend (`Part 04`) must always re-validate every payload with Zod or Pydantic.
+
+## 4. Practice Exercises
+
+1. Build a small login form with email, password (`minlength="8"`), a "Show/Hide password" `<button type="button">`, and inline error text connected via `aria-describedby`.
+2. Navigate the entire form using **only your keyboard** (`Tab`, `Shift+Tab`, `Space`, `Enter`) and confirm zero mouse clicks are needed.
+
+## Mastery Checklist
+
+- [ ] Pairs every form control with an explicit `<label for="...">` (never placeholder-only).
+- [ ] Preserves visible keyboard focus styling with `:focus-visible`.
+- [ ] Sets explicit `type="button"` on secondary buttons inside forms.
+
+</BookNodePage>

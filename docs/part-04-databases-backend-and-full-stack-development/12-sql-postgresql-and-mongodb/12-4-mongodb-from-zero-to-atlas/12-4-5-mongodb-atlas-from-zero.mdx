@@ -1,0 +1,152 @@
+---
+id: "12-4-5-mongodb-atlas-from-zero"
+title: "12.4.5 MongoDB Atlas from Zero"
+sidebar_label: "12.4.5 MongoDB Atlas from Zero"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-5-mongodb-atlas-from-zero"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4-t5">
+
+MongoDB Atlas is the official **fully-managed MongoDB in the cloud** — the same database as local, hosted by MongoDB. This is the fastest path from zero to a deployed database, and the one your portfolio projects should use. Everything here is browser-based; no local MongoDB required.
+
+## 1. Local vs Atlas vs Self-Hosted — What Changes
+
+| | Local (12.4.1) | Atlas (this lesson) |
+| :-- | :-- | :-- |
+| Where it runs | Your machine | MongoDB's cloud (AWS/GCP/Azure, 40+ regions) |
+| Cost | Free | **M0 free tier** forever; paid clusters scale up |
+| Setup | Installer (~10 min) | Browser account (~5 min) |
+| Network | localhost only | Internet + IP allowlist |
+| Who handles backups/updates | You | MongoDB |
+| Best for | Dev, offline | Deployed apps, portfolios, demos |
+
+Same wire protocol, same queries, same Compass — you switch by changing **only the connection string**.
+
+## 2. Official Entry Points (Never a Random Tutorial Clone)
+
+- **Atlas:** https://www.mongodb.com/products/platform/atlas-database
+- **Compass:** https://www.mongodb.com/try/download/compass
+- **mongosh:** https://www.mongodb.com/try/download/shell
+
+## 3. Step 1 — Create Your Account
+
+1. Click **Get Started Free** / **Sign Up** on the Atlas page.
+2. Sign up with **Google/GitHub/email**. Verify the email if prompted.
+3. You land in the Atlas UI ("Build a database" wizard). Choose **M0 FREE** — the permanent-forever free shared cluster.
+
+## 4. Step 2 — Create the Cluster (Exactly What to Click)
+
+1. **Cloud Provider & Region:** pick the provider/region **closest to your users** (e.g., `AWS / Mumbai (ap-south-1)` or `AWS / Virginia (us-east-1)`). Free tier is available on all three majors.
+2. **Cluster Name:** leave `Cluster0` or rename `shopcore-cluster` (letters/numbers/hyphens).
+3. Click **Create Deployment**. Provisioning takes 1–3 minutes (free tier: a shared, small instance — not for production scale).
+
+## 5. Step 3 — Create a Database User (Who May Log In)
+
+1. You'll be asked to create a **database user** (the *database-level* account — distinct from your Atlas login).
+2. **Username:** `shopcore_app` (or your choice). **Password:** click **Autogenerate Secure Password** → **copy it now** (shown once).
+3. **Database user privileges:** for learning, choose **Read and write to any database** (or the least-privilege built-in role); never use admin-level privileges for an app.
+4. Click **Create Database User**.
+
+## 6. Step 4 — Configure Network Access (Who May Connect)
+
+1. **Network Access → Add IP Address**. You have two honest choices:
+   - **Add My Current IP Address** (recommended; Atlas fills it in — remember home/office IPs change).
+   - **Allow Access from Anywhere** (`0.0.0.0/0`) — convenient for learning on the road, **never acceptable for production** and you should not leave it permanently enabled.
+2. Click **Confirm**. Propagation takes under a minute.
+
+## 7. Step 5 — Get the Connection String
+
+1. **Clusters → Connect → Drivers** (or **Compass**).
+2. Atlas shows a string like:
+
+   ```text
+   mongodb+srv://shopcore_app:<password>@shopcore-cluster.xxxxx.mongodb.net/?retryWrites=true&w=majority
+   ```
+
+3. **Replace `<password>`** with the real password from step 3 (delete the angle brackets). If your password contains `@`, `:`, `/`, `%` or `#`, those characters must be **percent-encoded** (e.g., `@` → `%40`) — copying the ready-made string from the UI handles this automatically; hand-editing often doesn't.
+4. Append the database name you want to land in: `.../shopcore_docs?retryWrites=true&w=majority`.
+
+## 8. Step 6 — Connect Three Ways
+
+### (a) mongosh
+
+```bash
+mongosh "mongodb+srv://shopcore_app:YOUR_PASSWORD@shopcore-cluster.xxxxx.mongodb.net/shopcore_docs?retryWrites=true&w=majority"
+```
+
+At the prompt: `db.ping` must answer `{ ok: ... }`? Use:
+
+```javascript
+db.runCommand({ ping: 1 })     // expect { ok: 1 }
+show collections               // likely empty — fresh cluster
+db.orders.insertOne({ userId: "ada@example.com", status: "paid", items: [] });
+```
+
+### (b) Compass
+
+Connect screen → **Fill in connection fields individually** → paste the `mongodb+srv` URI (or use the **URI** tab). Click **Connect** → you see `shopcore_docs`. Use exactly the same buttons as 12.4.2 — create `orders`, insert, filter — but against Atlas.
+
+### (c) Node.js
+
+```javascript
+import { MongoClient } from 'mongodb';
+const uri = process.env.MONGODB_URI;   // never hardcode; keep in .env (gitignored)
+const client = new MongoClient(uri);
+await client.connect();
+await client.db('shopcore_docs').collection('orders').findOne({ status: 'paid' });
+```
+
+## 9. Test Reads and Writes End-to-End
+
+From mongosh (or Compass), run the exact write/read cycle:
+
+```javascript
+db.orders.insertOne({ userId: "atlas-test@example.com", status: "paid", createdAt: new Date(), items: [{ sku: "KB-01", qty: 1, unitPriceCents: 12900 }] });
+db.orders.find({ userId: "atlas-test@example.com" });
+db.orders.countDocuments();
+```
+
+If insert and find both work, your Atlas deployment + network access + user auth are all correctly configured.
+
+## 10. Troubleshooting Atlas Connection Errors
+
+| Error | Cause | Fix |
+| :-- | :-- | :-- |
+| `querySrv ENOTFOUND _mongodb._tcp...` | DNS can't resolve SRV record — typo'd cluster hostname or no internet | Copy the string from the Connect dialog again; check connection |
+| `Authentication failed` | Wrong password in URI, or unescaped special chars | Reset user password (Database Access → Edit → Edit Password), re-copy encoded URI |
+| `connection timed out` / `ECONNREFUSED` | Your IP not in Network Access | Network Access → **Add My Current IP** (or check corporate VPN blocks 27017/SRV DNS) |
+| `IP that you are connecting from is not on your Atlas cluster's IP Access List` | Same as above | Same fix |
+| `not allowed to do operation` | User lacks privileges for the DB | Database Access → Edit → role: **Read and write to any database** (or a custom role scoped to `shopcore_docs`) |
+| Password with `@` typed manually into URI | Broke URI parsing | Copy UI-provided string (it's percent-encoded) or percent-encode manually |
+
+Never paste your full connection string into chat, screenshots, tickets or public repos. If it leaks: **Database Access → Edit → Edit Password** → the leaked string dies instantly.
+
+## 11. Free-Tier Limits and Billing Risks
+
+M0 is free forever but intentionally limited — approximate current constraints (check the official Atlas docs/pricing page before relying on them):
+- **Shared 0.5 GB storage**, limited RAM/CPU — enough for learning and portfolio demos, not real traffic.
+- **No automated backups on M0** (paid tiers add them) — export important data yourself.
+- **Network throughput and connection limits** are enforced.
+- Upgrading is one click (**Clusters → Upgrade**) with a credit card — **set a budget alert** in Billing settings so a click doesn't become a shock.
+- Free clusters in inactive accounts can be reclaimed by Atlas — keep them alive or export your data.
+
+## 12. Practice
+
+**Guided exercise.** Create the M0 cluster, user, IP allowlist, and connect from **mongosh** + **Compass**. Insert the test order and screenshot both `show collections` and Compass's documents grid.
+
+**Independent exercise.** Connect Node (or psql-style sanity check via `mongosh --eval 'db.runCommand({ ping: 1 })'`) using `MONGODB_URI` from an `.env` file. Then **delete** `.env` from git tracking if `git status` shows it staged.
+
+**Challenge.** Create a second database user with **read-only** rights (role `read` on `shopcore_docs`), connect with it, and prove `db.orders.insertOne(...)` is rejected while `db.orders.find()` works. This is least privilege in action.
+
+**Assessment checklist**
+
+- [ ] I created an M0 cluster, a database user and an IP allowlist.
+- [ ] I connected from mongosh, Compass and Node via the same `mongodb+srv://` string.
+- [ ] I know why `<password>` must be replaced/percent-encoded and where to find the encoded URI.
+- [ ] I can diagnose authentication vs network-access errors in under a minute.
+- [ ] My connection string is only in `.env`, gitignored, never committed.
+- [ ] I know the M0 free-tier limits and where pricing/alerts live.
+
+</BookNodePage>

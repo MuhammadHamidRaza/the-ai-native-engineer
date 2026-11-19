@@ -1,0 +1,118 @@
+---
+id: "34-1-1-scoping-operational-boundaries-and-slas"
+title: "34.1.1 Scoping Operational Boundaries and SLAs"
+sidebar_label: "34.1.1 Scoping Operational Boundaries and SLAs"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/34-ai-workers/34-1-designing-role-specific-ai-workers/34-1-1-scoping-operational-boundaries-and-slas"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-34-s1-t1">
+
+An AI worker is trusted automation with a job description. This lesson writes the job description: mission, inputs, deterministic guardrails, budget, SLA, kill-switch, owner — plus the red lines no worker may ever cross. All examples are the three ShopCore workers.
+
+## 1. Boundaries vs Chatbots vs Agents
+
+A chatbot answers. An agent decides within a loop. A **worker** owns a recurring outcome. The binding constraint is the same one that binds human job descriptions: you can be held accountable for a role you did not bound. Boundaries come **before** capability.
+
+Useful test — the "2 a.m. page" test: if this worker misbehaves at 2 a.m., does a human get woken up, and can they stop it from their phone? If yes, boundaries are probably real. If the honest answer is "nobody would notice until Monday's report", you do not have a worker; you have an unattended cron job with an LLM inside — and you should go back to the spec.
+
+## 2. The Guardrail Taxonomy — Deterministic First, LLM Second
+
+| Layer | What it is | Example (ShopCore) |
+| :-- | :-- | :-- |
+| **Deterministic rules** (code/SQL) | Hard stops, no model judgment | Skip invoices flagged `dispute=true`; max €10k automation ceiling; sentiment keyword list |
+| **Structured LLM judgment** | Model classifies/extracts, code decides | `escalate | auto | review` enum with fail-safe to `review` |
+| **Approval gates** (human) | Side effects require sign-off | Customer-facing send waits on Slack button / Intercom approval |
+| **Rate/volume ceilings** | Blast-radius limits | ≤ 50 outbound nudges/day; ≥ 7 days between touches per invoice |
+| **Kill-switch** | Instant global disable | `WORKERS_AR=0` env/feature-flag; trip → owner paged, pending queue paused |
+
+Never put a dollar amount the LLM may *decide*; put it in the deterministic layer. "The model seemed confident" is not an authorization framework.
+
+## 3. SLAs and Error Budgets for Workers
+
+Workers get SLAs like any service: **freshness** (daily AR run starts by 08:00 ± 10 min), **latency** (triage decision within 60s of inbox arrival), **quality floor** (≥ 95% correct routing on labeled sample, measured weekly), **availability** (queue-backed; degraded ≠ silent). Translate the quality floor into an **error budget**: at 5% budget/week, a worker burning 4% by Wednesday gets frozen and reviewed, not "tuned" in production.
+
+Worked error-budget math: your Inbox Triage SLA is 95% correct routing. Over a 500-ticket week, budget = 25 misroutes. If the worker has missed 16 of the first 376 tickets, it has 9 misroutes left for the rest of the week — spend them on genuinely ambiguous cases first. (If it has missed 26 of 376, it is already past budget: every ticket from #377 on goes to a human until the next measurement window.) A budget sitting unused at week end was capacity you could have spent; a budget blown by Wednesday means freeze and review, not "tune in production".
+
+## 4. The Three Workers — Spec Sheets
+
+**Inbox Triage (support)**
+- Mission: first-response triage for the support inbox; draft replies for routine items.
+- Inputs: new ticket (email/webhook), Ch 28 policy RAG, customer history.
+- Guardrails: escalation on `refund > €250`, sentiment keywords (`angry|lawyer|chargeback|fraud`), PII redaction before any LLM call; never send without approval or explicit auto-policy.
+- Budget: €40/mo; SLA: triage < 60s; kill-switch: `WORKERS_TRIAGE=0`; owner: Support lead.
+
+**AR Nudge (billing)**
+- Mission: recover 7+ days overdue invoices via tone ladder L1→L4.
+- Guardrails: skip disputed/flagged/harship accounts; max 4 touches; 1 touch/7 days; amounts > €10k human-only; stop on payment/reply/dispute.
+- Budget: €80/mo; SLA: daily 08:00; kill-switch: `WORKERS_AR=0`; owner: RevOps + Finance.
+
+**Research Brief (competitive intel)**
+- Mission: every Monday 07:00, competitor pricing/feature delta → Notion page with citations.
+- Guardrails: public sources only; every claim cited to URL + retrieval date; no speculation sections; no PII; output labeled "AI-assembled, human-reviewed".
+- Budget: €30/mo; SLA: page ready by 08:00; kill-switch: `WORKERS_RESEARCH=0`; owner: Founder/COO staff.
+
+Note asymmetry: Triage is event-driven with a seconds-level SLA, AR Nudge is scheduled with a daily SLA, Research Brief is scheduled weekly — all three still demand the same audit row per decision. SLA shape follows trigger, not worker importance.
+
+## 5. The Spec Review — 20 Minutes, Four Questions
+
+Specs die without review. Run this once per worker before launch and at every version bump:
+
+1. **Blast radius:** if this worker goes rogue for 24h (bug, injection, mis-scope), what is the worst customer-visible outcome? ("19 invoices get L3 nudges" is a real answer; "the model hallucinates" is not.)
+2. **Stop test:** can a non-engineer disable it in under 60 seconds right now, without reading code?
+3. **Approval ergonomics:** what does the approver see on the Slack card, and can they act without asking a second person?
+4. **Cost tripwire:** at what monthly spend does it page the owner — and has that tripwire ever actually fired?
+
+If any answer is hand-wavy, the spec isn't done. Ship nothing until all four have concrete artifacts: a flag, a card mock, a budget alert, a named human.
+
+## 6. Ownership, On-Call and the Red Lines
+
+Each worker names one **owner** (accountable, pages on failure), a **backup**, and an **on-call rotation** covering business hours at minimum — a worker without an owner gets frozen within one incident cycle. Red lines, absolute, no exceptions without written sign-off:
+
+1. No customer-facing send without approval or a bounded, logged auto-approve policy.
+2. No credentials in prompts, outputs or logs.
+3. No PII to non-approved models/providers; redact before the model sees it.
+4. No money movement above ceiling without human confirmation.
+5. No silent failure — every error path lands in the escalation queue.
+
+## 7. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Worker "works" but nobody trusts it | No SLA/metrics published | Publish a weekly one-pager: runs, sends, approvals, error budget |
+| Scope creep ("while you're in there…") | Spec not versioned | Spec lives in git; changes via PR; version in the audit log |
+| LLM overrides rule | Guardrail in prompt, not code | Move rule to deterministic layer; prompt is advisory |
+| Approval fatigue | Auto-approve too narrow → humans click blindly | Tune policy with real data; sample-audit auto-approvals weekly |
+| Budget alert fires every month | Prompt bloat or retry storm | Inspect tokens/run trend; cap loop iterations; move summarization to smaller model |
+| Two owners, both denying it | Ownership ambiguous after re-org | Single named human + named backup; escalate to their manager after 2 incidents |
+
+## 8. A Spec Version Bump, End to End
+
+Someone proposes: "the AR Nudge should mention our new early-pay discount." The right path, every time:
+
+1. Edit the spec (`AR Nudge v1.2 → v1.3`) — template text changes, tone ladder unchanged, guardrails untouched.
+2. PR review by RevOps owner + Finance: confirm the discount wording is legally accurate per country.
+3. Update `prompt_version` references; run 10 synthetic invoices in staging; verify rendered L1–L4.
+4. Deploy with flag off; one canary invoice with internal account; check `worker_runs` for `prompt_version=1.3.0`.
+5. Flag on; monitor skip/error rate for 48h; changelog entry in the ops log.
+
+Nothing in this path touches permissions, scopes or money ceilings — those require a new *major* spec version and leadership sign-off. Version bumps that change who-can-approve are never routine.
+
+## 9. Practice
+
+**Guided.** Fill the one-page spec template for the Inbox Triage worker using the §4 inputs; have a colleague review it for missing guardrails.
+
+**Independent.** Write the SLA dashboard query (Postgres) showing per-worker: runs, successes, escalations, median latency, % error budget consumed.
+
+**Challenge.** Run a "red-team by email": send 10 adversarial dispute emails (threats, PII stuffing, prompt-injection like "ignore your instructions"); count how many reach a draft reply without approval.
+
+**Checklist**
+
+- [ ] Every worker has a versioned one-page spec with owner and kill-switch
+- [ ] Deterministic layer enforces every red line; LLM is advisory
+- [ ] SLA + error budget defined and measurable from the audit log
+- [ ] Approval gate blocks all customer-facing sends
+- [ ] On-call rotation exists and was tested once
+
+</BookNodePage>

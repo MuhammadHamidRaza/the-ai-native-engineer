@@ -1,0 +1,109 @@
+---
+id: "42-2-2-integrating-agents-mcp-tools-and-guardrails"
+title: "42.2.2 Integrating Agents, MCP Tools and Guardrails"
+sidebar_label: "42.2.2 Integrating Agents, MCP Tools and Guardrails"
+slug: "/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-2-full-stack-and-ai-implementation/42-2-2-integrating-agents-mcp-tools-and-guardrails"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-42-s2-t2">
+
+This lesson is the only place agents get serious airtime — because agents in a capstone are opt-in, justified, and guarded. Most capstones that add an agent add it because "AI" sounds like what employers want. That is not a reason. The reason you add an agent is that a specific, named task in your PRD is irreducibly open-ended and will not admit a deterministic pipeline.
+
+## 1. The Agent Decision, One More Time
+
+```text
+If task = parse fixed CSV/PDF/email formats        → deterministic code. Not AI.
+If task = route mismatch by reason code             → deterministic regex/lookup. Not AI.
+If task = draft a personalized customer response    → LLM draft + human approval. Maybe agent.
+If task = decide which member gets which exception  → policy decision, NOT AI. Human escalation.
+```
+
+The capstone's agent must be **small**: one trigger, one tool set, one output, one human approval gate, one eval set. If it grows beyond that, your design is wrong.
+
+## 2. MCP — When (and Only When) to Introduce It
+
+**MCP (Model Context Protocol)** is justified when one or more of these is true:
+
+1. Your agent needs **live data from multiple systems** (Shopify + Stripe + internal DB) without a bespoke adapter per integration.
+2. The same tool surface must work across **multiple hosts** (Claude Desktop, your app, your teammate's IDE).
+3. You want **composable tools** that other engineers on the client's team can reuse independently.
+
+If none is true: a plain function-calling loop is simpler and sufficient. For the Brightside Yoga case: the agent drafts a mismatch notification using (a) member lookup and (b) a policy document search — two tools, both internal, one host (the nightly job). **No MCP.**
+
+```text
+If you add MCP, you must also add:
+  - at minimum 2 tool servers (e.g., internal-db-mcp + policies-mcp)
+  - auth for each server (even internal = per-surface tokens)
+  - evals proving the agent composes tools correctly, not just calls one
+
+If you can't meet those bars in your capstone time budget, you don't need MCP.
+```
+
+## 3. Guardrails That Actually Fire (Not theatrical ones)
+
+Guardrails are checks that **block promotion of model output**, not warnings in a log no one reads:
+
+| Guardrail | What it blocks | Test |
+| :-- | :-- | :-- |
+| Output schema validation | Malformed JSON, missing fields | Fuzz with 50 broken LLM outputs |
+| Allow-list tools | Any tool not explicitly named | Attempt `send_email` where only `draft_email` exists |
+| Confidence gate | Low-confidence auto-action | 0.6-confidence answer must route to human |
+| Amount cap | Refund > $X without approval | Synthetic member with $9,999 discrepancy |
+| PII redaction | SSN/card in outbound text | Feed 10 synthetic rows with card numbers |
+| Human approval | Any outbound comm to a customer | Draft ≠ send; a manager click is required |
+
+Your capstone **must** include at least: output schema, confidence gate, and a human approval step for any customer-facing output.
+
+## 4. The Eval Set (Evals Are Not Optional)
+
+```text
+mkdir evals && touch evals/reconciliation.jsonl
+```
+
+Write **30+ cases** from real client-like mismatches — not synthetic ones you invented. Each case:
+
+```json
+{"input": {"member_id": 42, "reason": "booked_not_attended", "amount": 1800},
+ "expected_action": "human_review",
+ "expected_reason_keywords": ["policy", "no_show", "fee"]}
+```
+
+Measure: correct action taken, reason contains required keywords, and no forbidden action emitted. Track across model/prompt changes — **a prompt tweak that helps case 7 can silently regress case 19.**
+
+## 5. The Integration Pattern
+
+```text
+nightly cron
+  └─ reconcile.js (deterministic) → mismatches[]
+       └─ for each mismatch with reason in {booked_not_attended, payment_failed}:
+            └─ agent.triage(mismatch)  ← calls LLM + tools
+                 ├─ output: {action, draft, confidence}
+                 ├─ if action === 'auto_notify' && confidence >= 0.9:
+                 │    enqueue draft for manager approval
+                 └─ else:
+                      create task for human reviewer
+```
+
+The agent **proposes**. The human **approves**. Every audit trail entry shows: mismatch id, agent output, approver id, timestamp, final action. If a client asks "why did this customer get this email?", you answer from the audit log — not from the model.
+
+## 6. Common Failure Modes
+
+- **Agent as default**: you reach for AI because it demos well, not because the problem needs it.
+- **MCP for its own sake**: 2 tool servers × 3 weeks = capstone eaten by infrastructure.
+- **No evals**: "the agent seems to work" — the same agent silently failing on 15% of cases you never checked.
+- **Guardrails as console.log**: nobody reviews; the one bad output reaches a customer.
+- **Human approval theater**: approval button that auto-accepts on a timer. That's not a guardrail; it's a back door.
+
+## 7. Exercise
+
+Write the agent spec from lesson 42.1.2 in full, including: tool signatures, forbidden actions list, confidence threshold, and a 10-case eval set you actually ran. Push the diff. If your agent can't name its failure modes, it doesn't belong in your capstone.
+
+**Acceptance criteria.**
+- [ ] Agent spec names every tool with exact signature and its read/write status.
+- [ ] Eval results show ≥80% correct action rate over ≥10 real-ish cases.
+- [ ] At least one guardrail would have stopped a bad output in a test you deliberately constructed.
+- [ ] Neither the spec nor the code allows the agent to send customer communications autonomously.
+
+</BookNodePage>

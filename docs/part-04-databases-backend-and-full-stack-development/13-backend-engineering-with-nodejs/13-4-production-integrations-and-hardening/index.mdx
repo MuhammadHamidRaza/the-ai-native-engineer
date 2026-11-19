@@ -1,0 +1,20 @@
+---
+id: "index"
+title: "13.4 Production Integrations & Hardening"
+sidebar_label: "13.4 Production Integrations & Hardening"
+slug: "/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-13-s4">
+
+**Subchapter 13.4** is what separates a demo from a deployable service: durable background jobs and safe retries, webhook verification, rate limiting and file-upload safety, and the security hardening checklist — secrets, Helmet, CORS, logging — that goes on before users arrive.
+
+## Lessons in Subchapter 13.4
+
+1. **[13.4.1 Background Jobs and Idempotency](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency):** PostgreSQL-backed job queues with `SKIP LOCKED`, dead-lettering, backoff, and idempotency keys for safe retries.
+2. **[13.4.2 Webhooks, Rate Limiting and File Uploads](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-2-webhooks-rate-limiting-and-file-uploads):** HMAC-verified webhooks (timing-safe comparison, timestamp tolerance), login throttling, safe upload handling.
+3. **[13.4.3 API Security Essentials](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-3-api-security-essentials):** `.env` hygiene, Helmet, CORS allowlists, rate limits, `npm audit`, log hygiene — the pre-ship checklist.
+
+</BookNodePage>

@@ -1,0 +1,28 @@
+---
+id: "index"
+title: "22.2 Testing & Quality Engineering"
+sidebar_label: "22.2 Testing & Quality Engineering"
+slug: "/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-2-testing-and-quality-engineering"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-22-s2">
+
+**Subchapter 22.2** is where ShopCore's safety net gets built — not as a coverage vanity metric, but as a feedback system that lets you refactor, deploy and sleep. Two lessons: what to test and how (22-2-1), and what the tests stand on — real services, mocks, gates and honesty (22-2-2).
+
+## Lessons in Subchapter 22.2
+
+1. **[22.2.1 The Testing Pyramid: Contract Tests and Test Data](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-2-testing-and-quality-engineering/22-2-1-the-testing-pyramid-contract-tests-and-test-data):** The pyramid with real percentages; unit tests for pure pricing/stock logic (jest; vitest equivalents); integration tests via supertest against a disposable seeded Postgres; contract tests (Pact-style) for the Order API ↔ Shipping service boundary; a handful of E2E smoke tests; property-based testing with fast-check; factories vs fixtures; test data isolation in CI.
+2. **[22.2.2 Mocking vs Real Integration: CI Quality Gates and Mutation Testing](/book/part-06-system-design-and-production-quality/22-security-testing-and-observability/22-2-testing-and-quality-engineering/22-2-2-mocking-vs-real-integration-ci-quality-gates-and-mutation-testing):** When mocks lie (dates, randomness, money) vs when they are correct (Stripe, email, SMS); testcontainers/disposable-Postgres recipes for the DB and cache; hermetic CI with compose; honestly quarantining flaky tests (with a two-week leash); mutation testing with StrykerJS to prove your suite fails when code breaks; the CI ladder lint → typecheck → test → build → migration-check, with a quality ratchet that fails PRs on regression.
+
+22-2-1 chooses the pyramid layers and tools; 22-2-2 makes them trustworthy and un-skippable in the pipeline.
+
+**Exit checklist**
+
+- [ ] 70/20/10 shape, measured — not aspirational — on the ShopCore repo.
+- [ ] Contract test in CI fails the build when Shipping changes its response shape.
+- [ ] Zero flaky tests without a quarantine owner and expiry date.
+- [ ] CI fails on coverage/mutation decrease; one PR has already been ratcheted.
+
+</BookNodePage>

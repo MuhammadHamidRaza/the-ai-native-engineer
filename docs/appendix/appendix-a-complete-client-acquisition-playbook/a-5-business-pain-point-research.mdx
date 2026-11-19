@@ -1,0 +1,68 @@
+---
+id: "a-5-business-pain-point-research"
+title: "A.5 Business Pain-Point Research"
+sidebar_label: "A.5 Business Pain-Point Research"
+slug: "/appendix/appendix-a-complete-client-acquisition-playbook/a-5-business-pain-point-research"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="app-a-5">
+
+**What this solves:** You can't sell to a pain you can't see. Most engineers guess at what hurts businesses — then pitch solutions no one asked for. This playbook teaches you to diagnose pain like a consultant.
+
+## The Pain Discovery Framework
+
+Every business pain is one of five types:
+
+1. **Revenue loss** — abandoned carts, churn, lost leads, slow support
+2. **Cost excess** — cloud bills, manual data entry, tooling sprawl
+3. **Speed drag** — slow deploys, manual processes, review bottlenecks
+4. **Risk exposure** — compliance gaps, security incidents, data loss
+5. **Quality decay** — bugs reaching customers, inconsistent output
+
+## The Symptom → Root Cause Ladder
+
+```text
+Symptom: "Customers complain about slowness"
+  ↓
+Surface cause: "API latency p95 = 2.8s"
+  ↓
+Root cause: "N+1 queries + no connection pooling on the checkout service"
+  ↓
+Business impact: "12% cart abandonment × $85 AOV × 1,200 orders/mo = $12k/mo lost"
+```
+
+When you can say the last line out loud to a buyer, the sale is 80% done.
+
+## Research Toolkit (30 minutes per target)
+
+- **Company site** — /about, /careers (hiring pain), /blog (their priorities)
+- **Wappalyzer** — stack, hosting, analytics, email tooling
+- **BuiltWith** — same, deeper; traffic estimates
+- **Google reviews / G2 / Trustpilot** — literal customer pain, quoted
+- **LinkedIn** — who's hiring, who just joined, who left
+- **Job posts** — the "ideal candidate" section lists their pains verbatim
+- **Support pages** — "known issues" sections are gold
+
+## The Pain Map Template
+
+```text
+Company: ______
+Trigger: [blog post / job ad / funding / launch / outage]
+Observed symptom: ______
+Suspected root cause: ______
+Business cost estimate: $______/month
+My fix: ______
+Time to value: ______ weeks
+```
+
+## How to Talk About Pain Without Sounding Like a Vendor
+
+| Don't say | Say |
+| :-- | :-- |
+| "I can optimize your site" | "I saw your checkout posts 401s in Shopify's webhook logs — did you know?" |
+| "You need AI" | "Your support team is 5 people handling 800 tickets/month — want me to show you what 40% deflection looks like?" |
+| "Let me build you a dashboard" | "Your ops team spends Fridays in spreadsheets — I measured the actual cost: $14k/yr in someone's salary doing Excel" |
+
+</BookNodePage>

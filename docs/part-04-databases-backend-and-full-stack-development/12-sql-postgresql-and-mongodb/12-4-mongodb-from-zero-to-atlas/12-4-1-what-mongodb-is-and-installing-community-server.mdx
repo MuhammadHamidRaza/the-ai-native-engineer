@@ -1,0 +1,161 @@
+---
+id: "12-4-1-what-mongodb-is-and-installing-community-server"
+title: "12.4.1 What MongoDB Is and Installing Community Server"
+sidebar_label: "12.4.1 Installing MongoDB"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-1-what-mongodb-is-and-installing-community-server"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4-t1">
+
+MongoDB is the most popular **document-oriented** NoSQL database. Instead of tables and rows, it stores **documents** — JSON-like objects — in named **collections** inside **databases**. This lesson gets MongoDB installed, running and verified on your machine, with both its GUI (Compass) and terminal client (mongosh).
+
+## 1. Understand It First — What Is MongoDB?
+
+**SQL (PostgreSQL):** strict tables — every row in `products` has identical columns, types enforced.
+**Document (MongoDB):** flexible documents — each product can carry exactly the fields it needs; a book stores `{ author, isbn }`, a keyboard stores `{ switch, wireless }`, no empty columns, no schema migrations for additive changes.
+
+Why developers use it:
+- **Natural object model** — one document is one product page; no joins required for reads.
+- **Flexible schema** — per-category attributes vary freely (you'll appreciate this after 12.3.3's JSONB gymnastics).
+- **Horizontal scale** — shards data across machines when writes explode (you won't need this at ShopCore scale).
+
+Terminology (mapped to SQL so you never guess):
+
+| PostgreSQL | MongoDB |
+| :-- | :-- |
+| Database | Database |
+| Table | **Collection** |
+| Row | **Document** |
+| Column | **Field** (but each document may differ) |
+| Primary key | `_id` (auto-generated ObjectId) |
+| Stored as | Rows on disk | BSON (binary JSON) |
+
+Where does it fit in ShopCore? When your catalog goes from 3 categories with fixed specs to 40 categories with wildly different attributes and per-item marketing blobs, MongoDB's flexibility wins. This book keeps ShopCore relational (money + orders stay in Postgres) and uses MongoDB where document semantics shine — and shows you both tools so the choice is yours.
+
+## 2. Find the Official Software
+
+Only these official sources — never third-party "MongoDB free download" portals:
+
+- **MongoDB Community Server:** https://www.mongodb.com/try/download/community
+- **MongoDB Shell (mongosh):** https://www.mongodb.com/try/download/shell
+- **MongoDB Compass (GUI):** https://www.mongodb.com/try/download/compass
+
+Verified current as of Nov 2026: **MongoDB Community 8.x** (e.g., 8.3.x) with **Compass 1.5x**. The download page always shows the newest supported release — choose the **latest 8.x**, your OS, and **MSI for Windows**. If unsure, install the **MongoDB Community Server with the recommended/complete setup**, which bundles Compass.
+
+## 3. Install on Windows 10/11 — Step by Step
+
+1. Run `mongodb-windows-x86_64-8.x.x.msi`. Administrator prompt → **Yes**.
+2. Setup Wizard → **Next** → accept **End-User License Agreement** → **Next**.
+3. **Setup Type:** choose **Complete** (not Custom). Complete installs the `mongod` server and offers Compass in a following step. It does **not** install `mongosh` — download that separately if you want the shell (next section).
+4. **Service Configuration:** leave **"Install MongoDB as a Service"** checked. This registers a Windows service named **MongoDB** that auto-starts at boot. Choose **"Run service as Network Service user"** (default, safe). Service name: `MongoDB`.
+5. **Install MongoDB Compass:** leave the checkbox **checked** → **Next**.
+6. **Install** → ~2 minutes. Finish → **Finish**.
+
+`mongod` is the server binary; it now runs as a service listening on **port 27017** with no auth on localhost. That's fine on your laptop; **never expose port 27017 publicly without authentication.**
+
+### Install mongosh (separate download)
+
+`mongosh` is the modern shell — the MSI does **not** bundle it. Download the **MSI** from the mongosh download page above, install with defaults, add nothing to PATH (the installer does). Open a **new** PowerShell window for the change to apply.
+
+## 4. Install on macOS
+
+**Homebrew (official tap):**
+
+```bash
+brew tap mongodb/brew
+brew install mongodb-community@8.0
+brew services start mongodb-community@8.0
+mongosh                       # connect to mongodb://localhost:27017
+```
+
+**Or the Atlas quick start** (macOS only, no local install): the community download page offers a command that installs `atlas` CLI — only for Atlas CLI users; skip unless you want the Atlas terminal tools.
+
+Compass: download the `.dmg` from the Compass download page, drag to Applications, launch.
+
+## 5. Install on Linux (Ubuntu/Debian)
+
+Follow the official repo instructions for your Ubuntu release (docs.mongodb.com → Installation → Ubuntu). In outline: import the MongoDB GPG key, add the `mongodb-org/8.0` apt source, then:
+
+```bash
+sudo apt update
+sudo apt install -y mongodb-org
+sudo systemctl enable --now mongod     # NOT "mongodb" — the unit is called mongod
+mongosh
+```
+
+**Fedora/RHEL:** equivalent `dnf` flow with the mongodb-org repo — see the same official page.
+
+## 6. Verify — Exactly What to Run
+
+**1. Check the service is running.**
+
+Windows (new PowerShell):
+
+```powershell
+Get-Service -Name MongoDB
+```
+
+Expect `Status: Running`. If `Stopped`: `Start-Service MongoDB` (or `services.msc` → MongoDB → Start).
+
+Linux: `systemctl status mongod` → `active (running)`. macOS: `brew services list` → `started`.
+
+**2. Check the shell connects.**
+
+```bash
+mongosh
+```
+
+Expected banner: `Current Mongosh Log ID: ...`, `Connecting to: mongodb://127.0.0.1:27017/`, then the `test>` prompt. At the prompt:
+
+```javascript
+db.runCommand({ ping: 1 })
+```
+
+Expected: `{ ok: 1 }`. You are talking to a live MongoDB server. Type `exit` to leave.
+
+**3. Check versions.**
+
+```bash
+mongosh --version
+```
+
+Expect something like `2.x.x` for mongosh and (inside mongosh) `db.version()` → `8.x.x`.
+
+## 7. Use the GUI — MongoDB Compass
+
+1. Start menu (Windows) → **MongoDB Compass**, or macOS → Applications → **MongoDB Compass**.
+2. On the connect screen, the favorites list includes **`localhost:27017`** — click **Connect**.
+3. You'll see system databases `admin`, `config`, `local` — expected, ignore them.
+4. Click **Create Database** (top-left). Database Name: `shopcore_docs`, Collection Name: `orders` → **Create Database**.
+5. Your empty `orders` collection appears with **Documents**, **Aggregations**, **Schema**, **Indexes** tabs — that's Compass's layout; we'll use it fully in 12.4.2 and 12.4.4.
+
+## 8. Troubleshooting the Classics
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| `mongosh` opens nothing / connection refused | Service down or port taken | `Get-Service MongoDB` → Start; or port 27017 in use by another MongoDB/Docker container — stop it |
+| Installer: "data directory not empty" / Compass grayed out | Previous MongoDB remnants | Uninstall old versions via Apps; delete leftover `data\db` or let the service pick the default; reinstall Complete |
+| `mongosh` not recognized | Old terminal window or PATH | Open a **new** PowerShell; on Windows check `C:\Program Files\MongoDB\Server\8.x\bin` exists (server) — mongosh installs separately |
+| Service name not found | Named differently | `Get-Service *mongo*` reveals `MongoDB` (Windows) / `mongod` (Linux) |
+| Compass shows empty localhost | Compass can't reach service | Confirm service running; check no firewall blocks 27017 (localhost usually allowed) |
+| Forgot to check Compass during install | Not critical | Download Compass standalone from the official Compass page — it's the same app |
+
+## 9. Practice
+
+**Guided exercise.** Install, verify (`Get-Service`, `mongosh` ping), then **Create Database** `shopcore_docs`.`orders` in Compass and confirm it appears in both Compass and `mongosh` (`show dbs`, `use shopcore_docs`, `show collections`).
+
+**Independent exercise.** Stop the service, run `mongosh` once and capture the error; restart the service; connect successfully. You must know what "connection refused" feels like before production debugging.
+
+**Challenge.** Install on a second machine or WSL/Linux box and connect from Compass using `mongodb://<that-machine-ip>:27017` (firewall/service willing). Note everything required on the remote side: service up, bind address, reachable port — and why exposing 27017 raw to the internet is dangerous.
+
+**Assessment checklist**
+
+- [ ] I installed MongoDB Community Server from mongodb.com only.
+- [ ] The MongoDB service is Running and `db.runCommand({ ping: 1 })` returns `{ ok: 1 }`.
+- [ ] I opened Compass, connected to localhost:27017 and created `shopcore_docs`.
+- [ ] I installed mongosh separately and can use both clients.
+- [ ] I can restart the service and know the difference between Windows (`MongoDB`) and Linux (`mongod`) service names.
+
+</BookNodePage>

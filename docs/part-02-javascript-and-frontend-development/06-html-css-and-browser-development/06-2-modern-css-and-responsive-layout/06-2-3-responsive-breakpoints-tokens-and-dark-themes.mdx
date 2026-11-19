@@ -1,0 +1,89 @@
+---
+id: "06-2-3-responsive-breakpoints-tokens-and-dark-themes"
+title: "06.2.3 Responsive Breakpoints, Tokens and Dark Themes"
+sidebar_label: "06.2.3 Responsive Breakpoints, Tokens and Dark Themes"
+slug: "/part-02-javascript-and-frontend-development/06-html-css-and-browser-development/06-2-modern-css-and-responsive-layout/06-2-3-responsive-breakpoints-tokens-and-dark-themes"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-06-s2-t3">
+
+Hardcoding `#1e293b` across forty rules makes dark mode painful and rebranding impossible. Designing with **CSS Custom Properties (Design Tokens)** and **mobile-first media queries** lets you switch themes cleanly by changing one `data-theme` attribute and scale gracefully from phones to wide monitors.
+
+## 1. Semantic Design Tokens & Light/Dark Themes
+
+Define surface, text, border, and accent tokens on `:root`, then override them under `[data-theme="dark"]`:
+
+```css
+:root {
+  --bg-page: #f8fafc;
+  --bg-surface: #ffffff;
+  --ink-primary: #0f172a;
+  --ink-muted: #475569;
+  --border-subtle: #e2e8f0;
+  --accent: #2563eb;
+  --radius-md: 0.75rem;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0b1120;
+  --bg-surface: #111827;
+  --ink-primary: #f1f5f9;
+  --ink-muted: #94a3b8;
+  --border-subtle: #1f2937;
+  --accent: #60a5fa;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-page);
+  color: var(--ink-primary);
+  line-height: 1.6;
+}
+```
+
+Because every component reads `var(--bg-surface)` and `var(--ink-primary)`, flipping `document.documentElement.dataset.theme = "dark"` updates the entire UI instantaneously with zero CSS duplication.
+
+## 2. Mobile-First Breakpoints & Fluid Typography
+
+Write base styles for narrow mobile viewports (`375px`) first, then layer wider rules upward with `min-width`:
+
+```css
+.container {
+  width: min(100% - 2rem, 68rem);
+  margin-inline: auto;
+}
+
+.hero-title {
+  /* Scales smoothly between 1.75rem and 2.75rem without jumpy breakpoints */
+  font-size: clamp(1.75rem, 3vw + 1rem, 2.75rem);
+  line-height: 1.15;
+}
+
+@media (min-width: 48rem) {
+  .hero {
+    padding-block: 4rem;
+  }
+}
+```
+
+Notice `width: min(100% - 2rem, 68rem)` gives automatic horizontal padding on mobile AND caps readable line width on desktop in one CSS line.
+
+## 3. Respecting User Motion & Color Preferences
+
+- `@media (prefers-reduced-motion: reduce)` lets you disable heavy transitions for users sensitive to motion.
+- `@media (prefers-color-scheme: dark)` lets you match a visitor's OS theme automatically on first load before they click a custom toggle.
+
+## 4. Practice Exercises
+
+1. Add a `<button id="theme-toggle" type="button">` that toggles `data-theme="dark"` vs `"light"` on `<html>` and persists the choice in `localStorage`.
+2. Verify contrast ratios in Chrome DevTools Color Picker on both light and dark themes (`>= 4.5:1` for body text).
+
+## Mastery Checklist
+
+- [ ] Uses semantic CSS custom properties (`--bg-surface`, `--ink-primary`) instead of scattered hex colors.
+- [ ] Writes mobile-first `@media (min-width: ...)` rules and avoids horizontal scrolling at `375px`.
+
+</BookNodePage>

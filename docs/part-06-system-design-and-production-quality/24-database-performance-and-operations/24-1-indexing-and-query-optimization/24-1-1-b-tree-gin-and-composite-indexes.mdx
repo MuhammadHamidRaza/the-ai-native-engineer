@@ -1,0 +1,153 @@
+---
+id: "24-1-1-b-tree-gin-and-composite-indexes"
+title: "24.1.1 B-Tree, GIN and Composite Indexes"
+sidebar_label: "24.1.1 B-Tree, GIN and Composite Indexes"
+slug: "/part-06-system-design-and-production-quality/24-database-performance-and-operations/24-1-indexing-and-query-optimization/24-1-1-b-tree-gin-and-composite-indexes"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-24-s1-t1">
+
+[12.2.3](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-2-sql-and-relational-querying/12-2-3-indexes-and-explain-analyze) taught the first 20%: indexes exist, FK columns need them, composite order matters. This lesson is the remaining 80% — how B-Trees actually organize 8 kB pages, when composite order should follow **Equality → Sort → Range**, why covering indexes with `INCLUDE` unlock index-only scans, and where GIN and BRIN beat everything else at their specific jobs.
+
+## 1. B-Tree Internals — Pages, Order, Leftmost Prefix
+
+A B-Tree is a sorted, balanced tree stored in **pages** (default 8 kB). Non-leaf pages hold keys that act as signposts; **leaf pages** hold (key → row location) entries chained left-to-right. A lookup is: read root → walk one internal page per level → land in a leaf → fetch row. A tree holding ten million 32-byte keys is typically **three to four levels deep** — a point lookup costs a handful of page reads, mostly cached.
+
+Consequences you can rely on:
+
+- `=`, `<`, `>`, `BETWEEN`, `ORDER BY` (with matching direction), and `LIKE 'abc%'` (prefix) all work on B-Trees.
+- **Leftmost prefix rule:** index `(a, b, c)` serves queries on `a`, `(a, b)`, `(a, b, c)` — never on `b` alone. Skipping the leading column means the planner cannot seek, only scan.
+- Ranges on a leading column stop index use for later columns: `(a, b)` with `WHERE a > 10 AND b = 5` can only use `a` to restrict.
+- Comparisons after the first range predicate cannot use the index for filtering — they happen in the executor on returned rows.
+
+## 2. Composite Column Order — Equality → Sort → Range (ESR)
+
+You met Equality → Sort → Range in 12.2.3. The sharpened, operational form:
+
+1. **Equality columns first** (`=`, `IN (...)`) — they shrink the tree fastest.
+2. **Sort column next** — `ORDER BY col` matching the index order means zero sort step at execution (paid once, at DDL time).
+3. **Range column last** — `>`, `<`, `BETWEEN`, `LIKE 'x%'`. Anything after a range can't seek, so ranges go last.
+4. Tie-breaking equality among themselves: most-selective first is a heuristic, not a law — measure both.
+
+ShopCore — orders by user, status filter, recent first:
+
+```sql
+-- ESR: user_id (=), status (=), created_at (range/sort)
+CREATE INDEX idx_orders_user_status_created
+  ON orders (user_id, status, created_at DESC);
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, status, total_cents, created_at
+FROM orders
+WHERE user_id = 42 AND status = 'paid' AND created_at >= now() - interval '30 days'
+ORDER BY created_at DESC;
+```
+
+Expect `Index Scan` (not the old seq scan), the `Sort` node gone (index provides order), and `Buffers: shared hit=…` in the low tens. Rev them with: `CREATE INDEX CONCURRENTLY` in production (takes `SHARE UPDATE EXCLUSIVE` — does not block writes — vs plain `CREATE INDEX` which takes `SHARE` and **blocks writes** until done).
+
+## 3. Covering Indexes and `INCLUDE` — Index-Only Scans
+
+An **index-only scan** answers a query from the index alone, never touching the heap. For that, the index must contain every selected column. Non-key ("payload") columns go in `INCLUDE` — stored in the leaf, not searchable, but free to read:
+
+```sql
+CREATE INDEX idx_orders_covering
+  ON orders (user_id, created_at DESC)
+  INCLUDE (status, total_cents);
+```
+
+In EXPLAIN you are looking for `Index Only Scan` and watch `Heap Fetches:` — zero means the visibility map is all-visible (common after `VACUUM`); high means the plan is *allowed* to be index-only but pays heap visits anyway (hint: run `VACUUM ANALYZE orders`).
+
+## 4. Partial Indexes — Index Only the Hot Rows
+
+ShopCore's warehouse screen runs `SELECT * FROM orders WHERE status = 'pending' ORDER BY created_at` — on 0.5% of rows, all day. Index those and nothing else:
+
+```sql
+CREATE INDEX idx_orders_pending ON orders (created_at) WHERE status = 'pending';
+```
+
+A 20 MB partial index outperforms a 2 GB full one: hotter in cache, cheaper to maintain, invisible to every other query. Any `WHERE` predicate can be partial — `WHERE deleted_at IS NULL` is the classic multi-tenant/soft-delete example. Caveat: the query's `WHERE` must imply the index predicate exactly, or the planner will not use it.
+
+## 5. GIN — When One Key Maps to Many Values
+
+B-Trees match one key per row. **GIN (inverted index)** matches one row to many keys. ShopCore uses it in three places:
+
+```sql
+-- (a) JSONB attributes on products (colors/sizes/attributes filter)
+CREATE INDEX idx_products_attrs ON products USING gin (attributes jsonb_path_ops);
+SELECT * FROM products WHERE attributes @> '{"color": "navy"}';
+
+-- (b) Full-text catalog search (see also 12.3.3)
+ALTER TABLE products ADD COLUMN search_tsv tsvector
+  GENERATED ALWAYS AS (to_tsvector('english', coalesce(name,'') || ' ' || coalesce(description,''))) STORED;
+CREATE INDEX idx_products_search ON products USING gin (search_tsv);
+SELECT name FROM products WHERE search_tsv @@ plainto_tsquery('organic cotton tee');
+
+-- (c) Tag arrays
+CREATE INDEX idx_products_tags ON products USING gin (tags);
+SELECT * FROM products WHERE tags && ARRAY['sale','new'];
+```
+
+Costs: GIN maintenance is expensive (`fastupdate` defers to a pending list, flushed when `gin_pending_list_limit` — default 4 MB — is hit), and updates to indexed columns churn the pending list. For append-mostly/read-mostly tables this is fine. `jsonb_path_ops` is smaller and faster for `@>` but does not support `?`/`?|` operators — pick per query shape.
+
+## 6. BRIN — Tiny Index for Naturally-Ordered Tables
+
+BRIN (Block Range Index) stores only the **min/max per block range**. For `orders.created_at` on an append-mostly 50 GB table, BRIN can be a few hundred KB and still eliminate 95% of blocks from scans:
+
+```sql
+CREATE INDEX idx_orders_created_brin ON orders USING brin (created_at) WITH (pages_per_range = 32);
+```
+
+Works only because physical row order correlates with `created_at` (recent rows live in recent pages). A random-ordered column gets a useless BRIN — check correlation first: `SELECT correlation FROM pg_stats WHERE tablename = 'orders' AND attname = 'created_at';` near ±1 = BRIN candidate.
+
+## 7. Finding Dead Indexes — `pg_stat_user_indexes`
+
+```sql
+SELECT relname, indexrelname, idx_scan, idx_tup_read,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS size
+FROM pg_stat_user_indexes
+ORDER BY idx_scan ASC;
+```
+
+`idx_scan = 0` after a week under real traffic = the index is a write tax on every INSERT/UPDATE. Retire it (`DROP INDEX CONCURRENTLY`) — or accept it knowingly (a unique constraint you need for integrity regardless of lookup use). Pair with `n_dead_tup` from `pg_stat_user_tables` for bloat triage; when indexes bloat, `REINDEX INDEX CONCURRENTLY idx_name` rebuilds online.
+
+## 8. When NOT to Index
+
+| Temptation | Why it hurts | Do this |
+| :-- | :-- | :-- |
+| Index every FK on a write-heavy table blindly | Each index = extra WAL + write amplification + vacuum cost | Index FKs used in joins/locks; measure the rest |
+| Boolean column alone | 50% selectivity — planner ignores it | Partial index (`WHERE is_active`) |
+| Tiny lookup tables (< ~10k rows) | Seq scan is faster than index + heap fetch | Nothing |
+| Index `created_at` btree on time-series | Huge; maintenance heavy | BRIN |
+| "Just in case" covering every column | Memory/build cost, index bloat | Design from queries, verify with EXPLAIN |
+
+## 9. Troubleshooting Table
+
+| Symptom | Likely cause | Fix |
+| :-- | :-- | :-- |
+| Planner still seq-scans indexed table | Stale stats; function on column; type mismatch (`int = text`) | `ANALYZE orders;` rewrite predicate; check types |
+| Index scan slow despite being "used" | Low selectivity + heap fetches | Covering index (INCLUDE) or partial index |
+| `Heap Fetches` high on index-only scan | Visibility map not all-visible | `VACUUM (ANALYZE) orders;` |
+| GIN index huge and slow to update | JSONB churn; pending list thrash | `jsonb_path_ops`; bigger `gin_pending_list_limit`; reduce update rate |
+| Partial index ignored | Query predicate doesn't imply index predicate | Rewrite query or drop partial |
+| 90% of time in INSERT WAL | Too many indexes | Drop unused; `pg_stat_user_indexes` |
+
+## 10. Practice
+
+**Guided.** On seeded ShopCore DB, run EXPLAIN (ANALYZE, BUFFERS) for the three §2/§4/§5 queries. Create the indexes. Re-run. Record before/after into your notebook.
+
+**Independent.** Find every ShopCore index with `idx_scan = 0`, and every table with high `n_dead_tup`. Write a shortlist: drop / reindex / leave.
+
+**Challenge.** Migrate `products.search_tsv` to a stored generated column + GIN index; measure `@@ plainto_tsquery` before/after on 10k seeded products; compare `tsvector UPDATE` cost (index maintenance) vs query gain.
+
+**Assessment checklist**
+
+- [ ] I can explain B-Tree levels, 8 kB pages, and leftmost prefix from memory.
+- [ ] I order composite indexes Equality → Sort → Range and can defend it per query.
+- [ ] I can write a covering INCLUDE index and read `Heap Fetches`.
+- [ ] I can choose partial / GIN / BRIN vs B-Tree for a stated query shape.
+- [ ] I can find dead indexes with `pg_stat_user_indexes`.
+- [ ] I verify every index with EXPLAIN ANALYZE before it ships.
+
+</BookNodePage>

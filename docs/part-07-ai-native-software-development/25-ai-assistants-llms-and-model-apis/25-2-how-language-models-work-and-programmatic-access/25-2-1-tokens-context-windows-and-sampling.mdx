@@ -1,0 +1,160 @@
+---
+id: "25-2-1-tokens-context-windows-and-sampling"
+title: "25.2.1 Tokens, Context Windows and Sampling"
+sidebar_label: "25.2.1 Tokens, Context Windows and Sampling"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-2-how-language-models-work-and-programmatic-access/25-2-1-tokens-context-windows-and-sampling"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s2-t1">
+
+Every API bill, every truncation, and every "the model forgot what I said twenty messages ago" moment traces back to three ideas: **tokens**, **context windows**, and **sampling**. Master these and provider pricing pages stop being mysterious. Ignore them and you will ship a token furnace.
+
+## 1. What a Token Is
+
+A token is the atomic unit of text a model processes — not a character, not a word. Roughly: 1 token ≈ 4 English characters ≈ ¾ of a word; 100 tokens ≈ 75 words. Common words are usually one token; rare words split into pieces (`tokenization` → `token` + `ization`-ish fragments); every space and punctuation mark counts; non-English text often costs **more** tokens per word (CJK can approach ~1 token per character).
+
+You never need to memorize a tokenizer table — you need to *measure*. OpenAI ships tiktoken; the heuristic English ≈ 4 chars/token is fine for back-of-napkin, never for billing.
+
+**Worked example with tiktoken (Node):**
+
+```bash
+npm install tiktoken
+```
+
+```js
+// count.mjs — Windows: node count.mjs works the same in PowerShell/bash
+import { get_encoding } from "tiktoken";
+const enc = get_encoding("o200k_base"); // GPT-4o/GPT-5-class models use o200k_base.
+// cl100k_base is the GPT-4-turbo/GPT-3.5/text-embedding-3 encoding. o200k_base is a
+// superset with better non-English coverage — same family, different vocabulary.
+const text = "The AI-Native Engineer teaches you to think, build, solve, ship.";
+console.log("chars:", text.length);
+console.log("tokens:", enc.encode(text).length);
+enc.free();
+```
+
+Expected shape of output (exact counts vary by tokenizer version):
+
+```text
+chars: 63
+tokens: 15   ← roughly 4.2 chars/token here; verify, don't trust
+```
+
+Anthropic and Google tokenizers differ (Claude 4.7+ uses a newer tokenizer that emits roughly ~30% more tokens for the same text than Claude 4.6 and earlier — per Anthropic's pricing docs; Gemini publishes `countTokens` in its API and a counter in AI Studio). **Always count with the provider's own tool when it matters.**
+
+## 2. Your First Live API Call (with Usage)
+
+**Windows PowerShell / bash:**
+
+```bash
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $env:OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"gpt-6-astra\",\"input\":[{\"role\":\"user\",\"content\":\"In one sentence, what is a token?\"}]}"
+```
+
+```bash
+# bash/zsh/WSL2
+curl https://api.openai.com/v1/responses \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-6-astra","input":[{"role":"user","content":"In one sentence, what is a token?"}]}'
+```
+
+Abbreviated — but structurally faithful — response:
+
+```json
+{
+  "id": "resp_...",
+  "status": "completed",
+  "output": [ { "type": "message", "role": "assistant", "content": [ { "type": "output_text", "text": "A token is the atomic unit ..." } ] } ],
+  "usage": { "input_tokens": 18, "output_tokens": 24, "total_tokens": 42 }
+}
+```
+
+The two numbers that matter are inside `usage`. (Field names verified against the Responses API reference, Nov 2026; your model may meter reasoning tokens separately — check the response object's full usage block.)
+
+**Node equivalent** (`npm install openai`):
+
+```js
+import OpenAI from "openai";
+const openai = new OpenAI(); // reads OPENAI_API_KEY
+const res = await openai.responses.create({
+  model: "gpt-6-astra",
+  input: [{ role: "user", content: "In one sentence, what is a token?" }],
+});
+console.log(res.output_text);
+console.log(res.usage); // { input_tokens, output_tokens, total_tokens, ... }
+```
+
+## 3. Context Windows — Size Is Not the Same as Memory
+
+The **context window** is the maximum number of tokens — input plus output — the model can attend to in one call. In 2026 the range is roughly **32K (small/legacy) to 1M+ (Claude family, Gemini 3/4 Pro-class; GPT-5 listed at 400K with 272K pricing split)**. Check the current model list — windows keep growing.
+
+Why long contexts are **expensive and degraded**, not just bigger: attention compares every token against every other token — cost and compute grow super-linearly with length. And empirically, models attend well at the **start** and **end** of a long context and worse to the **middle** ("lost in the middle"). Practical rules:
+
+- Put critical instructions at the **top** and re-ask the question at the **bottom** (the recency effect helps).
+- Don't dump 200 pages when 5 would do — relevance beats volume. (This is also what retrieval-augmented generation exists for — Chapter 26.)
+- Long context ≠ permission to paste everything; it's a license to be *selective* at scale.
+- Output tokens count toward the window too; a 1M window with 990K input leaves room for ~10K of answer.
+
+## 4. Cost = Input + Output (Plus Hidden Multipliers)
+
+```
+cost = (input_tokens / 1e6) * input_rate
+     + (output_tokens / 1e6) * output_rate
+     + (cached_input_tokens / 1e6) * cached_rate   (if caching)
+```
+
+Example (rates from OpenAI's Nov-2026 pricing page): `gpt-5` is $1.25 input / $10.00 output per 1M; `gpt-5-mini` $0.25 / $2.00; `gpt-5-nano` $0.05 / $0.40. So 100K input + 2K output costs about $0.145 on `gpt-5` — and $0.029 on `gpt-5-mini`. Output dominates: a chatty model that over-explains costs 8× its input rate per token. Cutting verbosity *is* cost optimization. Cross-provider list prices move — the links live in 25.2.2.
+
+Hidden multipliers worth knowing in 2026: **Batch APIs** are ~50% off both input and output on OpenAI, Anthropic and Google (tasks run within ~24h); **prompt caching** charges ~10% of input for cache hits (Anthropic: 0.1x, Gemini 4 Carbon/Argon: implicit caching ~0.1x; GPT-class: cached input at ~10%); **long context** above ~272K tokens often bills at ~2× (OpenAI); **regional/data-residency** endpoints add ~10% (OpenAI regional processing; Anthropic US-only inference 1.1x).
+
+## 5. Sampling — Temperature, Top-p, Seed
+
+The model emits a probability distribution over the next token, then **samples** from it. These knobs shape the draw:
+
+| Parameter | Range (typical) | Effect |
+| :-- | :-- | :-- |
+| `temperature` | OpenAI 0–2; Anthropic 0–1 | 0 = most probable token (near-deterministic; still never guaranteed), higher = more varied/creative |
+| `top_p` | 0–1 | Nucleus sampling: keep only the smallest set of tokens whose cumulative probability ≥ top_p, sample within them. Usually leave at 1 and tune temperature instead |
+| `seed` | integer | Best-effort determinism on providers that support it — same prompt + seed + model version ≈ same output. **Not a guarantee** across model updates |
+| `max_output_tokens` / `max_tokens` | integer | Hard cap on output; Anthropic requires it, OpenAI defaults apply |
+| stop sequences | strings | Force the model to halt early (e.g., stop at `\n\n`) |
+
+Rules of thumb: **0–0.3** for extraction, classification, structured data; **0.7–1.0** for brainstorming and prose; for code, low temperature with strong tests beats high temperature with hope. If outputs must be reproducible in CI, set `seed` *and* eval every release, because providers update models under the same name more often than you'd like.
+
+## 6. Glossary You'll Actually Use
+
+| Term | Plain meaning |
+| :-- | :-- |
+| Token | Atomic text unit; ~¾ word in English |
+| Context window | Max tokens in one call (input + output) |
+| System / developer message | Persistent instructions; first thing in the window |
+| Logprobs | Per-token log-probabilities of what the model considered |
+| Prompt caching | Reusing a prefix at a steep discount across calls |
+| Batch API | Async submission, ~50% off, ~24h turnaround |
+| Distillation / fine-tuning | Teaching a small model from a big one |
+| RAG | Retrieve relevant docs at query time, stuff only those into context |
+| Tokenization drift | Different providers/versions split text differently — counts differ |
+| Reasoning tokens | Hidden "thinking" tokens some models bill for (GPT-5+, Gemini thinking, Claude extended thinking) |
+
+## 7. Practice and Assessment
+
+**Guided exercise.** Run §1's counter on (a) your own name, (b) a paragraph of Rust code, (c) a paragraph of Japanese text. Record chars vs tokens and explain the gaps.
+
+**Independent exercise.** Make the §2 curl call; print `usage`; compute what the same call costs on a mid-tier model vs flagship (use the 25.2.2 price table).
+
+**Challenge.** Feed the same prompt twice with `temperature: 0` and then `temperature: 1.2` (adding the parameter to the JSON body). Describe the difference in one honest sentence.
+
+**Assessment checklist**
+
+- [ ] I can explain tokens, context, and why the middle of a long context degrades.
+- [ ] I count tokens with the provider's tool, not vibes.
+- [ ] I read `usage` off a live response and can cost the call from list prices.
+- [ ] I know temperature vs top_p vs seed and pick deliberately.
+- [ ] I can name two hidden cost multipliers (batch, caching, long-context surcharge, residency uplift).
+
+</BookNodePage>

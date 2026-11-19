@@ -1,0 +1,133 @@
+---
+id: "15-1-2-database-design-and-migrations"
+title: "15.1.2 Database Design and Migrations"
+sidebar_label: "15.1.2 Database & Migrations"
+slug: "/part-04-databases-backend-and-full-stack-development/15-complete-full-stack-application/15-1-foundations-and-data-layer/15-1-2-database-design-and-migrations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-15-s1-t2">
+
+Milestone 2: the application database becomes real — the canonical ShopCore DDL loaded as **numbered migrations**, tracked in a `schema_migrations` ledger, with seeds, verified from zero. Every SQL statement here you have already written or read in 11.x/12.x — now they become *your project's* foundation.
+
+## 1. Migration 001 — The Schema
+
+Create `apps/api/src/db/migrations/001_init.sql` with the complete canonical DDL from [11.1.3](/book/part-04-databases-backend-and-full-stack-development/11-database-design-and-fundamentals/11-1-data-modeling-and-relationships/11-1-3-the-shopcore-schema), followed by the ledger table (from [12.3.1](/book/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-3-postgresql-in-practice/12-3-1-schemas-constraints-and-migrations)):
+
+```sql
+-- 001_init.sql — ShopCore base schema (identical to 11.1.3 canonical DDL)
+BEGIN;
+
+DROP TABLE IF EXISTS payments, order_items, orders, products, categories, users CASCADE;
+-- ... (the entire canonical DDL exactly as written in 11.1.3, unchanged) ...
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version    TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO schema_migrations (version) VALUES ('001_init') ON CONFLICT DO NOTHING;
+
+COMMIT;
+```
+
+**Rule (again, because it matters):** never edit an applied migration. Changes are `002_add_products_weight.sql`, `003_...` etc.
+
+> **Runnable reference:** the repository's `examples/shopcore/db/migrations/` contains `001_init.sql`–`005_checkout_keys.sql` with **exactly this content**, applied by the same runner shown in §4 — and verified end to end (the reference API passes 9/9 offline integration tests, `15.4.1`). When your project and the example diverge, the example is the one that was executed; diff against it first.
+
+## 2. Migration 002 — The Seed Data
+
+`apps/api/src/db/migrations/002_seed.sql`:
+
+```sql
+-- 002_seed.sql — deterministic demo data (identical to 11.1.3 seed)
+BEGIN;
+-- INSERT users/categories/products/orders/order_items/payments ... (canonical seed)
+INSERT INTO schema_migrations (version) VALUES ('002_seed') ON CONFLICT DO NOTHING;
+COMMIT;
+```
+
+Wrap seeds in `BEGIN/COMMIT` too — half a dataset is worse than none.
+
+## 3. Apply From Zero — The Exact Commands
+
+```bash
+# 1. Make sure the DB service runs (12.1.1) and create the database
+createdb -U postgres -h localhost shopcore
+# if it already exists and you want a clean slate:
+# dropdb -U postgres -h localhost shopcore && createdb -U postgres -h localhost shopcore
+
+# 2. Load migrations in ORDER, fail loudly on any error
+psql -U postgres -h localhost -v ON_ERROR_STOP=1 -d shopcore -f apps/api/src/db/migrations/001_init.sql
+psql -U postgres -h localhost -v ON_ERROR_STOP=1 -d shopcore -f apps/api/src/db/migrations/002_seed.sql
+
+# 3. The proof sequence (all from 11.1.3)
+psql -U postgres -h localhost -d shopcore \
+  -c "SELECT count(*) AS tables FROM information_schema.tables WHERE table_schema='public';"   -- expect 7 (6 canonical + schema_migrations)
+psql -U postgres -h localhost -d shopcore \
+  -c "SELECT id, full_name, role FROM users ORDER BY id;"
+psql -U postgres -h localhost -d shopcore \
+  -c "SELECT o.id, u.full_name, o.status, COALESCE(SUM(oi.qty*oi.unit_price_cents),0) AS total_cents
+      FROM orders o JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      GROUP BY o.id, u.full_name, o.status ORDER BY o.id;"
+# expect totals: 24700 / 4500 / 5900
+```
+
+If counts or totals differ from the canonical outputs, **stop** — your schema file drifted from 11.1.3 and must be corrected before proceeding.
+
+## 4. Optional: A Tiny Migration Runner
+
+Rather than manual `psql -f` forever, a 30-line Node runner applies pending migrations in order:
+
+```javascript
+// apps/api/src/db/migrate.js
+import 'dotenv/config';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import pg from 'pg';
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const dir = new URL('./migrations/', import.meta.url).pathname;
+const { rows: applied } = await pool.query('SELECT version FROM schema_migrations').catch(() => ({ rows: [] }));
+const done = new Set(applied.map((r) => r.version));
+
+for (const file of (await fs.readdir(dir)).filter((f) => f.endsWith('.sql')).sort()) {
+  const version = file.replace('.sql', '');
+  if (done.has(version)) { console.log('skip', version); continue; }
+  const sql = await fs.readFile(path.join(dir, file), 'utf8');
+  await pool.query(sql);   // each file wraps itself in BEGIN/COMMIT
+  console.log('applied', version);
+}
+await pool.end();
+```
+
+Run: `node --env-file=.env src/db/migrate.js`. In CI (15.4.1), the same command builds the disposable test DB.
+
+## 5. Verify the Ledger
+
+```sql
+SELECT version, applied_at FROM schema_migrations ORDER BY applied_at;
+-- 001_init   2026-11-16 20:12:03...
+-- 002_seed   2026-11-16 20:12:03...
+```
+
+Re-running applies nothing new — idempotent by construction.
+
+## 6. Practice
+
+**Guided exercise.** From zero: drop/create `shopcore`, apply 001 and 002 with `ON_ERROR_STOP=1`, and capture the "expected totals" query output in your build journal.
+
+**Independent exercise.** Write `003_add_products_weight.sql` (adds `weight_grams INTEGER`) with the ledger insert, apply it twice (second run must be a no-op), confirm with `\d products`.
+
+**Challenge.** Break 001 deliberately (drop a semicolon), watch `ON_ERROR_STOP=1` abort cleanly with zero tables created, then fix and re-run. Understand why transactional DDL saves you here.
+
+**Assessment checklist**
+
+- [ ] `shopcore` exists with exactly the canonical tables and seed data.
+- [ ] `schema_migrations` tracks both migrations.
+- [ ] The "expected totals" query reproduces 24700/4500/5900.
+- [ ] I can add a new migration without editing applied ones.
+- [ ] I can rebuild the database from scratch with two commands.
+
+</BookNodePage>

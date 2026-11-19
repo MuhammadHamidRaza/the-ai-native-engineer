@@ -1,0 +1,132 @@
+---
+id: "40-2-1-onboarding-analytics-and-activation-loops"
+title: "40.2.1 Onboarding, Analytics and Activation Loops"
+sidebar_label: "40.2.1 Onboarding, Analytics and Activation Loops"
+slug: "/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-2-shipping-and-iterating-with-users/40-2-1-onboarding-analytics-and-activation-loops"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-40-s2-t1">
+
+An MVP that doesn't onboard users is a demo, not a product. This lesson teaches you to design activation — the path from "signed up" to "got value" — and to instrument it so you can see exactly where users drop off. Continuing CareQueue from 40.1.2.
+
+## 1. The Activation Moment
+
+Define the single action that correlates with retention, then engineer every path to it. For CareQueue: **Dana labels her first message as `Billing` and approves one AI-drafted reply.** (Before that moment she has "signed up"; after it she has "used the product".)
+
+Activation moments in other products (for orientation, not to copy):
+
+- Slack: a team sending its first 2,000 messages
+- Shopify: a store's first sale
+- GitHub: first push to a repo with a collaborator
+- Notion: first page shared with one other person
+
+They all share one shape: **the first irreversible act in their core loop.** Everything else — signup, email verification, tutorial checklists, settings — is scaffolding around that act.
+
+## 2. The Onboarding Funnel (What CareQueue Measures)
+
+```text
+signed_up ──► workspace_connected (Gmail consent granted)
+   │               │             │
+   │               │             └─6% drop-off here if consent scary
+   │               └─ first_sync  │
+   ▼               │             │
+inbox_synced ◄─────┘             │
+   │                             │
+   ▼               first_triage_label        (label applied by AI)
+triage_labels ──► first_billing_draft_viewed
+                          │
+                          ▼
+                   first_draft_approved ◄── ACTIVATION
+                          │
+                          ▼ (7-day window)
+inbox_processed_day_7 ──► weekly_active (3+ drafts approved/week)
+```
+
+Concrete targets for the pilot cohort (measure, don't guess):
+
+| Step | Target | Intervention if missed |
+| :-- | --: | :-- |
+| Signup → connect Gmail | ≥70% | Shorten setup; show read-only scope explicitly |
+| Connect → first sync | ≥90% | Sync in &lt;30s or email fallback |
+| Sync → first triage view | ≥80% | Land user directly on the labeled inbox |
+| Triage → first draft viewed | ≥60% | Billing drafts shown first, not sorted by date |
+| Draft viewed → approved | ≥70% | Drafts are editable inline; one-click approve |
+| Approval → day-7 active (≥3/wk) | ≥60% | Morning digest nudge; check-in call Friday |
+
+Instrument with PostHog/Amplitude/GA4 or a `events` table in your own Postgres — the tool is not the lesson; the discipline of naming and measuring the steps is.
+
+## 3. The Event Taxonomy (Copy This Template)
+
+```text
+signed_up {plan: "pilot", practice_size: "small|medium|large"}
+workspace_connected {provider: "google", scope: "read_only"}
+inbox_synced {message_count: int, duration_ms: int}
+first_triage_label {label: "billing|scheduling|admin|needs_human", latency_ms: int}
+billing_draft_viewed {draft_id: string, edit_distance: int}
+billing_draft_approved {draft_id: string, latency_ms: int}
+billing_draft_rejected {draft_id: string, reason: "wrong_tone|wrong_fact|not_billing"}
+weekly_active {week: string, drafts_approved: int}
+```
+
+Naming rules: `snake_case`, past tense, one event per meaningful act, ≤3 properties each, always one `practice_id` for cohorting. If an event can't be explained in one line, it doesn't belong in the taxonomy.
+
+## 4. Activation Rate Math (Do It for Your Product)
+
+CareQueue pilot, weeks 1–2, 10 practices:
+
+```text
+signed_up:              10
+workspace_connected:     8   (80% connect rate)
+first_sync:              8   (100% of connectors)
+first_triage_label:      7   (87.5%)
+billing_draft_viewed:    6   (85.7%)
+billing_draft_approved:  4   (66.7% ← ACTIVATION, below 70% target)
+day_7 active:            3   (75% of activated)
+```
+
+**Activation rate** = approved / signed_up = 4/10 = **40%**. The leak is connect→approve (8 → 4). Two candidate causes: (a) drafts too wrong to approve (need prompt/tone tuning or more edit freedom), (b) needs-human drafted billing is 30% of cases — wrong product assumption. Diagnose by reading the `rejected` events' reasons before changing anything.
+
+## 5. The Habit Loop
+
+Trigger → action → reward. For CareQueue:
+
+- **Trigger:** 07:30 digest email ("3 billing drafts ready").
+- **Action:** open digest → approve 3 drafts (30 seconds).
+- **Reward:** inbox visibly emptier; one angry-patient call avoided; approval streak counter.
+- **Investment:** each rejection with a reason improves future drafts.
+
+Build the **investment** side deliberately: every Friday, Dana's digest includes "You approved 14 drafts this week; 12 would have taken ~1.5 hours by hand." That line is both the reward and the case study you'll show the next prospect.
+
+## 6. Common Failure Modes
+
+- **No event taxonomy** — you ship and literally cannot see activation. Measure before inviting users.
+- **100% dashboards on day one** — you need 8 events, not 80. Cut ruthlessly.
+- **Vanity metrics** — MAU is noise; **activation rate and day-7 retention** are decisions.
+- **No feedback reason field** — you cannot improve what you cannot diagnose.
+- **Tutorial theater** — forcing a step-by-step tour before value; reversible at the cost of completion.
+- **Ignoring the drop-off report** — fixing the loudest complaint instead of the widest leak.
+
+## 7. Exercise
+
+1. Write the 8-event taxonomy for your MVP (or CareQueue).
+2. Put a number on every step of your funnel (guesses are fine — you'll replace them with data).
+3. Compute **activation rate** and **day-7 retention** targets for your pilot.
+4. Design the trigger→action→reward→investment loop in one paragraph each.
+5. Name one instrumentation deadline — the date by which events must fire in production.
+
+**Acceptance criteria.**
+- [ ] Taxonomy ≤10 events, snake_case, with ≤3 properties each
+- [ ] Every funnel step has a numeric target and a named intervention
+- [ ] Activation rate formula written out with your own numbers
+- [ ] Habit loop named: trigger, action, reward, investment
+- [ ] Instrumentation ships **before** the first pilot user invites themself
+
+## 8. Where This Leads
+
+40.2.2 closes the loop with pricing — you will price CareQueue from the same data you collected here (the 1.5-hour/week saved). A product that measures activation can measure willingness to pay; a product that measures nothing can only hope.
+
+**Next:** [40.2.2 Pricing Models and User Feedback Cycles](/book/part-09-career-client-work-products-and-startups/40-product-thinking-and-mvp-development/40-2-shipping-and-iterating-with-users/40-2-2-pricing-models-and-user-feedback-cycles)
+
+</BookNodePage>

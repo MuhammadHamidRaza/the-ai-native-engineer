@@ -1,0 +1,120 @@
+---
+id: "21-1-1-what-a-system-is-components-boundaries-feedback-emergence"
+title: "21.1.1 What a System Is: Components, Boundaries, Feedback and Emergence"
+sidebar_label: "21.1.1 What a System Is: Components, Boundaries, Feedback and Emergence"
+slug: "/part-06-system-design-and-production-quality/21-systems-thinking-architecture-and-decision-making/21-1-systems-thinking-and-first-principles/21-1-1-what-a-system-is-components-boundaries-feedback-emergence"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-21-s1-t1">
+
+Every serious production incident you will ever read about has the same hidden shape: the system did something no single component was designed to do. A deploy goes out at 3 p.m.; by 3:05 the checkout p99 is 4 seconds and the on-call channel is on fire — and if you only read the component diff, you will never find the cause. The cause lives in the *relationships*. That is what this lesson is about, and it is why every senior engineer learns to see a system before touching one.
+
+## 1. What a System Actually Is
+
+A **system** is a set of components, inside a boundary, in an environment, whose interactions produce behavior none of the components have alone. Strip the words apart:
+
+- **Components** — the parts you can point at: the React SPA, the Express API, the Postgres database, Redis, the Stripe webhook handler.
+- **Boundary** — the line between "our system" and "not our system". ShopCore's boundary runs *through* the payment integration: everything before the API call is yours; what Stripe does internally is not yours. Where you draw this line decides what you are responsible for at 3 a.m.
+- **Environment** — everything outside the boundary that presses on it: customers, the Stripe fraud engine, your cloud provider, the postal service that ships the box.
+- **Subsystems** — systems nested inside systems. ShopCore is a subsystem of "the company" (support, finance, logistics); Ordering is a subsystem of ShopCore; the cart service is a subsystem of Ordering. The skill is zooming in and out without losing the plot.
+
+The ShopCore context, drawn the way you should draw it on a whiteboard before any design meeting:
+
+```text
+                        +----------------------------+
+                        |        ENVIRONMENT         |
+                        |  browser customers         |
+                        |  Stripe (payments, fraud)  |
+                        |  email provider            |
+                        |  courier / shipping        |
+                        +-------------+--------------+
+                                      | HTTPS
+        +-----------------------------v------------------------------+
+        |                     SHOPCORE BOUNDARY                      |
+        |                                                            |
+        |   React SPA                                               |
+        |      |                                                     |
+        |      v                                                     |
+        |   Express 5 API  --->  PostgreSQL (orders, catalog, ...)  |
+        |      |                  Redis (cache, rate limit, queue)  |
+        |      |                                                     |
+        |      +-->  webhook handler  <---  Stripe events           |
+        |      |                                                     |
+        |      +-->  background workers (email, fraud scoring)      |
+        +------------------------------------------------------------+
+```
+
+## 2. Inputs → Outputs, and Why That Is Not Enough
+
+Every system transforms inputs into outputs: orders in, shipments out. A useful beginner model is a black box with arrows. It fails fast, though, because it hides the two things that actually bite you: **feedback** and **delay**.
+
+**Feedback loops** take an output and feed it back in. Two kinds:
+
+- **Negative (balancing) feedback** — counteracts change, keeps the system stable. ShopCore's stock check is one: `IF stock > 0 THEN allow purchase`. When stock hits zero, purchases stop. The loop stabilizes the inventory around zero instead of below it.
+- **Positive (reinforcing) feedback** — amplifies change. A holiday surge arrives → cache hit rate drops → Postgres load rises → responses slow → clients time out and **retry** → twice the load → everything slows more. No component is "wrong"; the loop is the bug.
+
+**Delays** decouple cause and effect in time. The Stripe webhook for `payment_succeeded` can arrive 30 seconds — or 30 minutes — after the charge. The customer reload-spans the order-status page; the cache says "pending"; support opens a ticket. The system is not broken; it is *delayed*, and humans read delay as failure when nothing tells them otherwise.
+
+## 3. Emergence — the System Does Things Nobody Programmed
+
+**Emergence** is behavior that arises from component interaction, not from any component's code. The canonical ShopCore case:
+
+> ShopCore decrements inventory only when the Stripe `payment_succeeded` webhook arrives — not when the customer clicks "Pay". Two shoppers check out the same final unit within the same 2 seconds. Both payments are captured by Stripe. Both webhooks arrive seconds later, each decrements `stock` from 1 to 0, and the second decrement silently goes negative. Neither customer saw an error. The dashboard shows both orders "paid". Six days later support has two angry tickets for one unit of stock — emergent behavior from a *temporal* relationship that no line of code "caused".
+
+No component is buggy in isolation. The bug lives in the interaction between payment timing, inventory timing and cache timing. That is why component testing (see [14.3.1](/book/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-3-automated-testing-and-code-review/14-3-1-unit-integration-and-end-to-end-tests)) never catches it; you design against it, then test the interaction explicitly.
+
+**Failure propagation** is emergence wearing a badge. One component degrades, and the degradation travels along the relationships: webhook handler slows → Stripe retries → retry storm hits the DB connection pool → pool exhaustion → API timeouts → SPA error boundary → customers retry → load doubles. Every arrow you drew in the context diagram is a failure highway.
+
+## 4. Complexity, Cynefin and Causation vs Correlation
+
+Not every problem deserves the same approach. The **Cynefin framework** (Dave Snowden) sorts problems into domains:
+
+| Domain | Order exists? | ShopCore example | Approach |
+| :-- | :-- | :-- | :-- |
+| Clear | Obvious cause → effect | Password reset email renders | Best practice, checklist |
+| Complicated | Knowable by analysis | Query plan for slow `orders` join | Expert analysis, measure |
+| Complex | Emergent, no single right answer | Holiday surge capacity | Probe → sense → respond; run small experiments |
+| Chaotic | No causality visible | Full outage, everything down | Act → sense → respond; restore service first |
+
+Most engineering arguments are category errors: people apply complicated-domain certainty to complex-domain problems ("just add more pods").
+
+**Correlation is not causation.** ShopCore telemetry shows deploys at 17:00 correlate with p99 spikes. The real cause is the 17:00 traffic ramp, not the deploy. Before you blame the deploy, run the experiment: sample the same p99 on no-deploy Fridays. Conversely, a 0.8 correlation between cache hit rate and error rate is your friend — for *prioritizing investigation*, not for proof.
+
+## 5. Modeling Exercises (Do These on Paper, Not in Your Head)
+
+**Exercise A — Draw the ShopCore context diagram.** Exactly the whiteboard from Section 1, plus arrows for refunds (Stripe → ShopCore) and support ticket creation (customer → support → ShopCore). Label every arrow with its protocol and its owner.
+
+**Exercise B — Find the missing feedback loop.** ShopCore fires a `low_stock` warning email to ops when stock crosses 10 units. Nobody acts on it; stock hits zero; oversells continue. Draw the loop: `low_stock → alert → [no action] → stock = 0 → oversell`. What single component closes the loop? (A purchase-order generator, or at minimum an automatic "reorder suggested" task — the point is the *loop*, not the tool.)
+
+**Exercise C — Mark the boundary, precisely.** Between ShopCore and the payment flow: which side owns the charge record? (Stripe.) Which side owns the order? (ShopCore.) Who owns the *link* between them? (The webhook handler — and that is why it must be idempotent. See [13.4.1 Background Jobs and Idempotency](/book/part-04-databases-backend-and-full-stack-development/13-backend-engineering-with-nodejs/13-4-production-integrations-and-hardening/13-4-1-background-jobs-and-idempotency).) Draw it; label every datum with its owning side.
+
+## 6. Troubleshooting What Systems "Do at You"
+
+| Symptom | System-level cause | Fix |
+| :-- | :-- | :-- |
+| p99 spikes only during 5–6 p.m. | Traffic ramp + missing balancing loop | Autoscale on p99/latency, not just CPU; add load shedding (21.4.2) |
+| Overselling despite stock checks | Payment/inventory delay pair (Section 3) | Reserve stock at payment-intent time; atomic decrement (21.4.1) |
+| "Deploy broke checkout" but rollback does not fix it | Correlation mistaken for causation; real cause is traffic/cache | Reproduce against peak traffic; compare cache hit rate across deploy and non-deploy days |
+| Retry storms during provider slowness | Positive feedback loop (Section 2) | Retry budget with jitter (21.4.2) |
+| Support drowning in "where is my order?" after every deploy | Delay + no feedback to user | Expose order state machine to SPA; show "payment pending" honestly |
+
+## 7. Practice
+
+**Guided exercise.** Take the ShopCore repo from Chapter 15. Draw its context diagram (Exercise A). Then trace one real `POST /orders` request from the browser to the database and back, labeling every boundary crossing and every delay you can identify.
+
+**Independent exercise.** Pick one ShopCore NFR (e.g., "99.9% checkout availability"). List every component and every feedback loop that can violate it. Annotate which are balancing and which are reinforcing.
+
+**Challenge.** Model the "stock emerges after webhook" case in a finite state machine: states `cart → payment_pending → paid → fulfilled | oversold`, with the two concurrent-checkout race drawn as two interleaved timelines. Identify the single state transition that must be atomic, and write the SQL that makes it so (you will study that in 21.4.1).
+
+**Assessment checklist**
+
+- [ ] I can define component, boundary, environment, subsystem and give a ShopCore example of each.
+- [ ] I can explain negative vs positive feedback with the stock check and the retry-storm loops.
+- [ ] I can explain why delays make systems look broken, and name one ShopCore delay.
+- [ ] I can explain emergence and narrate the stock-oversell case from memory.
+- [ ] I know where Cynefin fits and can classify three ShopCore problems into domains.
+- [ ] I will not conclude causation from correlation without an experiment.
+
+</BookNodePage>

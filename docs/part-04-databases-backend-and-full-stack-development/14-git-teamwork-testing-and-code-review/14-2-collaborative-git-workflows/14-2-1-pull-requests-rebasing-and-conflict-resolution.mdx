@@ -1,0 +1,118 @@
+---
+id: "14-2-1-pull-requests-rebasing-and-conflict-resolution"
+title: "14.2.1 Pull Requests, Rebasing and Conflict Resolution"
+sidebar_label: "Pull Requests, Rebasing and Conflict Resolution"
+slug: "/part-04-databases-backend-and-full-stack-development/14-git-teamwork-testing-and-code-review/14-2-collaborative-git-workflows/14-2-1-pull-requests-rebasing-and-conflict-resolution"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-14-s2-t1">
+
+Working solo on `main` teaches you Git commands; working with teammates teaches you **Git choreography**. When four engineers commit to the same repository every day, uncoordinated pushes cause broken builds, unreadable diffs, and accidentally deleted teammate work during sloppy conflict resolutions.
+
+## 1. The Daily Team Flow: Ticket -> Branch -> PR -> CI -> Review
+
+Most high-performing teams use **GitHub Flow** (trunk-based development with short-lived branches):
+
+1. **Sync `main` locally first:**
+   ```bash
+   git switch main
+   git pull origin main
+   ```
+2. **Create a focused, short-lived branch** tied to one ticket (aim for 1–3 days of work and under ~400 changed lines):
+   ```bash
+   git switch -c feat/task-status-filter
+   ```
+3. **Commit working increments** and push to your remote branch (`git push -u origin feat/task-status-filter`).
+4. **Open a Draft or Ready Pull Request (PR)** with:
+   - **Why:** Problem statement + link to issue/ticket.
+   - **What changed:** Architectural summary and any schema/env changes.
+   - **How tested:** Exact commands run (`npm test`, `curl` output, or UI screenshot).
+5. **Wait for green CI checks** (lint, typecheck, unit/integration tests) and address reviewer feedback with new commits on the branch.
+6. **Squash and merge** (or merge commit) into protected `main`, then delete the merged branch (`git branch -d feat/task-status-filter`).
+
+### Protecting `main` on GitHub
+
+Never rely on willpower to keep `main` green. Configure **Branch Protection / Rulesets** on `main` to require:
+- A Pull Request before merging (no direct pushes).
+- At least 1–2 approvals (excluding the PR author).
+- Required passing status checks (`lint`, `typecheck`, `test`, `build`).
+
+## 2. Merge vs. Rebase: Choosing Cleanly
+
+While your feature branch is open, teammates merge other PRs into `main`. Before merging yours, you need to incorporate those latest changes from `origin/main`.
+
+```bash
+# Fetch latest commits from remote without altering local branches
+git fetch origin
+```
+
+| Strategy | Command | History Shape | Best Used When |
+| :--- | :--- | :--- | :--- |
+| **Merge `main` into branch** | `git merge origin/main` | Preserves true chronology + adds a merge commit | Multiple teammates are sharing the exact same feature branch |
+| **Rebase onto `main`** | `git rebase origin/main` | Replays your commits sequentially on top of latest `main` | Updating your personal feature branch before review/merge |
+| **Squash & Merge (GitHub UI)** | PR button on GitHub | Collapses noisy WIP commits into 1 clean commit on `main` | Almost all feature PRs in web/product teams |
+
+### The Golden Rule of Rebasing
+
+**Never rebase a branch that other engineers are actively committing to** (`main`, `release/*`, or a shared pair branch). Rebasing rewrites commit SHA hashes. Only rewrite history on *your own* feature branch, and push updates with `--force-with-lease` (which fails safely if someone else pushed new commits you haven't fetched) rather than reckless `--force`:
+
+```bash
+git fetch origin
+git rebase origin/main
+git push --force-with-lease
+```
+
+## 3. Resolving Real Merge Conflicts Without Panic
+
+A conflict simply means Git saw two branches edit the **same lines** (or delete vs. edit a file) and refuses to guess which side wins.
+
+### Anatomy of Conflict Markers
+
+```text
+<<<<<<< HEAD (Current Change — your current branch / rebase base)
+const MAX_UPLOAD_MB = 5;
+=======
+const MAX_UPLOAD_MB = 10;
+const ALLOWED_TYPES = ["image/png", "image/jpeg"];
+>>>>>>> feat/avatar-uploads (Incoming Change)
+```
+
+### Step-by-Step Resolution Protocol
+
+1. **Check status:** `git status` lists all `both modified` files.
+2. **Open each conflicted file** (in VS Code, click *Compare Changes* — **never** blindly click *Accept Current* or *Accept Incoming* without reading both diffs).
+3. **Combine intent, delete ALL `<<<<<<<`, `=======`, `>>>>>>>` markers:** Maybe you want `MAX_UPLOAD_MB = 10` *and* `ALLOWED_TYPES`, or perhaps `main` extracted that constant to `config.ts`.
+4. **Test after resolving!** Conflicts that compile can still break business logic. Run `npm run typecheck && npm test`.
+5. **Stage and continue:**
+   - During `git merge`: `git add <file> && git commit`
+   - During `git rebase`: `git add <file> && git rebase --continue`
+   - If things get tangled and you want a clean reset: `git merge --abort` or `git rebase --abort` restores the exact pre-conflict state!
+
+### Special Case: Resolving `package-lock.json` / `bun.lock` Conflicts
+
+**Never hand-edit hundreds of lines of conflict markers inside `package-lock.json`!** Let the package manager regenerate the lockfile cleanly:
+
+```bash
+# Accept main's lockfile (or yours), then re-resolve from both merged package.json files
+git checkout --ours package-lock.json
+npm install
+git add package-lock.json
+```
+
+Verify `git diff package-lock.json` looks sane before committing.
+
+## Practice Exercises
+
+1. **Intentional Conflict Drill:** In a local scratch git repo, create `branch-a` and `branch-b` from `main`, edit line 3 of `pricing.ts` differently in each, merge `branch-a` into `main`, then rebase `branch-b` onto `main` and resolve the conflict cleanly.
+2. **Rescue with `reflog`:** Run `git reflog` after a rebase or accidental `git reset --hard HEAD~1` and restore the pre-reset commit hash using `git switch -c recovery <hash>`.
+
+## Mastery Checklist
+
+- [ ] Keeps PRs small, single-purpose, and backed by passing CI checks and reproduction steps.
+- [ ] Uses `git fetch origin` + `git rebase origin/main` + `git push --force-with-lease` on personal feature branches, never on shared `main`.
+- [ ] Resolves code conflicts by combining intent and verifying tests, and regenerates lockfiles via `npm install` rather than hand-editing conflict markers.
+- [ ] Knows `git rebase --abort` and `git reflog` as zero-stress safety nets.
+
+</BookNodePage>

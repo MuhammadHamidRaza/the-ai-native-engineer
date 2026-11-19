@@ -1,0 +1,177 @@
+---
+id: "25-2-4-streaming-tool-calling-and-multimodal-inputs"
+title: "25.2.4 Streaming, Tool Calling and Multimodal Inputs"
+sidebar_label: "25.2.4 Streaming, Tool Calling and Multimodal Inputs"
+slug: "/part-07-ai-native-software-development/25-ai-assistants-llms-and-model-apis/25-2-how-language-models-work-and-programmatic-access/25-2-4-streaming-tool-calling-and-multimodal-inputs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-25-s2-t4">
+
+Three capabilities turn a chat endpoint into an application backend: **streaming** (output arrives token-by-token), **tool calling** (the model asks your code to act, then incorporates the result), and **multimodal input** (images and more, in the prompt). This lesson shows each end to end, in TypeScript, against officially documented APIs — with the failure modes that actually bite.
+
+## 1. Streaming — Server-Sent Events (SSE), Explained
+
+Without streaming you POST and wait for the whole body — fine at 100 output tokens, unusable at 4,000. With streaming, the server responds with `text/event-stream` and pushes **events** as they are generated. Each event is two lines — `event: <type>` and `data: <json>` — separated by a blank line. You parse incrementally and append.
+
+**Raw SSE over the wire (OpenAI Responses API shape):**
+
+```text
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_...", ...}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"A"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":" token"}
+
+event: response.completed
+data: {"type":"response.completed","response":{ ...,"usage":{...} }}
+```
+
+Current guidance: **usage only exists reliably in the final `response.completed` event** — never sum deltas to estimate tokens; listen for deltas for display, and for `completed` for billing and persistence. Moderation scores (if requested) also arrive after generation, not with deltas — partial content complicates moderation pipelines; note it for user-facing products.
+
+**TypeScript — stream to stdout (Node ≥ 18, `npm install openai`):**
+
+```ts
+import OpenAI from "openai";
+const client = new OpenAI(); // OPENAI_API_KEY from env
+const stream = await client.responses.create({
+  model: "gpt-6-astra",
+  input: [{ role: "user", content: "Count to five, slowly." }],
+  stream: true,
+});
+for await (const event of stream) {
+  if (event.type === "response.output_text.delta") process.stdout.write(event.delta);
+  else if (event.type === "response.completed") console.log("\nusage:", event.response.usage);
+  else if (event.type === "error") console.error("stream error:", event.message);
+}
+```
+
+Key event types: `response.created`, `response.output_text.delta`, `response.completed`, `response.failed`, `error`. Browser version: consume with `fetch` + `ReadableStream` (or the SDK), rendering deltas into your UI; add `AbortController` for cancel; reconnect logic for dropped connections is your responsibility over plain SSE — provider WebSocket modes exist for persistent tool-heavy sessions (see the Responses API WebSocket mode guide).
+
+## 2. Tool Calling — the Four-Step Loop
+
+Tool calling does **not** let the model run your code. The model emits a **structured request** naming a tool and arguments; **your app executes it**; you send the result back; the model continues. Concretely:
+
+1. Request with `tools: [...]` (name, description, JSON Schema of arguments).
+2. Model replies with a tool-call block (`tool_use` / `function_call`) instead of text.
+3. Your code runs the function and returns `tool_result` / `function_call_output`.
+4. Model consumes the output and answers — or calls another tool (loop until `stop_reason: "end_turn"`).
+
+**Full working TypeScript example — Anthropic Messages API** (`npm install @anthropic-ai/sdk`), structure verified against the current tool-use docs (platform.claude.com/docs/en/agents-and-tools/tool-use):
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+const client = new Anthropic(); // ANTHROPIC_API_KEY
+
+const tools: Anthropic.Tool[] = [{
+  name: "get_weather",
+  description: "Get the current weather for a city.",
+  input_schema: {
+    type: "object",
+    properties: { city: { type: "string", description: "e.g. Berlin, DE" } },
+    required: ["city"],
+  },
+}];
+
+function getWeather(city: string): string {
+  const db: Record<string, string> = { "Berlin, DE": "11°C, overcast" };
+  return db[city] ?? `No data for ${city}`;
+}
+
+const messages: Anthropic.MessageParam[] = [
+  { role: "user", content: "What's the weather in Berlin, DE?" },
+];
+
+while (true) {
+  const res = await client.messages.create({
+    model: "claude-sonnet-5-5",
+    max_tokens: 1024,
+    tools,
+    messages,
+  });
+
+  if (res.stop_reason !== "tool_use") {
+    console.log(res.content.filter(b => b.type === "text").map(b => b.text).join("\n"));
+    break;
+  }
+
+  messages.push({ role: "assistant", content: res.content }); // keep the tool_use blocks!
+  const results: Anthropic.ToolResultBlockParam[] = [];
+  for (const block of res.content) {
+    if (block.type !== "tool_use") continue;
+    const { city } = block.input as { city: string };
+    results.push({ type: "tool_result", tool_use_id: block.id, content: getWeather(city) });
+  }
+  messages.push({ role: "user", content: results });
+}
+```
+
+Output (abbreviated):
+
+```text
+Berlin, DE is 11°C with overcast skies.
+```
+
+Loop safety rules baked in above: keep the assistant's `tool_use` message in history (dropping it breaks the contract); every `tool_result` must reference its `tool_use_id`; cap the loop count in real code (a confused model can re-call tools forever); **tool output is untrusted input** — treat returned strings as data, never as instructions (prompt-injection via tool results is the classic exploit — see Chapter 26). OpenAI's equivalent uses `tools` with `{"type":"function","function":{name, description, parameters}}` and returns `function_call` items on the Responses API; the loop is identical in shape (`response.function_call_arguments.delta` events when streaming tool calls, and a `function_call_output` item to send back). The model never holds your credentials; your code does.
+
+**Strict tool use.** Add `strict: true` to the tool definition to have the arguments grammar-enforced — see 25.2.3. **Server tools** (`web_search`, `code_execution`, etc.) run on the provider's infra and need no client round-trip; the flow above is for *your* tools.
+
+## 3. Multimodal — Image Input, Verified Shape
+
+**What the model does:** it sees the image pixels via a vision encoder; it does not "open your file browser." You send bytes (base64) or a URL the API can fetch.
+
+**Task:** describe what is in a screenshot of a failing CI run.
+
+```ts
+const res = await client.responses.create({   // OpenAI; Anthropic/Gemini are analogous
+  model: "gpt-6-astra",
+  input: [{ role: "user", content: [
+    { type: "input_text", text: "This is a screenshot of a failing CI job. Name the failing step, the error line, and the first thing to check." },
+    { type: "input_image", image_url: "data:image/png;base64,AAAA..." }, // or a public https URL
+  ] }],
+});
+console.log(res.output_text);
+```
+
+(Image field names per current Responses API docs — `input_image` with `image_url`; Anthropic: image blocks with `source: {type: "base64", media_type, data}`; Gemini: `inlineData`/`fileData` parts. **CLAIM TO VERIFY: exact current multimodal field names against each provider's reference before shipping.**)
+
+Use cases that work today: reading charts/screenshots/whiteboards, receipt and invoice extraction, UI/error-screen triage, form digitization. Known sharp edges: small text in dense screenshots is misread silently; rotated/skewed images degrade badly; **spatial reasoning** ("is the red box left of the blue box?") is weaker than prose; and images with text + instructions inside them can inject instructions (again: untrusted input).
+
+## 4. Audio and Video — Pointers, Not Promises
+
+- **Audio in:** OpenAI `gpt-4o-transcribe` / audio-capable models; Gemini 3.5/3.8 Transcribe ($0.003/min class) and Live models for real-time speech-to-speech; Anthropic: pass audio to newer models with document/input support — check availability per model.
+- **Audio out:** TTS models (e.g., `gemini-3.8-flash-tts`; OpenAI TTS line) and realtime/Live APIs for voice agents (WebSocket-based, not plain SSE).
+- **Video in:** Gemini is the most mature video-native API (video parts, up to hours at 1M-token contexts, billed per token ≈ per frame); OpenAI and Anthropic currently approximate video via frame sampling — do that yourself with ffmpeg if you need it.
+- **Limitations:** all real-time voice loops fight latency (target sub-300ms to feel natural, hard); turn-taking (endpointing) is its own problem; non-speech audio understanding is narrow; per-frame video cost explodes; lip-sync and emotion from video are research-grade, not dependable. Verify each provider's current model matrix — capability gaps here close quarterly.
+
+## 5. Troubleshooting
+
+| Symptom | Cause | Fix |
+| :-- | :-- | :-- |
+| Stream starts then hangs | Proxy buffering SSE; no heartbeat | Disable nginx buffering (`X-Accel-Buffering: no`), check timeouts |
+| `tool_use` without expected call | Tool description vague; prompt never implied a need | Sharpen description; name when to use; force it with `tool_choice: "any"` (Claude) or `required` (OpenAI) |
+| Model calls tool with junk args | Schema too loose | Add enums/regex formats; `strict: true`; validate & return errors to the model as `tool_result` |
+| Image API 400 | Wrong MIME/format or URL not reachable from provider | base64-inline instead of URL; check 20MB-class size limits |
+| Usage missing | Reading it before `response.completed` | Read usage only in the terminal event |
+
+## 6. Practice and Assessment
+
+**Guided exercise.** Run the §2 loop with a real (read-only) tool, e.g., `get_disk_free` on your machine (exec via `df`/`Get-PSDrive`), and ask a question that forces a tool call.
+
+**Independent exercise.** Add an `AbortSignal` timeout to the §1 stream and render a "cancel" button; confirm `response.completed` never fires on abort.
+
+**Challenge.** Extend the weather tool with a second tool (`get_forecast`), let the model choose, and verify it picks correctly for "will it rain tomorrow in Berlin?"
+
+**Assessment checklist**
+
+- [ ] I can explain SSE event frames and where `usage` lives.
+- [ ] I built a working tool loop and can name every block it round-trips.
+- [ ] I know tool results are untrusted input and why.
+- [ ] I sent a base64 image in a prompt and read the answer critically.
+- [ ] I can state two real limitations of image and video understanding today.
+
+</BookNodePage>

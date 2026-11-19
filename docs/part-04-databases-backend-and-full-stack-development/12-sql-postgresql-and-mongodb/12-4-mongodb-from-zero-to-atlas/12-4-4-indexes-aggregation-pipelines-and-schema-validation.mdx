@@ -1,0 +1,158 @@
+---
+id: "12-4-4-indexes-aggregation-pipelines-and-schema-validation"
+title: "12.4.4 Indexes, Aggregation Pipelines and Schema Validation"
+sidebar_label: "12.4.4 Aggregation & Indexes"
+slug: "/part-04-databases-backend-and-full-stack-development/12-sql-postgresql-and-mongodb/12-4-mongodb-from-zero-to-atlas/12-4-4-indexes-aggregation-pipelines-and-schema-validation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-12-s4-t4">
+
+Three tools separate MongoDB toy apps from production ones: **compound indexes** (and the ESR rule), the **aggregation pipeline** (MongoDB's SQL GROUP BY, JOINs and transforms in one), and **`$jsonSchema` validation** (schema enforcement inside a "schemaless" database).
+
+## 1. Aggregation Pipelines — Think in Stages, Not Tables
+
+An aggregation is an ordered list of stages. Every stage transforms the document stream handed to the next:
+
+```javascript
+db.orders.aggregate([
+  { $match:  { status: "paid" } },              // 1. filter (uses index)
+  { $unwind: "$items" },                        // 2. one doc per line item
+  { $group:  {                                  // 3. collapse per user
+      _id: "$userId",
+      totalCents: { $sum: { $multiply: ["$items.qty", "$items.unitPriceCents"] } },
+      lineItems:  { $sum: 1 },
+  } },
+  { $sort:   { totalCents: -1 } },              // 4. order output
+]);
+```
+
+Run it in mongosh against your `shopcore_docs` data — you should see per-user paid totals (`ada@example.com`, etc.). In Compass, the **Aggregations** tab lets you build this visually: **Add Stage → $match → Run**, then add `$unwind`, `$group`, `$sort` one at a time, watching documents transform at each step — the fastest way to learn pipelines.
+
+Key stages — know these cold:
+
+| Stage | Purpose | SQL equivalent |
+| :-- | :-- | :-- |
+| `$match` | Filter documents early (always first!) | `WHERE` |
+| `$project` | Reshape/select fields | `SELECT col, expr AS alias` |
+| `$group` | Bucket + aggregate (`$sum`, `$avg`, `$max`, `$addToSet`) | `GROUP BY` |
+| `$unwind` | Array → one doc per element | `unnest()` / join lines |
+| `$lookup` | Left-join another collection | `LEFT JOIN` |
+| `$sort` / `$limit` / `$skip` | Order and page | `ORDER BY` / `LIMIT` |
+| `$count` | Count the stream | `COUNT(*)` |
+| `$addFields` | Add computed fields | computed `SELECT` columns |
+
+**Rule: put `$match` first.** Every document filtered later costs CPU; unfiltered stages scan everything.
+
+### Real ShopCore question: "Which SKU earned the most?"
+
+```javascript
+db.orders.aggregate([
+  { $match: { status: "paid" } },
+  { $unwind: "$items" },
+  { $group: {
+      _id: "$items.sku",
+      units: { $sum: "$items.qty" },
+      revenue: { $sum: { $multiply: ["$items.qty", "$items.unitPriceCents"] } },
+  } },
+  { $sort: { revenue: -1 } },
+]);
+```
+
+`KB-01` leads with `12900` (Ada's order). Every number is reproducible from your seed.
+
+## 2. Indexes and the ESR Rule
+
+Mongo indexes work like Postgres B-trees for equality/range/sort, with one famous design rule:
+
+> **ESR — Equality → Sort → Range**: equality fields first, then sort fields, then range fields.
+
+```javascript
+// Query: paid orders for one user, newest first
+db.orders.find({ userId: "ada@example.com", status: "paid" }).sort({ createdAt: -1 });
+
+// Index following ESR:
+db.orders.createIndex({ userId: 1, status: 1, createdAt: -1 });
+```
+
+Verify it uses the index (not a collection scan):
+
+```javascript
+db.orders.find({ userId: "ada@example.com", status: "paid" })
+         .sort({ createdAt: -1 })
+         .explain("executionStats");
+// Look for: "stage": "IXSCAN" (index scan) — NOT "COLLSCAN"
+```
+
+Or in Compass: **Indexes** tab → see all indexes; or **Explain Plan** button → it renders IXSCAN/COLLSCAN visually. Delete indexes you don't need — each costs write performance (`db.orders.dropIndex("userId_1_status_1_createdAt_-1")`).
+
+Compound index column order is **not** cosmetic: an index on `(status, createdAt)` cannot efficiently answer `find({ userId, status })` if `userId` isn't in it.
+
+## 3. `$jsonSchema` — Validation Inside "Schemaless" MongoDB
+
+```javascript
+db.createCollection("orders", {
+  validator: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: ["userId", "status", "items"],
+      properties: {
+        userId:    { bsonType: "string" },
+        status:    { enum: ["pending", "paid", "shipped", "cancelled"] },
+        items: {
+          bsonType: "array",
+          minItems: 1,
+          items: {
+            bsonType: "object",
+            required: ["sku", "qty", "unitPriceCents"],
+            properties: {
+              sku:           { bsonType: "string" },
+              qty:           { bsonType: "int", minimum: 1 },
+              unitPriceCents:{ bsonType: "int", minimum: 0 },
+            },
+          },
+        },
+      },
+    },
+  },
+  validationLevel: "moderate",       // only new/updated docs validated; "strict" = everything
+  validationAction: "error",         // reject writes (vs "warn")
+});
+
+// Prove it works:
+db.orders.insertOne({ userId: "x", status: "bogus", items: [] });
+// MongoServerError: Document failed validation
+```
+
+Find validation on an existing collection: `db.getCollectionInfos({ name: "orders" })` and read its `options.validator`. Update via `db.runCommand({ collMod: "orders", validator: {...} })`.
+
+## 4. Node.js Connection (preview — full code in Ch. 13.2.4)
+
+```javascript
+import { MongoClient } from 'mongodb';
+
+const client = new MongoClient(process.env.MONGODB_URI);   // e.g. mongodb://127.0.0.1:27017
+await client.connect();
+const orders = client.db('shopcore_docs').collection('orders');
+const paid = await orders.find({ status: 'paid' }).toArray();
+await client.close();   // close on shutdown, not per request — reuse one client
+```
+
+## 5. Practice
+
+**Guided exercise.** Build the "best SKU by revenue" aggregation in mongosh, then reproduce it **visually in Compass** (Aggregations tab, 4 stages). Confirm identical results.
+
+**Independent exercise.** Create the ESR index on `orders`, then prove with `.explain("executionStats")` before and after that `stage` is `IXSCAN`. Then `dropIndex(...)` to show `COLLSCAN` returns.
+
+**Challenge.** Add `$jsonSchema` validation to a new collection `customers` requiring `email` (string, pattern) and `role` (enum: `customer|admin`). Try inserting an invalid doc and capture the error verbatim.
+
+**Assessment checklist**
+
+- [ ] I built a 4-stage aggregation in mongosh and Compass.
+- [ ] I know the ESR rule and can quote it.
+- [ ] I can distinguish IXSCAN from COLLSCAN in explain output.
+- [ ] I attached `$jsonSchema` validation to a collection and watched it reject a bad write.
+- [ ] I know `$match` must be first in pipelines.
+
+</BookNodePage>

@@ -1,0 +1,47 @@
+---
+id: "index"
+title: "33.2 AI Nodes & Reliable Automations"
+sidebar_label: "33.2 AI Nodes & Reliable Automations"
+slug: "/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-33-s2">
+
+Section 33.1 gave you a deterministic pipeline: email in, rule-based branch, Slack notice out. This section does two things: it swaps the hard-coded classifier for an LLM — wired into the same visual graph — and it makes the result survivable in production, because a workflow that classifies disputes but silently dies on Tuesday 03:00 is worse than no workflow.
+
+## What the AI Node Family Actually Is
+
+n8n's AI capability is a cluster of **sub-nodes** plugged into root nodes:
+
+```text
+        ┌──────────────── AI Agent (root) ────────────────┐
+        │                                                 │
+ Chat Model sub-node   Memory sub-node   Tool sub-nodes   Output Parser
+ (OpenAI/Anthropic/    (Simple Memory,   (HTTP Request,   (Structured
+  Gemini/Ollama/...)    Postgres, Redis)  Linear, Slack,   Output Parser)
+                                            Code, ...)
+```
+
+Since n8n 1.82 every AI Agent node runs as a **Tools Agent** — there is no agent-type dropdown to choose; the model decides which tools to call, loops until done (bounded by an iteration cap), and returns. A **Basic LLM Chain** is the simpler cousin: one prompt in, one completion out, no tool loop. For dispute classification, the chain is often enough; reach for the Agent when the model must *look things up* (order status, policy doc, prior tickets) before deciding.
+
+## The Two Topics in This Section
+
+- **[33.2.1 Connecting LLMs to Business SaaS Tools](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations/33-2-1-connecting-llms-to-business-saas-tools)** — the exact node names (OpenAI Chat Model, Anthropic Chat Model, Google Gemini Chat Model), credentials hygiene, the SaaS catalog ShopCore actually uses, the end-to-end dispute pipeline with an LLM, human-in-the-loop approval, and verifying everything in the execution log.
+- **[33.2.2 Error Workflows, Retries and Self-Hosting](/book/part-08-ai-applications-agents-mcp-and-automation/33-n8n-workflow-automation/33-2-ai-nodes-and-reliable-automations/33-2-2-error-workflows-retries-and-self-hosting)** — per-node retries, the Error Trigger pattern, Docker Compose with Postgres + HTTPS, version pinning, backups, rate limits, and the operations checklist that separates a hobby toy from an internal platform.
+
+## Why Reliability Is a First-Class Topic Here
+
+Visual automations fail differently than code: a missing credential looks like a red node, a schema change upstream arrives as valid-looking JSON with empty fields, and an LLM returns confident nonsense with HTTP 200. The discipline in this section — structured output parsing, retries with backoff, error workflows, execution-log review — is what Chapter 36 (Production AI Systems) will generalize into observability and evaluation. Learn it here on a workflow small enough to hold in your head.
+
+## Section Exit Criteria
+
+- An LLM classifies ShopCore disputes inside n8n, emitting schema-validated JSON (`auto | review | escalate`), never free text.
+- Auto-resolvable disputes post to Slack; escalations open a Linear ticket with the LLM's summary; nothing reaches a customer without passing the approval gate from 34.1.1.
+- The instance is self-hosted behind HTTPS with Postgres, an encryption key you control, backups, and an Error Trigger workflow that pages `#ops-alerts` on failure.
+- You have read one full execution log top-to-bottom and can narrate every node's input and output.
+
+Prerequisites: 33.1 complete and the dispute workflow green. Verified against n8n docs and releases, November 2026.
+
+</BookNodePage>

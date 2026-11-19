@@ -1,0 +1,39 @@
+---
+id: "index"
+title: "18. Docker & Containerized Application Deployment"
+sidebar_label: "18. Docker & Containerized Application Deployment"
+slug: "/part-05-deployment-cloud-and-devops/18-docker-and-containerized-application-deployment"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-18">
+
+You have deployed ShopCore to a Linux VPS by hand: install Node, copy files, run a process under systemd, reload nginx. It works — until a teammate runs it on a different Ubuntu version, or you need the same stack on a second server, or you cannot reproduce why "it works on my machine." Chapter 17 gave you a real server; this chapter gives you a **repeatable, portable runtime** for everything that runs on it and beyond.
+
+**Chapter 18 (`6 Focused Hours`)** teaches Docker from zero: install the engine, understand images vs containers, write Dockerfiles that build small images fast, persist data with volumes and wire services together with networks and Compose, push images to registries, harden them, and finally ship the ShopCore stack to the same VPS you provisioned in [Chapter 17](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration).
+
+## Chapter 18 Structure
+
+- **18.1 Docker Setup, Images & Multi-Stage Builds:** Docker Desktop (Windows) vs the Linux engine, client → daemon architecture, `hello-world`, the `docker run` flag vocabulary, Dockerfile anatomy (`FROM`…`CMD`), layer caching and build order, `.dockerignore`, and a multi-stage build that shrinks a Node app image from ~1 GB to ~150 MB.
+- **18.2 Volumes, Networks, Compose & Registries:** Named volumes vs bind mounts, bridge networks and DNS between containers, port-mapping semantics, `-e`/`--env-file` injection, a two-service Compose stack (Node API + Postgres) with healthchecks, and pushing private images to Docker Hub.
+- **18.3 Container Security & Production VPS Deployment:** Non-root users, minimal base images, no secrets in layers, `docker scout`/Trivy scanning, read-only filesystems and resource limits — then deploying the Compose stack to a production VPS behind the nginx proxy from [17.2.2](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration/17-2-vps-security-firewalls-and-reverse-proxies/17-2-2-reverse-proxies-with-nginx-and-caddy).
+
+## What You Will Be Able to Do After This Chapter
+
+- Explain the image → container → registry lifecycle and debug a failing container with `logs`, `exec` and `inspect`.
+- Write and cache-optimize a Dockerfile, including a multi-stage build, and justify every instruction.
+- Model Postgres data persistence and multi-service networking with volumes and a private bridge network.
+- Ship the full ShopCore stack with `docker compose up -d`, push it to a registry, and redeploy it to a VPS you already own — without rebuilding by hand.
+
+## How to Work Through This Chapter
+
+1. Install Docker first (18.1.1) and run `hello-world`. Do not read ahead — the whole chapter assumes a working engine.
+2. Build the multi-stage Node image yourself (18.1.2); measure the size difference.
+3. Prove persistence with the Postgres volume lab (18.2.1) before touching Compose.
+4. Bring the two-service stack up, then push a tagged image to Docker Hub (18.2.2).
+5. Harden it, then deploy to your VPS following 18.3.1 exactly — the teardown and rollback habits matter as much as the up command.
+
+Prerequisites: [Chapter 16](/book/part-05-deployment-cloud-and-devops/16-deployment-foundations-domains-dns-and-hosting) (deployment fundamentals) and [Chapter 17](/book/part-05-deployment-cloud-and-devops/17-linux-vps-and-server-administration) (Linux, SSH, ufw, nginx). This chapter is where the book first introduces containers — everything after it assumes you can build and run one.
+
+</BookNodePage>

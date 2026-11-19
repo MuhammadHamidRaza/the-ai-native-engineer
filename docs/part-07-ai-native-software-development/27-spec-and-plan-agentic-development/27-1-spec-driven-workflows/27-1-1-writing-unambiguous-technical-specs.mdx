@@ -1,0 +1,179 @@
+---
+id: "27-1-1-writing-unambiguous-technical-specs"
+title: "27.1.1 Writing Unambiguous Technical Specs"
+sidebar_label: "27.1.1 Writing Unambiguous Technical Specs"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-1-spec-driven-workflows/27-1-1-writing-unambiguous-technical-specs"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s1-t1">
+
+Every coding agent failure you have ever seen traces back to one of two roots: the model could not do the work, or the human never said exactly what the work was. The first is rare. The second is the default. This lesson teaches you to write specs that remove the second root, and to lint your own specs before an agent sees them.
+
+## 1. Why Specs Fail in Practice
+
+A vague spec does not produce a vague attempt; it produces a **confident wrong build**. The causal chain:
+
+```text
+vague ask
+   |
+   v
+agent invents requirements (silently)
+   |
+   v
+plausible code passes a skim review
+   |
+   v
+gate fails (or worse: passes the wrong thing)
+   |
+   v
+rework: rewrite spec, rewrite code, lost afternoon
+```
+
+The agent is not dishonest. It is a next-token predictor optimizing for a plausible artifact. If you under-specify, it fills the gaps with the most statistically common guess — which is usually right for the wrong reasons, or wrong for your business.
+
+The five spec defects that cause 80 percent of agent rework:
+
+| Defect | Example | Agent's behavior |
+| :-- | :-- | :-- |
+| Unquantified adjective | "make it fast" | Picks a number you never chose |
+| Missing out-of-scope | no non-goals | Builds a half of your "obviously implied" extras |
+| Ambiguous pronoun | "send it to them" | Resolves "it" to the nearest noun, wrong or right unpredictably |
+| No acceptance criteria | "add abandoned cart emails" | Declares done when the file compiles |
+| Undeclared dependency | "reuse the mail service" | Invents a `sendMail()` that does not exist |
+
+## 2. Anatomy of a Buildable Spec
+
+A spec an agent can build from has exactly these parts. If one is missing, the agent fills it with a guess.
+
+| Part | Question it answers | Failure if missing |
+| :-- | :-- | :-- |
+| Context | What is true about this codebase right now? | Agent re-derives the world from `grep` |
+| Problem | What is broken or missing, from the user's point of view? | Solution-shaped spec, wrong target |
+| Goals | What must be observably different after this ships? | Unverifiable "success" |
+| Non-goals | What will you deliberately NOT do this pass? | Scope creep, gold-plating |
+| Acceptance criteria | Given/When/Then, each independently testable | "Looks done" replaces "is done" |
+| Interfaces | HTTP routes, function signatures, table columns touched | Hallucinated APIs |
+| Constraints | Libraries, patterns, perf, security boundaries | Off-stack rewrites |
+| Exit gate | The exact command(s) that prove this is done | "Trust me" completion |
+| Rollback | How you undo it in production | Fear-driven merges |
+
+Non-goals are the highest-leverage part and the most-skipped. Agents do not stop building at the edge of your ambition; they stop at the edge of your specification.
+
+## 3. Complete Example: "Abandoned Cart Email" for ShopCore
+
+ShopCore (from earlier chapters) is a small e-commerce monolith: Node 22, Express, PostgreSQL, server-rendered UI, and a `jobs/` worker folder. This is the full spec, the way you should hand it to an agent.
+
+```markdown
+# SPEC: Abandoned Cart Reminder Email (phase 3 of 10)
+
+## Context
+- Repo: shopcore monolith. Node 22, Express 4, Postgres 16, node-pg, React 18 on the storefront.
+- Existing infra: `src/jobs/queue.js` (in-process queue, retry x3), `src/services/mailer.js`
+  (exports sendMail({to, template, data}) using Postmark), `src/db/queries/cart.js`.
+- Carts already exist: tables carts(id, customer_id nullable, session_id, created_at, updated_at, recovered_at nullable),
+  cart_items(id, cart_id, product_id, qty), customers(id, email, name).
+
+## Problem
+Customers add items to cart and leave without checking out. ~62% of carts are never recovered.
+We lose revenue we already earned once.
+
+## Goals
+1. A logged-in customer who leaves >= 1 item in cart for >= 4 hours gets ONE reminder email.
+2. The reminder deep-links back to their cart.
+3. If the customer checks out or empties the cart, no email is sent (or a queued one is dropped).
+4. Every reminder is recorded in `cart_reminders` for audit.
+
+## Non-goals (explicitly out of scope this pass)
+- Guest carts (session-only), SMS, push notifications.
+- Discount coupons or incentive logic.
+- Marketing-grade templates UI; one plain but branded template is fine.
+- Changing checkout, cart, or mailer behavior beyond what is listed.
+
+## Acceptance criteria
+- Given a logged-in customer with 2 items in cart, When the cart has had no activity for 4h, Then exactly one reminder email is sent and one row is inserted in cart_reminders with cart_id and customer_id.
+- Given the same customer returns and checks out, When the worker next scans, Then no email is sent (recovered_at is set at checkout time OR cart_items is empty -> skip).
+- Given a customer with recovered_at not null, When the scan runs, Then they are never selected.
+- Given the mailer throws, When the job retries, Then retry follows jobs/queue.js existing policy (x3) and the cart_reminders row is only written on send success.
+
+## Interfaces
+- New query: findUnrecoveredCartsOlderThan(hours, limit) in src/db/queries/cart.js
+- New job: src/jobs/abandoned-cart-scan.js, registered in src/jobs/index.js on cron '*/15 * * * *'
+- New table: cart_reminders(id serial pk, cart_id int fk, customer_id int fk, sent_at timestamptz, cart_activity_at timestamptz)
+- Migration: migrations/2026-11-20-add-cart-reminders.sql (up and down)
+
+## Constraints
+- No new npm dependencies (Postmark and queue infra already exist).
+- Follow existing query style: parameterized SQL, no ORM.
+- All times UTC; compare against now() in SQL, not in JS.
+- Respect mailer.js retry semantics; do not call sendMail in a loop without the queue.
+
+## Exit gate (all must pass)
+- `npm run migrate && npm run migrate -- --down && npm run migrate` (up/down/up)
+- `npm test -- --grep "abandoned-cart"` prints 0 failures, >= 6 tests
+- `npm run lint` exits 0
+- Manual: seed a cart 5h old, run `node src/jobs/abandoned-cart-scan.js --once`, observe one email in Postmark test mode and one row in cart_reminders
+
+## Rollback
+- Deploy is feature-flagged by env ABANDONED_CART_EMAIL=false. Revert PR to disable.
+- Migration down drops cart_reminders only; no other tables touched.
+```
+
+Length is not the enemy — **unspecified decision points** are. Count the decisions the spec pins down: cart age, one email only, skip conditions, retry behavior, exact files, exact gate, exact rollback. The agent has nowhere to invent.
+
+## 4. The Review Ritual Before Handing to an Agent
+
+Never hand a spec to an agent cold. Run this 10-minute ritual, ideally with a colleague or a second agent instance in review mode:
+
+1. **Read it as a hostile contractor.** For each sentence, ask: "What is the laziest, most wrong reading?" Fix the wording.
+2. **Trace every noun.** Does `mailer.js` exist? Does `findUnrecoveredCartsOlderThan` collide with anything? Nouns that do not exist in the repo are invitations to hallucinate.
+3. **Count acceptance criteria vs non-goals.** If goals outnumber non-goals badly, you have not scoped.
+4. **Run the exit gate command mentally.** Would you know a pass from a fail by reading the output?
+5. **Check the rollback twice.** Production courage comes from a known undo path.
+6. **Hand it over with the question:** "List every decision you still need to make. If you find one that is not answered in the spec, stop and ask." A good agent lists gaps. A silent one builds them.
+
+## 5. Spec Linting: The Ambiguity Checklist
+
+Run this lint on every spec before handoff. It takes five minutes and catches the majority of agent rework.
+
+- [ ] **Quantified words:** fast, quick, easy, simple, appropriate, robust, scalable, secure — each replaced with a number or a test.
+- [ ] **Count words:** "few", "some", "several", "multiple", "a couple" — each replaced with an integer or a range.
+- [ ] **Ambiguous pronouns:** it, this, that, them, they — each has exactly one antecedent, or a name.
+- [ ] **Hidden conjunctions:** "and" inside a goal sentence usually hides two goals. Split them.
+- [ ] **"etc." / "such as":** an agent treats "such as" as mandatory. Enumerate exhaustively or use "including but not limited to" deliberately.
+- [ ] **Undeclared dependencies:** every referenced file, table, env var, and service exists and is named precisely.
+- [ ] **Tense check:** goals are future-state ("customer receives"), not task lists ("add a column"); task lists belong in 27.1.2.
+- [ ] **Undecidable criteria:** any acceptance check a human could not verify by looking at output is rewritten.
+- [ ] **Done-definition drift:** the spec defines DONE once, in the exit gate, and nowhere else.
+
+Two spec smells that deserve special mention: **"handle the edge cases"** (names none) and **"use best practices"** (delegates your judgment to a prior). Both are polite fictions that transfer blame to the agent.
+
+## 6. Earning the Agent's Context Trust
+
+Agents weight context by position and repetition. A spec earns trust by:
+
+- **Naming the repo state precisely** (paths, versions, existing exports) so the agent's `grep` confirms rather than contradicts you.
+- **Showing one exemplar** of the pattern you want ("queries look like src/db/queries/order.js").
+- **Stating constraints as tests** ("no new npm dependencies"), not as vibes ("keep it lightweight").
+- **Being short where it can and long where it must.** A 40-line spec with zero fluff outperforms a 400-line spec with an architecture essay.
+
+When the agent's first response shows it read those anchors ("I'll follow the order.js query pattern..."), you know the context landed. When it does not, stop and re-anchor before it builds.
+
+## 7. Practice
+
+**Guided exercise.** Take the abandoned-cart spec above and delete the Non-goals section. Ask an agent to "add abandoned cart emails." Observe what it adds (coupons? guest carts?). Restore the section and repeat.
+
+**Independent exercise.** Write the full spec for the next ShopCore phase: a password-reset email flow. Include all anatomy parts and the ambiguity checklist results in the PR description.
+
+**Challenge.** Spec a feature for a repo you do not know well. Before handoff, have a teammate (or a second agent in review mode) list every decision point the spec leaves open. Fix until the list is empty.
+
+**Assessment checklist**
+
+- [ ] I can name the nine parts of a buildable spec from memory.
+- [ ] Every adjective in my specs is quantified or deleted.
+- [ ] My specs contain explicit non-goals and an exit gate with exact commands.
+- [ ] I run the ambiguity checklist before any agent sees my spec.
+- [ ] I ask the agent to list unanswered decisions and treat silence as failure.
+
+</BookNodePage>

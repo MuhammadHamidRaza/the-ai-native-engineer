@@ -1,0 +1,156 @@
+---
+id: "27-2-3-slash-commands-skills-permissions-and-harness-engineering"
+title: "27.2.3 Slash Commands, Skills, Permissions and Harness Engineering"
+sidebar_label: "27.2.3 Slash Commands, Skills, Permissions and Harness Engineering"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-2-direct-ai-coding-assistants/27-2-3-slash-commands-skills-permissions-and-harness-engineering"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s2-t3">
+
+Slash commands are not a universal standard — each tool ships its own set with its own names, and half the lists floating around the internet are stale. This lesson gives you the verified sets (Nov 2026, or flagged `CLAIM TO VERIFY`), teaches you to author commands and skills, and then zooms out to **harness engineering**: the discipline of controlling the loop the agent runs in.
+
+## 1. Verified Command Reference (and Nothing Else)
+
+**Claude Code** (verified against current docs): `/init`, `/clear` (aliases `/reset`, `/new`), `/compact [focus]`, `/cost` (alias for `/usage`), `/diff`, `/model`, `/resume` (alias `/continue`), `/context`, `/permissions`, `/plan`, `/mcp`, `/hooks`, `/memory`, `/doctor`, `/rewind` (aliases `/checkpoint`, `/undo`), `/agents`, `/config`, `/export`, `/bug`, `/help`. Availability depends on plan and surface — if one is missing, your build predates it or your plan excludes it.
+
+**Codex CLI** (verified): in-TUI `/model`, `/permissions`, `/status`, `/init`, `/review`, `/resume`; non-interactive `codex exec`. There is no `/commit`. Legacy flag names (`--full-auto` etc.) are retired — use `--sandbox` and `--ask-for-approval`.
+
+**OpenCode** (verified against V1 TUI docs; v2 rollout in progress — check `/help`): `/connect`, `/compact` (alias `/summarize`), `/editor`, `/exit` (aliases `/quit`, `/q`), `/export`, `/help`, `/init`, `/models`, `/new` (alias `/clear`), `/sessions` (aliases `/resume`, `/continue`), `/undo`, `/redo`, `/update`, `/thinking`. Gemini CLI (`/help`, `/chat`, `/bug`, `/memory`, `/restore` for checkpointing) — names verified to exist in its docs; exact semantics CLAIM TO VERIFY per release.
+
+**Do not trust unverified lists.** If a blog says `/xyz` works in your tool, run `/help` or read the official commands reference first. Anything not confirmable ships in this chapter as `CLAIM TO VERIFY`, nothing else.
+
+## 2. Custom Commands (Markdown + Frontmatter)
+
+Claude Code: files in `.claude/commands/review.md` (project) or `~/.claude/commands/` (user); the body is the prompt, optional frontmatter (`description`, `argument-hint`, `model`, `allowed-tools`); `$ARGUMENTS` expands; invoked as `/project:review 123` or `/review`. Note: **custom commands were merged into skills** — existing command files keep working, but new reusable procedures with supporting files should be skills. Codex CLI has no user-defined slash files of this kind (use AGENTS.md + `codex exec` scripts). OpenCode: `.opencode/commands/name.md` with `description`, `agent`, `model`, `subagent` frontmatter; `$ARGUMENTS`, `$1..$N`, shell blocks with `` !`git diff` `` — note shell blocks run outside the permission flow, so only trusted commands.
+
+**Codex/OpenCode/Claude bridges overkill?** For a shared procedure across all three, write a skill for Claude Code and a plain prompt file for the others; keep the logic in one `scripts/` file so they cannot drift.
+
+## 3. Skills: The Worked Example
+
+A **skill** is a folder with `SKILL.md` (YAML frontmatter + instructions) plus optional scripts and references. Claude loads it when its `description` matches the task, or on `/skill-name`. Working directory: `.claude/skills/review-migration/`.
+
+```markdown
+---
+name: review-migration
+description: Review a database migration the way a strict DBA reviewer would. Use when the user asks to check, audit or sign off on a migration file, or before merging one. Flags unsafe patterns, lock risks and missing rollbacks.
+disable-model-invocation: false
+---
+
+## Inputs
+The migration file path, or a diff containing it.
+
+## Procedure
+1. Read the migration; classify each statement: additive / destructive / blocking.
+2. Scan for these defects, in order:
+   - DROP or rename without a compat window (dual-write / backfill first)
+   - ALTER TABLE ... ADD COLUMN ... NOT NULL with no default on a big table
+   - Missing index for every new FK
+   - Whole-table rewrite (type change) without batched backfill
+   - Migration not wrapped in a transaction where the engine supports it
+   - No down migration, or down that cannot work (data already gone)
+3. For each finding: file:line, category, severity (block/fix/nit), one-line fix.
+4. Check the migration against docs/adr/ for any decision it violates (ADR = Architecture Decision Record).
+5. Verdict line: APPROVE / REQUEST CHANGES, with the blocking findings listed.
+
+## Supporting files
+- references/migration-checklist.md  (the full defect catalog)
+- scripts/lint-migration.sh          (grep-level pre-scan: DROP|TRUNCATE|ALTER ... NOT NULL)
+
+## Output contract
+Numbered findings, severity-tagged, verdict line last. Never say "looks good" without listing what was checked.
+```
+
+`.claude/skills/review-migration/scripts/lint-migration.sh` is called by the skill; `references/` carries the deep checklist so the body stays short (body stays in context across turns — every line is a recurring token cost). Trigger quality lives entirely in the `description`: name the user's phrasings ("check this migration", "sign off on this DDL"), and the skill fires when it should. If it misfires, tighten the description — do not add instructions.
+
+## 4. Permission Design: Allow, Ask, Deny
+
+Claude Code rules use tool-scoped syntax like `Bash(npm test)`, `Edit(src/**)`, `Read(~/.ssh/**)` for deny; opencode/codex have equivalents. Design principles:
+
+1. **Default deny, then open deliberately.** Start `default` (reads only); allow `Bash(npm test)`, `Bash(npm run lint)`, `Edit(src/**)`; ask on `Bash(git push *)`; deny `Read(.env*)`, `Bash(curl *)` on repos handling secrets.
+2. **Scope by tool and path, not by vibe.** `Bash(npm)` matches too much; `Bash(npm test)` and `Bash(npm test -- *)` are deliberate.
+3. **Deny wins everywhere, including bypass mode** for explicit deny rules — but nothing saves you from `bypassPermissions` on a trusted repo; don't.
+4. **Audit grants:** Claude Code `/fewer-permission-prompts` builds an allowlist from your transcripts — run it, then hand-edit.
+5. **Per-environment scoping:** project `.claude/settings.json` committed; user `~/.claude/settings.json` for your quirks; managed settings for org policy. Codex: profiles (`--profile readonly_quiet`) and `[sandbox_workspace_write]`; granular `approval_policy = { granular = { ... } }` for surgical prompts. OpenCode: ordered `permissions` entries in `opencode.json`.
+
+## 5. Harness Engineering: Controlling the Loop
+
+The agent loop is: model -> tool call -> permission check -> tool result -> back to model, until stop. You own the edges of that loop:
+
+- **Stop conditions:** the model decides, or a cap decides for it. Set `maxTurns`-style limits (Agent SDK/`-p` runs), or use your own wall: "stop after task 3 and report".
+- **Retry limits:** the kit rule of 3 applies here — same gate, three failures, halt and surface. In code: bounded retries with the same input = loop detection; infinite "fix it" is a bug, not diligence.
+- **Time and cost caps:** `/cost` watchpoints, org spend limits, wall-clock checkpoints every N minutes; kill the session, not your budget.
+- **Approval gates:** plan-then-approve (`plan` mode), `on-request` sandbox, `dontAsk` in CI with an exact allowlist. Every gate should name the action it covers — "approve edits" is not a gate, "approve this specific file write after seeing the diff" is.
+- **Auditability:** Claude Code hooks can log every tool call (`log` hook to a file); Codex emits OpenTelemetry events opt-in (`[otel]` in config.toml); redirect-able logs are your postmortem material. Log: tool, args, cwd, timestamp, decision.
+- **Eval loop for harnesses:** keep 10-20 canonical tasks ("add endpoint", "fix failing test", "review migration") with known-good outcomes; run them after any settings/hook/permission change; a harness that "feels better" and passes 6 of 15 is a regression you would have shipped. This is unit testing for your own tooling — do it.
+
+```text
+The loop you are actually responsible for:
+
+  user task
+      |
+      v
+  +----------------------------+<-------- tool result --------+
+  |  MODEL: next action        |                              |
+  +----------------------------+                              |
+      | tool call                                             |
+      v                                                       |
+  +----------------------------+   deny   +-------------+    |
+  | PERMISSION GATE            |--------->| ask human   |    |
+  | (mode / rules / sandbox)   |          | or stop     |    |
+  +----------------------------+          +-------------+    |
+      | allow                                                |
+      v                                                       |
+  +----------------------------+                              |
+  | TOOL EXECUTION (sandboxed) |-----------------------------+
+  +----------------------------+
+      |
+      v
+  STOP CONDITION?  --no--> loop back to MODEL
+      | yes
+      v
+  final answer  OR  halt + escalate to human
+```
+
+Concrete stop-condition example for unattended runs (Claude Code via `-p`, Codex via `codex exec`): cap turns at 12, wall-clock cap 15 minutes, forbid `git push` without explicit approval, and require the run to end with one of `TASK COMPLETE`, `TASK BLOCKED`, `NEEDS HUMAN`. If the run hits the cap without a terminator line, treat it as failed and inspect the transcript — a silent timeout is a failed task, not a finished one. Symptoms that your harness is misconfigured: the same two tools alternate endlessly (loop), the agent "succeeds" with no verification output (fake-done), or every run ends in the same tool error (missing permission rule, not a model problem).
+
+## 6. Taxonomy: What Is What
+
+| Mechanism | What it is | When it fires | Example |
+| :-- | :-- | :-- | :-- |
+| Slash command | Built-in control of the tool | You type it | `/compact`, `/diff` |
+| Custom command | Prompt template as a command | You type it | `/review 123` |
+| Skill | Packaged instructions + files | Agent chooses, or you type `/name` | review-migration above |
+| Hook | Your script on lifecycle events | Deterministically, in code | prettier after Edit |
+| MCP | External tool/data servers | Agent calls their tools | GitHub, Postgres, Playwright |
+| Plugin | Bundle of skills/hooks/MCP/config | Installed per repo/user/org | a marketplace review plugin |
+| Subagent | Isolated context + own tools/model | Delegated by main agent | read-only `reviewer` |
+
+Rule of thumb: if a human decides when -> command; if the agent decides when -> skill; if code must enforce it -> hook; if it lives outside the repo -> MCP; if you want to share all of the above -> plugin.
+
+## 7. Security Rules (Non-Negotiable)
+
+- Never `bypassPermissions` / `--yolo` / `danger-full-access` on trusted production code or any checkout with real secrets.
+- Secrets in prompts are forever: they land in logs, traces, cached pages and model providers' systems. Reference credential names, never values. Rotate on suspicion.
+- `.env*` and key files are deny-listed reads where the tool supports it; otherwise keep them out of the agent's cwd entirely.
+- Reads are not free: `Read(~/.aws/**)` is a deny, full stop.
+- MCP servers are remote code execution surfaces — only servers you trust, version-pinned where possible.
+
+## 8. Practice
+
+**Guided exercise.** Create the `review-migration` skill above in a scratch repo with a bad migration (`ALTER TABLE orders ADD COLUMN total_cents NOT NULL;`). Watch it fire; tighten its description until it fires exactly on migration prompts.
+
+**Independent exercise.** Add a `PreToolUse` hook that logs every Bash command to `.claude/audit.log`, and one that blocks `Read` of `.env*`. Test both.
+
+**Challenge.** Design a 12-task eval for your harness (4 spec-to-PR tasks, 4 test-fixing, 4 review tasks). Run it against two of your configurations; report pass rates.
+
+**Assessment checklist**
+
+- [ ] I can list the verified commands for my tool and know where to check for more.
+- [ ] I have authored one working skill with a description that triggers correctly.
+- [ ] My default-deny permission config exists and I can explain every allow rule.
+- [ ] I understand the difference between command, skill, hook, MCP, plugin, subagent.
+- [ ] I have a stop-condition and retry-limit story for long agent runs.
+
+</BookNodePage>

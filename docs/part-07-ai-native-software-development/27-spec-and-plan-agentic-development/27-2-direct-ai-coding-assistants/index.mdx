@@ -1,0 +1,35 @@
+---
+id: "index"
+title: "27.2 Direct AI Coding Assistants"
+sidebar_label: "27.2 Direct AI Coding Assistants"
+slug: "/part-07-ai-native-software-development/27-spec-and-plan-agentic-development/27-2-direct-ai-coding-assistants"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-27-s2">
+
+**27.2 Direct AI Coding Assistants** is the hands-on half of this chapter: install, configure and supervise the tools professionals actually run, and know exactly what each can and cannot do to your repository. Everything here was verified against official documentation in November 2026; anything uncertain is flagged `CLAIM TO VERIFY` rather than papered over.
+
+## Topics in 27.2
+
+- **27.2.1 Claude Code and OpenAI Codex CLI** — install and authenticate both terminal agents; model aliases and permission/sandbox modes (what changed in late 2026); side-by-side ShopCore session transcripts; realistic cost ranges; the failure modes that bite hardest (agent drift, test vandalism, silent scope creep) with detection recipes.
+- **27.2.2 Cursor, OpenCode and Gemini CLI: Terminal vs IDE vs Cloud** — `.cursor/rules` and Cloud Agents; OpenCode as the open-source terminal agent with local and remote models; Gemini CLI's 2026 repositioning after the free tier moved to Antigravity CLI; a decision matrix for terminal vs IDE vs cloud; one task scored across all three.
+- **27.2.3 Slash Commands, Skills, Permissions and Harness Engineering** — which slash commands actually exist per tool (with per-tool verification); custom commands and skills with a complete worked example; permission design with allow/deny lists; harness engineering (agent loop, stop conditions, retries, time caps, audit logs); the slash-command/skill/hook/MCP/plugin taxonomy.
+
+## What You Will Be Able to Do
+
+- Choose and set up the right assistant for a given repo, task and risk profile.
+- Configure least-privilege permissions and sandboxes without rubber-stamping prompts.
+- Automate repeatable review work with commands and skills instead of re-typing prompts.
+- Recognize, detect and contain the three classic failure modes before they merge.
+
+## How to Work Through 27.2
+
+Install both 27.2.1 tools before reading on — this section assumes working binaries. 27.2.2 is a comparison lesson: read it after your 30-minute first session with Claude Code or Codex. 27.2.3 is reference material you will return to for months; skim it now, work through it when you author your first skill. Every command named in this section was verified against official documentation in November 2026; anything not verifiable is explicitly flagged `CLAIM TO VERIFY`. When a flag disagrees with your installed version, trust the docs and note the delta in your team's runbook.
+
+**You will finish this section with:** two authenticated terminal agents, one working rule or permission config, a scratch repo where an agent ran a full task end-to-end, and a scored comparison of three tools on the same task.
+
+**Prerequisites:** 27.1 (spec-driven workflows). You will drive these tools on real repositories — a scratch repo and Git are required.
+
+</BookNodePage>

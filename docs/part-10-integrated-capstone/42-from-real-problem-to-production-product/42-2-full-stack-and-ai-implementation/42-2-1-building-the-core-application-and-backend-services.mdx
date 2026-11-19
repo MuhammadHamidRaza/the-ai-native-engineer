@@ -1,0 +1,118 @@
+---
+id: "42-2-1-building-the-core-application-and-backend-services"
+title: "42.2.1 Building the Core Application and Backend Services"
+sidebar_label: "42.2.1 Building the Core Application"
+slug: "/part-10-integrated-capstone/42-from-real-problem-to-production-product/42-2-full-stack-and-ai-implementation/42-2-1-building-the-core-application-and-backend-services"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-42-s2-t1">
+
+This is the largest work block in the capstone — and the one where perfectionism kills you. The build is a **spine**: schema → migration → seed → API route → one screen → test → deploy to staging. Repeat for each slice until the PRD is satisfied. Nothing more is allowed until the spine holds.
+
+## 1. The Build Order (Do Not Reorder)
+
+```text
+Week 1: 001_init.sql → migrate → seed → GET /health (returns 200 on deployed staging)
+Week 2: Auth or webhook verification first (your riskiest dependency)
+Week 3: Core read endpoints + one real page that displays seeded data
+Week 4: Core write path + integration test for the happy path AND one failure path
+Week 5: Nightly job / webhook processing + mismatch generation
+Week 6: Dashboard polish + client demo + handover docs
+```
+
+Every week must end with a **deployed artifact** and a **demoable URL**. A branch that only runs on your laptop is not progress — it's inventory.
+
+## 2. Vertical Slices, Not Horizontal Layers
+
+Do not build "all the models", then "all the API", then "all the UI". Slice by outcome:
+
+```text
+Slice 1: Member can see their own bookings.
+         → schema, seed, GET /api/bookings?member_id=me, one page. Done = verified by a human.
+
+Slice 2: Nightly reconciliation runs.
+         → cron entry, mismatch detection SQL, reconciliations table, email on >0 mismatches.
+
+Slice 3: Studio manager resolves a mismatch.
+         → GET /api/reconciliations/:id, one button per reason type, audit log.
+```
+
+Each slice ships independently. If slice 1 isn't visible to the client by end of week 1, you have a plan problem, not a coding problem.
+
+## 3. The Non-Negotiables
+
+- **Migrations are files**, versioned, applied by CI on merge — never hand-edited against production.
+- **Seed data is deterministic** — same seed → same database fingerprint; tests assert against seeded rows.
+- **Every route has a test** for the happy path and at least one failure path (401 vs 403 vs 422 vs 409).
+- **`.env.example`** exists; every var documented; no real secrets committed — ever.
+- **One command** to run locally (`npm run dev` or `docker compose up`) and one to verify (`npm test`).
+
+## 4. The Reference Implementation
+
+This repository ships the completed spine under `examples/chapterhouse-capstone/`:
+
+```text
+examples/chapterhouse-capstone/
+├── package.json                 # scripts: dev, migrate, seed, test, build
+├── .env.example                 # stripe keys (test mode), database URL, cron secret
+├── db/migrations/
+│   ├── 001_init.sql             # full DDL + indexes + constraints
+│   ├── 002_seed.sql             # 3 studios, 12 members, 12 sessions, 40 bookings, 33 payments
+│   └── 003_webhook_events.sql   # webhook idempotency ledger (replay protection)
+├── public/
+│   └── index.html               # demo dashboard — gated UI over the ops API
+├── src/
+│   ├── app.js                   # Express assembly — but NO business logic here
+│   ├── routes/                  # health, bookings, reconciliations, webhooks
+│   ├── lib/                     # stripe-signature verify, cron gate (timing-safe),
+│   │                            # rate limiter, JSON logger
+│   └── reconcile.js             # pure function: (bookings, payments) → mismatches
+├── test/
+│   ├── health.test.js
+│   ├── bookings.test.js         # HTTP integration: authz 401/403, cron gate, studio filter
+│   ├── security.test.js         # replay detection, malformed JSON, zero-amount schema guard
+│   └── reconcile.test.js        # fixture cases: match, missing payment, missing booking,
+│                                # duplicate, amount mismatch
+└── README.md                    # one-command setup + demo walkthrough + cost model + rollback
+```
+
+The reference executes **23 tests** as of Nov 2026 (`npm test`). Read it **before** building yours. Copying the spine is not cheating — the discipline is building **your** problem on top of it.
+
+Read it **before** building yours. Copying the spine is not cheating — the discipline is building **your** problem on top of it.
+
+## 5. Working With Messy Input CSV
+
+Real data is never clean. Your importer must:
+
+```text
+1. Validate columns (missing → reject file with line number, not silent nulls)
+2. Coerce types (string "2026-11-18" → date; "$120.00" → 12000 cents)
+3. Dedupe by natural key (studio_id + booking_date + member_id + class_session_id)
+4. Reject unknown members with a report CSV (do not silently drop rows)
+5. Idempotent re-import: same file twice = same database state
+```
+
+Test with the **ugly file**: missing columns, duplicate rows, invalid dates, empty strings. If your importer survives it, your client will never hit a production data error you haven't seen.
+
+## 6. Common Failure Modes
+
+- **Boiling the ocean**: auth before data model. Webhook before schema. Dashboard before API. Reverse that order.
+- **"Works on my machine"**: no seed, no compose file → client can't reproduce → demo fails → capstone grade drops.
+- **No failure-path tests**: the first production webhook retry crashes you on a null Stripe field.
+- **Perfectionism polish before spine**: you never reach a demo because week 3's route refuses to compile. Ship the ugly spine first.
+- **Ignoring the client until demo day**: weekly artifact sharing surfaces requirement drift while it's cheap.
+
+## 7. Exercise
+
+In your own repository (or fork of the reference), ship exactly one vertical slice end to end: schema → migration → seed → one API route → one screen → one test. Push it. Send the deployed URL to a friend. If they can't see it, it does not exist yet.
+
+**Acceptance criteria.**
+- [ ] One-command local setup works from a clean clone.
+- [ ] Seed is deterministic (same script → same fingerprint twice).
+- [ ] The slice is deployed and reachable; the friend sees seeded data.
+- [ ] At least one route has an authz test for cross-tenant access (401 vs 403 vs 200).
+- [ ] Broken-input file (bad column, dup row, invalid date) fails gracefully with an actionable error.
+
+</BookNodePage>

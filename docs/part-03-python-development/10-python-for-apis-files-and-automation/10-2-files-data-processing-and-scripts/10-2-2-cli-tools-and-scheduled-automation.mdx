@@ -1,0 +1,78 @@
+---
+id: "10-2-2-cli-tools-and-scheduled-automation"
+title: "10.2.2 CLI Tools and Scheduled Automation"
+sidebar_label: "10.2.2 CLI Tools and Scheduled Automation"
+slug: "/part-03-python-development/10-python-for-apis-files-and-automation/10-2-files-data-processing-and-scripts/10-2-2-cli-tools-and-scheduled-automation"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-10-s2-t2">
+
+Hardcoding `"C:\\Users\\Me\\Desktop\\report.csv"` inside a Python script makes it break on every teammate's computer and server. Turning scripts into proper **CLI tools** with `argparse` (or `typer`) lets humans, `cron`, Windows Task Scheduler, and CI workflows run them cleanly with `--help` documentation and clear exit codes.
+
+## 1. Complete Runnable CLI Automation Script
+
+Save as `summarize_sales.py`:
+
+```python
+import argparse
+import csv
+import json
+import sys
+from pathlib import Path
+
+def summarize(input_csv: Path, min_cents: int) -> dict:
+    if not input_csv.exists():
+        raise FileNotFoundError(f"Input file not found: {input_csv}")
+
+    total_cents = 0
+    matched_orders = 0
+    with input_csv.open("r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            cents = int(row["total_cents"])
+            if cents >= min_cents:
+                total_cents += cents
+                matched_orders += 1
+
+    return {"matched_orders": matched_orders, "total_cents": total_cents}
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Summarize CSV sales totals.")
+    parser.add_argument("input_csv", type=Path, help="Path to orders CSV file")
+    parser.add_argument("--min-cents", type=int, default=0, help="Filter minimum order cents")
+    args = parser.parse_args()
+
+    try:
+        report = summarize(args.input_csv, args.min_cents)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(report, indent=2))
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+Test with a sample CSV:
+
+```bash
+python summarize_sales.py orders.csv --min-cents 1000
+```
+
+## 2. Scheduling Repeatable Jobs Safely
+
+- **Linux / macOS (`cron`):** Edit with `crontab -e` and always point to the **absolute path** of your `.venv` Python interpreter and script (cron uses a minimal `PATH`):
+  ```cron
+  0 8 * * * /home/deploy/app/.venv/bin/python /home/deploy/app/summarize_sales.py /home/deploy/data/orders.csv >> /var/log/sales.log 2>&1
+  ```
+- **Windows (Task Scheduler):** Point **Program/script** to `C:\path\to\app\.venv\Scripts\python.exe`, pass `summarize_sales.py orders.csv` in **Add arguments**, and set **Start in** to your project folder.
+
+## Mastery Checklist
+
+- [ ] Uses `argparse` for clean flags, `--help`, and explicit non-zero exit codes on failure (`sys.stderr` + `return 1`).
+- [ ] Calls the exact `.venv` Python executable path in `cron` / Windows Task Scheduler.
+
+</BookNodePage>

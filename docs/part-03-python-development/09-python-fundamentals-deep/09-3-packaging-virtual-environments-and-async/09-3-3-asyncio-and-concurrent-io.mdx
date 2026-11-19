@@ -1,0 +1,188 @@
+---
+id: "09-3-3-asyncio-and-concurrent-io"
+title: "09.3.3 asyncio and Concurrent I/O"
+sidebar_label: "09.3.3 asyncio and Concurrent I/O"
+slug: "/part-03-python-development/09-python-fundamentals-deep/09-3-packaging-virtual-environments-and-async/09-3-3-asyncio-and-concurrent-io"
+hide_title: true
+hide_table_of_contents: true
+---
+
+<BookNodePage nodeId="ch-09-s3-t3">
+
+Just like JavaScript (`04.3`), Python's **`asyncio`** runs **cooperative concurrency on a single thread** using an event loop. Calling ten external APIs sequentially at 300ms each takes 3.0 seconds; awaiting them concurrently finishes in ~300ms. This lesson pairs the mental model with a **real, tested project** — `examples/python-async-lab/` — that you will extend, not just read.
+
+## 1. `async def`, `await`, and `asyncio.gather`
+
+```python
+import asyncio
+import time
+
+async def fetch_service_health(name: str, delay_s: float) -> dict:
+    await asyncio.sleep(delay_s)  # yields control to the event loop
+    return {"service": name, "status": "ok"}
+
+async def main() -> None:
+    start = time.perf_counter()
+    results = await asyncio.gather(
+        fetch_service_health("auth", 0.3),
+        fetch_service_health("billing", 0.3),
+        fetch_service_health("search", 0.3),
+    )
+    print(f"Checked {len(results)} services in {time.perf_counter() - start:.2f}s")
+
+asyncio.run(main())
+```
+
+**Expected output:** `Checked 3 services in 0.30s` (not `0.90s`).
+
+Python 3.11+ also provides **`asyncio.TaskGroup()`** — cancels sibling tasks automatically if any task raises, which is safer than bare `gather()` for dependent workflows.
+
+## 2. The #1 Async Bug: Blocking Inside `async def`
+
+If you call `time.sleep(2)` or synchronous `requests.get(...)` inside an `async def`, you **freeze the entire event loop** — zero other tasks make progress:
+
+- Waiting/sleeping inside async code → `await asyncio.sleep(...)`.
+- HTTP calls inside async code → **`httpx.AsyncClient`**, never synchronous `requests`.
+- **CPU-heavy work** (image resizing, PDF parsing, ML) → `asyncio` does *not* speed up CPU math on one core (GIL) — offload with `await asyncio.to_thread(fn, arg)` or a `ProcessPoolExecutor`.
+
+## 3. The HTTP Layer: `httpx.AsyncClient` Done Right
+
+```python
+import httpx
+
+async def fetch_items(cursor: str | None = None):
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        params = {"cursor": cursor} if cursor else None
+        resp = await client.get("https://api.example.com/items", params=params)
+        resp.raise_for_status()   # 4xx/5xx -> httpx.HTTPStatusError
+        return resp.json()
+```
+
+Key decisions this encodes:
+
+- **One client, not one per request** — connection pooling and TLS reuse.
+- **Explicit timeout** — without it, one hung socket freezes the whole operation forever.
+- **`raise_for_status()`** — status errors become exceptions you can catch and classify instead of silent "successful" parsing of error pages.
+
+## 4. Pagination — Never Trust One Page
+
+Real APIs paginate. The two common shapes:
+
+| Style | Mechanism | Failure mode if you ignore it |
+| :--- | :--- | :--- |
+| **Offset/limit** (`?page=3&size=50`) | Skip N rows | Row drift between pages as data changes; deep pages get slow |
+| **Cursor** (`?cursor=abc123`) | Opaque token for the next position | Stable under concurrent writes — prefer this |
+
+A correct cursor consumer:
+
+1. Loops until `next_cursor` is null — never a fixed page count.
+2. Enforces a **page ceiling** (`max_pages`) so a misbehaving API can't loop you forever.
+3. Validates each page's shape before trusting it.
+4. Retries only **transient** failures (429/5xx/transport) with **bounded** backoff.
+
+## 5. Bounded Retries and Rate Limits
+
+```python
+import asyncio
+
+import httpx
+
+RETRYABLE = {429, 500, 502, 503, 504}
+BACKOFF_S = (0.5, 1.0, 2.0)   # wait before attempts 1, 2, 3 - then give up
+
+async def get_with_retries(client, url, params):
+    attempt = 0
+    while True:
+        try:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            return resp
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status in RETRYABLE and attempt < 3:
+                if status == 429:
+                    raw = exc.response.headers.get("Retry-After")
+                    wait = min(float(raw), 10.0) if raw and raw.isdigit() else BACKOFF_S[min(attempt, 2)]
+                else:
+                    wait = BACKOFF_S[min(attempt, 2)]
+                await asyncio.sleep(wait)   # cap: never sleep for an hour
+                attempt += 1
+                continue
+            raise   # non-retryable status, or retries exhausted
+        except httpx.TransportError:
+            if attempt >= 3:
+                raise
+            await asyncio.sleep(BACKOFF_S[min(attempt, 2)])
+            attempt += 1
+```
+
+Rules: honor `Retry-After` when present (capped — never sleep 3600s in a request path), never retry non-429 4xx (a 403 means *you lack permission*; retrying burns quota), and always have a final failure state instead of an infinite loop.
+
+## 6. The Lab — `examples/python-async-lab/`
+
+The repository contains the complete, tested project this lesson builds toward:
+
+```text
+examples/python-async-lab/
+├── pyproject.toml              # deps: httpx + pytest; pytest config
+├── demo_server.py              # stdlib paginated JSON API on :8799
+├── src/asyncolabs/
+│   ├── __init__.py             # public API: fetch_all
+│   └── pagination.py           # cursor pagination, bounded retries, validation
+└── tests/test_pagination.py    # offline — network mocked via httpx.MockTransport
+```
+
+**Setup and run:**
+
+```bash
+cd examples/python-async-lab
+python -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+pytest
+```
+
+**Verified output (executed November 2026, Python 3.14):** `7 passed in 0.51s`
+
+**Manual demo** (optional, talks to a local demo API — no external network):
+
+```bash
+python demo_server.py &            # serves :8799
+python -c "import asyncio; from asyncolabs import fetch_all; print(len(asyncio.run(fetch_all('http://127.0.0.1:8799/items'))))"
+# 25
+```
+
+**Verified output (executed November 2026):** `25` items across 3 pages.
+
+## 7. What the Tests Prove (and Why)
+
+| Test | Behavior under test | Failure it prevents |
+| :--- | :--- | :--- |
+| `test_following_all_pages` | Pages followed until `next_cursor` is null | Silent truncation at page 1 |
+| `test_retries_on_429_then_succeeds` | 429 honored, bounded backoff, then success | Hammering a rate-limited API |
+| `test_persistent_500_gives_up_after_retries` | Persistent 5xx raises after `max_retries` | Infinite retry loops |
+| `test_4xx_other_than_429_is_not_retried` | 403 is raised immediately, exactly one attempt | Wasting quota on permission errors |
+| `test_malformed_item_raises` / `test_malformed_envelope_raises` / `test_missing_items_list_raises` | Bad payloads raise `ValueError` | Corrupt data flowing into your app "successfully" |
+
+Study `pagination.py` and answer: why is the envelope validated *after* `raise_for_status()`? Why does `fetch_all` cap `max_pages`? Where would you add a circuit breaker if this client ran inside a web service?
+
+## 8. Practice Exercises
+
+1. **Extend `validate_item`** to also require an ISO-8601 `updated_at` field; add a failing-then-passing test.
+2. **Concurrency:** fetch the three pages of your own mocked API with `asyncio.gather()` instead of sequentially, and measure the difference. Note: with cursor pagination this is usually impossible (the next cursor is only known after the previous page) — realize why offset pagination allows it and cursor does not.
+3. **Semaphore practice:** write `fetch_many(urls)` with `asyncio.Semaphore(5)` and verify 5-at-a-time concurrency with a mocked transport.
+4. **Break it on purpose:** remove the `max_pages` guard, feed the mock an API that always returns a non-null cursor, and observe the `RuntimeError`.
+
+## Mastery Checklist
+
+- [ ] Distinguishes I/O-bound concurrency (`asyncio`/`httpx.AsyncClient`) from CPU-bound parallelism (`ProcessPoolExecutor`).
+- [ ] Never calls blocking `time.sleep()` or `requests.get()` on the event loop.
+- [ ] Fetches cursor-paginated APIs with a page ceiling, bounded retries, and response validation — all covered by tests that run offline.
+
+## References
+
+- [Python asyncio documentation](https://docs.python.org/3/library/asyncio.html)
+- [httpx — Async support](https://www.python-httpx.org/async/)
+- [httpx — MockTransport](https://www.python-httpx.org/advanced/#mocking-transports)
+
+</BookNodePage>
